@@ -30,11 +30,8 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
-      - name: Lint
+      - name: Lint and format check
         run: pnpm run lint
-
-      - name: Format check
-        run: pnpm biome format . --check
 
       - name: Unit tests
         run: pnpm run test:unit --coverage
