@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
 import app from "@oligopoly/worker";
+import { describe, expect, it } from "vitest";
 
 describe("GET /api/health", () => {
   it("returns ok status", async () => {

@@ -1,15 +1,15 @@
-export {
-  VisibilitySettingSchema,
-  ProfileVisibilitySchema,
-  UpdateUserSettingsInputSchema,
-  NegotiationErrorKeys,
-  HealthResponseSchema,
-} from "@oligopoly/validation";
 export type {
-  VisibilitySetting,
+  HealthResponse,
   ProfileVisibility,
   UpdateUserSettingsInput,
-  HealthResponse,
+  VisibilitySetting,
+} from "@oligopoly/validation";
+export {
+  HealthResponseSchema,
+  NegotiationErrorKeys,
+  ProfileVisibilitySchema,
+  UpdateUserSettingsInputSchema,
+  VisibilitySettingSchema,
 } from "@oligopoly/validation";
 
 export const DEFAULT_PROFILE_VISIBILITY = {
@@ -38,6 +38,6 @@ export function canCreateBindingContract(trustScore: number): boolean {
   return trustScore >= TRUSTWORTHINESS_BINDING_THRESHOLD;
 }
 
-export { OPTIONAL_RULES_REGISTRY } from "./config/optionalRules.js";
-export { OPTIONAL_MARKET_EVENT_CARDS_REGISTRY } from "./config/marketEventCards.js";
 export { ACHIEVEMENTS_REGISTRY } from "./config/achievements.js";
+export { OPTIONAL_MARKET_EVENT_CARDS_REGISTRY } from "./config/marketEventCards.js";
+export { OPTIONAL_RULES_REGISTRY } from "./config/optionalRules.js";

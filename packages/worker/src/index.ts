@@ -1,6 +1,6 @@
+import type { HealthResponse } from "@oligopoly/validation";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { HealthResponse } from "@oligopoly/validation";
 
 type Bindings = {
   ALLOWED_ORIGINS?: string;

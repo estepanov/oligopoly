@@ -7,8 +7,5 @@
     "noEmit": true
   },
   "include": ["src"],
-  "references": [
-    { "path": "../validation" },
-    { "path": "../shared" }
-  ]
+  "references": [{ "path": "../validation" }, { "path": "../shared" }]
 }

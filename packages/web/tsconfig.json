@@ -8,7 +8,5 @@
     "noEmit": true
   },
   "include": ["src", "src/vite-env.d.ts"],
-  "references": [
-    { "path": "../validation" }
-  ]
+  "references": [{ "path": "../validation" }]
 }

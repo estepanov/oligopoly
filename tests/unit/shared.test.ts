@@ -1,13 +1,13 @@
-import { describe, it, expect } from "vitest";
 import {
-  clampTrustworthiness,
-  canCreateBindingContract,
-  TRUSTWORTHINESS_DEFAULT,
-  DEFAULT_PROFILE_VISIBILITY,
-  OPTIONAL_RULES_REGISTRY,
-  OPTIONAL_MARKET_EVENT_CARDS_REGISTRY,
   ACHIEVEMENTS_REGISTRY,
+  canCreateBindingContract,
+  clampTrustworthiness,
+  DEFAULT_PROFILE_VISIBILITY,
+  OPTIONAL_MARKET_EVENT_CARDS_REGISTRY,
+  OPTIONAL_RULES_REGISTRY,
+  TRUSTWORTHINESS_DEFAULT,
 } from "@oligopoly/shared";
+import { describe, expect, it } from "vitest";
 
 describe("clampTrustworthiness", () => {
   it("clamps values below 0 to 0", () => {
