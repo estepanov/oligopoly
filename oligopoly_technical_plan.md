@@ -1,0 +1,681 @@
+# Oligopoly - Core Technical Plan
+
+## Table of Contents
+
+1. [Scope and Boundary Rules](#scope-and-boundary-rules)
+2. [Repository Architecture](#repository-architecture)
+3. [Environment Configuration](#environment-configuration)
+4. [Backend Runtime and Route Contracts](#backend-runtime-and-route-contracts)
+5. [User Profile API and Visibility Model](#user-profile-api-and-visibility-model)
+6. [Negotiation, Trustworthiness, and Charter Engine Spec](#negotiation-trustworthiness-and-charter-engine-spec)
+7. [Canonical Gameplay Registries](#canonical-gameplay-registries)
+8. [Data Model and Persistence](#data-model-and-persistence)
+9. [Testing Strategy](#testing-strategy)
+10. [CI and Release Pipeline](#ci-and-release-pipeline)
+11. [Docs Acceptance Gates](#docs-acceptance-gates)
+12. [Implementation Phases](#implementation-phases)
+
+---
+
+## Scope and Boundary Rules
+
+This document defines the runtime, contracts, and implementation scope of this repository.
+
+Locked rules:
+
+1. This runtime does not include deployment-specific auth, email delivery, or notification delivery implementations.
+2. CI in this repository is limited to quality gates and package release.
+3. Documentation here may describe extension interfaces, but not deployment secrets or infrastructure procedures.
+5. Access control is authoritative on server routes; UI visibility is not security.
+
+Scope matrix:
+
+| Area | Included Here | Out of Scope Here |
+|---|---|---|
+| Game engine rules, deterministic simulation, board config | Yes | No |
+| Validation schemas and protocol contracts | Yes | No |
+| Worker runtime contracts and extension points | Yes | No |
+| Web runtime contracts and client behavior | Yes | No |
+| Deployment-specific auth, transactional email delivery, push/in-app delivery | No | Yes |
+| Deployment infrastructure procedures and environment-specific CI workflows | No | Yes |
+
+---
+
+## Repository Architecture
+
+```text
+oligopoly/
+  packages/
+    validation/   # protocol contracts and error keys
+    shared/       # engine, config, gameplay types
+    worker/       # worker runtime + route contracts
+    web/          # web client
+  tests/
+    unit/
+    integration/
+    e2e/
+```
+
+Package ownership:
+
+| Package | Responsibility |
+|---|---|
+| `@oligopoly/validation` | Zod schemas for HTTP/WS payloads, shared error key contracts |
+| `@oligopoly/shared` | Engine state transitions, config registries, rank/achievement math |
+| `@oligopoly/worker` | Route contracts, Durable Object orchestration, persistence adapters |
+| `@oligopoly/web` | Game UX and protocol client |
+
+Composition rule:
+
+- Deployment-specific integrations may extend these contracts through adapters and middleware.
+- Contracts in this repository must remain stable and semver versioned.
+
+---
+
+## Environment Configuration
+
+`.env.example` contract:
+
+```bash
+APP_NAME="Oligopoly Online"
+APP_DOMAIN=oligopoly.online
+APP_TAGLINE="A game of markets, alliances, and permanent commitment"
+
+CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_API_TOKEN=
+CF_D1_DATABASE_ID_DEV=
+CF_D1_DATABASE_ID_STAGING=
+CF_D1_DATABASE_ID_PROD=
+CF_KV_NAMESPACE_ID_DEV=
+CF_KV_NAMESPACE_ID_STAGING=
+CF_KV_NAMESPACE_ID_PROD=
+CF_R2_BUCKET_DEV=oligopoly-assets-dev
+CF_R2_BUCKET_STAGING=oligopoly-assets-staging
+CF_R2_BUCKET_PROD=oligopoly-assets
+CF_ANALYTICS_DATASET=oligopoly_events
+CF_CALLS_APP_ID=
+CF_CALLS_APP_SECRET=
+
+ANTHROPIC_API_KEY=
+ANTHROPIC_DAILY_BUDGET_ALERT=10.00
+ANTHROPIC_MONTHLY_BUDGET_ALERT=200.00
+
+ALLOWED_ORIGINS=http://localhost:5173
+CSP_REPORT_URI=
+
+VITE_API_URL=http://localhost:8787
+VITE_WS_URL=ws://localhost:8787
+VITE_CALLS_APP_ID=
+VITE_APP_ENV=development
+VITE_APP_NAME="Oligopoly Online"
+VITE_APP_DOMAIN=oligopoly.online
+```
+
+Note:
+
+- Deployment-specific secret contracts are intentionally excluded from this file.
+
+---
+
+## Backend Runtime and Route Contracts
+
+Framework conventions:
+
+- Hono framework.
+- Route modules live in `packages/worker/src/routes/`.
+- Durable Object classes live in `packages/worker/src/durable/`.
+- Middleware lives in `packages/worker/src/middleware/`.
+
+Global middleware order:
+
+1. CORS allowlist middleware
+2. Rate limit middleware
+3. Ban cache middleware
+
+Route contract table:
+
+```text
+ALL    /api/auth/*                    # extension point; deployments may mount an implementation
+GET    /api/game-config               # game config
+
+# Lobbies
+POST   /api/lobbies
+GET    /api/lobbies
+GET    /api/lobbies/:id
+POST   /api/lobbies/:id/join
+POST   /api/lobbies/:id/join/:token
+POST   /api/lobbies/:id/invite
+PUT    /api/lobbies/:id/settings
+POST   /api/lobbies/:id/admin/:uid
+DELETE /api/lobbies/:id/player/:uid
+POST   /api/lobbies/:id/start
+GET    /api/lobbies/:id/ws
+
+# Games
+GET    /api/games
+GET    /api/games/:id
+GET    /api/games/:id/state
+GET    /api/games/:id/log
+GET    /api/games/:id/replay
+GET    /api/games/:id/ws
+GET    /api/games/:id/spectate
+
+# Users
+GET    /api/users/check-username
+GET    /api/users/:id
+GET    /api/users/:id/viewer
+GET    /api/users/me
+PUT    /api/users/me
+DELETE /api/users/me
+GET    /api/users/me/games
+GET    /api/users/me/achievements
+GET    /api/users/me/rank
+GET    /api/users/me/notifications
+PUT    /api/users/me/locale
+PUT    /api/users/me/theme
+PUT    /api/users/me/notifications
+PUT    /api/users/me/notifications/:gid
+GET    /api/users/:id/presence
+
+# Leaderboard
+GET    /api/leaderboard/wins
+GET    /api/leaderboard/completions
+
+# Calls
+POST   /api/calls/token
+
+# Admin
+GET    /api/admin/users
+GET    /api/admin/users/:id
+POST   /api/admin/users/:id/ban
+DELETE /api/admin/users/:id/ban
+POST   /api/admin/users/:id/impersonate
+POST   /api/admin/users/:id/sessions
+GET    /api/admin/games
+GET    /api/admin/games/:id
+GET    /api/admin/analytics
+GET    /api/admin/analytics/costs
+GET    /api/admin/audit-log
+```
+
+Auth consistency rule:
+
+- Route contracts include auth integration endpoints.
+- In runtimes without an auth adapter, endpoints requiring identity must return typed `501` or `401` according to configured runtime policy.
+- Contract tests must verify schema and status behavior in both modes.
+
+---
+
+## User Profile API and Visibility Model
+
+### Endpoint policy (final)
+
+1. `GET /api/users/:id`
+- No auth required.
+- Returns public-safe profile fields filtered by target user's visibility settings.
+
+2. `GET /api/users/:id/viewer`
+- Auth required.
+- Returns viewer-aware profile payload with fields visible to signed-in viewers and context flags (for example, whether viewer shares a game with target).
+
+3. `GET /api/users/me`
+- Auth required.
+- Returns owner private profile payload.
+
+### Types
+
+```typescript
+export type VisibilitySetting = "public" | "authenticated" | "private";
+
+export interface ProfileVisibility {
+  rank: VisibilitySetting;                // default: public
+  careerStats: VisibilitySetting;         // default: public
+  achievements: VisibilitySetting;        // default: public
+  recentGames: VisibilitySetting;         // default: public
+  onlineStatus: VisibilitySetting;        // default: authenticated
+  lastSeen: VisibilitySetting;            // default: authenticated
+  favoriteSector: VisibilitySetting;      // default: public
+}
+
+export interface PublicUserProfile {
+  id: string;
+  username: string;
+  avatarUrl: string | null;
+  rankTier?: number;
+  rankTitle?: string;
+  careerStats?: {
+    gamesPlayed: number;
+    wins: number;
+    winRate: number;
+    tradesCompleted: number;
+    auctionsWon: number;
+    favoriteSector: string | null;
+  };
+  achievements?: Array<{ id: string; unlockedAt: number }>;
+  recentGames?: Array<{ gameId: string; result: "won" | "lost" | "drew" | "kicked"; endedAt: number }>;
+  onlineStatus?: "online" | "offline";
+  lastSeenAt?: number;
+}
+
+export interface ViewerUserProfile extends PublicUserProfile {
+  viewerContext: {
+    isSelf: boolean;
+    sharedActiveGame: boolean;
+    sharedSyndicate: boolean;
+  };
+}
+
+export interface PrivateUserProfile extends ViewerUserProfile {
+  email: string;
+  fullName: string | null;
+  locale: string;
+  timezone: string;
+  currency: string;
+  country: string | null;
+  themePreference: string;
+  notificationPrefs: NotificationPrefs;
+  profileVisibility: ProfileVisibility;
+  usernameLastChangedAt: number | null;
+}
+```
+
+### Visibility precedence
+
+Field inclusion algorithm:
+
+1. If request is owner (`/me`), include owner fields.
+2. Else if request is viewer endpoint, include fields where visibility is `public` or `authenticated`.
+3. Else public endpoint includes fields where visibility is `public` only.
+4. Server applies visibility filtering after DB query and before serialization.
+5. `username` and `avatarUrl` are always returned.
+
+### Settings contract
+
+```typescript
+export interface UpdateUserSettingsInput {
+  username?: string;
+  locale?: string;
+  timezone?: string;
+  currency?: string;
+  themePreference?: string;
+  notificationPrefs?: NotificationPrefs;
+  profileVisibility?: Partial<ProfileVisibility>;
+}
+```
+
+Validation rules:
+
+- Unknown visibility keys rejected.
+- Visibility values outside enum rejected.
+- Partial updates merge with existing `profileVisibility` object.
+
+---
+
+## Negotiation, Trustworthiness, and Charter Engine Spec
+
+### State model
+
+```typescript
+export interface NegotiationThread {
+  id: string;
+  gameId: string;
+  createdBy: string;
+  partyIds: string[];
+  status: "open" | "agreed" | "expired" | "cancelled";
+  startedRound: number;
+  expiresAfterRound: number; // startedRound + 3
+  visibility: "private" | "open_negotiation_rule";
+  messages: NegotiationMessage[];
+  proposedContract?: BindingContract;
+  handshakeRecord?: HandshakeAgreement;
+}
+
+export interface TrustworthinessState {
+  playerId: string;
+  score: number;              // 0..10
+  lastUpdatedAt: number;
+}
+
+export interface BindingContract {
+  id: string;
+  gameId: string;
+  partyA: string;
+  partyB: string;
+  terms: BindingContractTerm[];
+  status: "active" | "fulfilled" | "expired" | "breached";
+  startsRound: number;
+  expiresRound: number | null;
+  signedAt: number;
+  fulfilledAt: number | null;
+  breachedAt: number | null;
+}
+
+export type BindingContractTerm =
+  | { type: "cannot_sell_tile"; tileId: string; boundPlayerId: string }
+  | { type: "cannot_bid_auction"; tileId: string; boundPlayerId: string }
+  | { type: "must_pay_capital"; amount: number; fromPlayerId: string; toPlayerId: string; dueByRound: number }
+  | { type: "revenue_share"; percentage: number; fromPlayerId: string; toPlayerId: string; durationRounds: number };
+
+export interface HandshakeAgreement {
+  id: string;
+  gameId: string;
+  partyIds: string[];
+  summary: string;
+  signedAt: number;
+  settledAt: number | null;
+  brokenBy: string | null;
+}
+
+export interface SyndicateCharter {
+  syndicateId: string;
+  governanceModel: "asset_weighted" | "equal_vote";
+  deadlockResolution: "public_dice_roll";
+  revenueSplit: Array<{ playerId: string; pct: number }>;
+  contributionWeights: {
+    assetScorePct: number;
+    revenueScorePct: number;
+    negotiationCreditPct: number;
+  };
+  dissolutionClause: {
+    trustPenaltyPerMember: number;    // default 2
+    requiresUnanimousVote: true;
+  };
+  ratifiedAt: number;
+}
+```
+
+### Validation rules
+
+Negotiation:
+
+- Negotiation creation costs 1 AP.
+- Thread auto-expires at `startedRound + 3` if unresolved.
+- On expiry, each participating player gets trustworthiness `-1`.
+
+Binding contract:
+
+- Offerer trustworthiness must be `>= 5`.
+- If offerer trustworthiness is `<= 4`, return typed error `negotiation.binding_not_allowed_low_trust`.
+- Contract term validation rejects contradictory or duplicate terms.
+- Contract cannot reference tiles not owned by a party at signing time.
+
+Handshake:
+
+- Logged but not engine-enforced.
+- Manual breach event applies trustworthiness `-2` to breaking player.
+
+Trustworthiness:
+
+- Range clamped to `0..10`.
+- Starting value `7`.
+- Score bands:
+  - `8..10`: no restrictions
+  - `5..7`: standard
+  - `0..4`: cannot create binding contracts
+
+Founding charter:
+
+- Formation requires each founding member spends 1 AP.
+- `revenueSplit` percentages must sum to 100.
+- `contributionWeights` percentages must sum to 100.
+- Joining a syndicate requires vote according to governance model.
+- Dissolution requires unanimous vote and applies trust penalty from charter clause.
+
+### Enforcement paths
+
+1. UI pre-check disables invalid actions from known active contracts.
+2. Server authoritative check in game action handler re-evaluates all active contracts.
+3. On violation attempt:
+- Reject action.
+- Emit typed error event.
+- Write action log entry with reason.
+4. Contract expiry and fulfillment are evaluated at round transition.
+
+### Typed errors (required keys)
+
+```text
+negotiation.binding_not_allowed_low_trust
+negotiation.contract_invalid_terms
+negotiation.contract_tile_not_owned
+negotiation.thread_expired
+negotiation.action_blocked_by_contract
+negotiation.charter_invalid_split
+negotiation.charter_invalid_weights
+negotiation.syndicate_dissolution_requires_unanimous_vote
+```
+
+---
+
+## Canonical Gameplay Registries
+
+Source of truth: `oligopoly_game_rules.md` canonical appendix IDs.
+
+### Optional rules registry
+
+| ID | Name | Required Rank Tier |
+|---|---|---|
+| `double_rent_district` | Double Rent District | 1 |
+| `speed_market` | Speed Market | 1 |
+| `no_regulation` | No Regulation | 1 |
+| `disruption_blitz` | Disruption Blitz | 1 |
+| `auction_everything` | Auction Everything | 1 |
+| `open_negotiation` | Open Negotiation | 1 |
+| `debt_spiral` | Debt Spiral | 1 |
+| `hostile_takeover` | Hostile Takeover | 3 |
+| `market_manipulation` | Market Manipulation | 3 |
+| `insider_trading` | Insider Trading | 3 |
+
+### Optional market event card registry
+
+| ID | Name | Required Rank Tier |
+|---|---|---|
+| `optional_leveraged_buyout` | Leveraged Buyout | 1 |
+| `optional_corporate_espionage` | Corporate Espionage | 1 |
+| `optional_short_squeeze` | Short Squeeze | 1 |
+| `optional_supply_chain_crisis` | Supply Chain Crisis | 1 |
+| `optional_sovereign_wealth_fund` | Sovereign Wealth Fund | 1 |
+| `optional_venture_capital_boom` | Venture Capital Boom | 1 |
+| `optional_algorithmic_flash_trade` | Algorithmic Flash Trade | 1 |
+| `optional_regulatory_amnesty` | Regulatory Amnesty | 1 |
+| `optional_dark_pool_transfer` | Dark Pool Transfer | 2 |
+| `optional_synthetic_cdo` | Synthetic CDO | 2 |
+| `optional_black_swan_event` | Black Swan Event | 2 |
+
+### Achievement registry
+
+| ID | Name | Rank Points |
+|---|---|---|
+| `first_steps` | First Steps | 5 |
+| `full_house` | Full House | 10 |
+| `century_club` | Century Club | 50 |
+| `champion` | Champion | 10 |
+| `dynasty` | Dynasty | 25 |
+| `monopolist` | Monopolist | 30 |
+| `deal_maker` | Deal Maker | 10 |
+| `auctioneer` | Auctioneer | 15 |
+| `sniper` | Sniper | 20 |
+| `diagonal_shortcut` | Diagonal Shortcut | 10 |
+| `flash_survivor` | Flash Survivor | 25 |
+| `kingmaker` | Kingmaker | 15 |
+| `loan_shark` | Loan Shark | 15 |
+| `oligarchs_gambit` | Oligarch's Gambit | 20 |
+| `perfect_attendance` | Perfect Attendance | 15 |
+
+Contract rule:
+
+- These IDs are immutable keys used by API payloads, persistence, telemetry, and localization namespaces.
+
+---
+
+## Data Model and Persistence
+
+D1 tables required for this plan:
+
+- `users`
+- `user_settings`
+- `user_visibility`
+- `user_ranks`
+- `achievements`
+- `negotiation_threads`
+- `negotiation_messages`
+- `binding_contracts`
+- `binding_contract_terms`
+- `handshake_agreements`
+- `syndicate_charters`
+- `trustworthiness`
+- `admin_audit_log`
+
+KV keys:
+
+```text
+user:{userId}:presence
+game:{gameId}:meta
+game:{gameId}:presence
+lobbies:public:cursor:{cursor}
+leaderboard:wins
+leaderboard:completions
+ratelimit:auth:{ip}
+ratelimit:write:{subject}
+ratelimit:read:{subject}
+ai_cost:daily:{date}
+```
+
+No deployment-specific delivery or session keys are defined in this plan.
+
+---
+
+## Testing Strategy
+
+Unit tests:
+
+- Engine deterministic outcomes for movement, auctions, mortgages, negotiation enforcement.
+- Trustworthiness transitions and clamps.
+- Charter validation sums and governance behavior.
+- Profile visibility filtering.
+- Optional rules/cards/achievement registry integrity.
+
+Integration tests:
+
+- Route schema validation and typed error payloads.
+- Dual profile endpoint behavior under public/viewer/owner contexts.
+- Contract violation rejection path and action log emission.
+
+E2E tests:
+
+- Profile visibility toggles reflected in public profile endpoint.
+- Negotiation flow: open -> contract sign -> blocked violating action.
+- Thread expiry penalties after three rounds.
+
+Contract parity tests:
+
+- Registry IDs in technical plan must match IDs in game rules appendix.
+
+---
+
+## CI and Release Pipeline
+
+CI responsibilities:
+
+1. Typecheck
+2. Lint
+3. Unit/integration/e2e tests
+4. Coverage gate
+5. Package build
+6. Versioned release of `@oligopoly/*`
+
+Example `ci.yml`:
+
+```yaml
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm run lint
+      - run: pnpm run test:unit --coverage
+      - run: pnpm run test:integration
+```
+
+Example `release.yml`:
+
+```yaml
+name: Release Packages
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm -r --filter "@oligopoly/*" publish --access public --provenance --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+```
+
+---
+
+## Docs Acceptance Gates
+
+### Anchor and link checks
+
+- Internal heading anchors must resolve.
+- File links must point to existing files.
+- No dead table-of-contents anchors.
+
+### Cross-doc consistency checklist
+
+1. Scope matrix matches developer guide workflow.
+2. Route contract table includes final profile endpoint policy.
+3. Rule/card/achievement IDs exactly match game rules appendix.
+4. No unresolved placeholder markers remain in handoff-critical sections.
+
+---
+
+## Implementation Phases
+
+Phase 1:
+
+- Publish this technical plan.
+- Lock registry IDs and endpoint contracts.
+
+Phase 2:
+
+- Implement profile visibility schema and filtering.
+- Implement viewer endpoint behavior.
+- Add negotiation/trustworthiness/charter persistence and validation.
+
+Phase 3:
+
+- Add contract parity tests and docs checks in CI.
+- Final handoff review with rule appendix parity verification.
