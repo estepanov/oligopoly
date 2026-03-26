@@ -1,5 +1,5 @@
-import { createRateLimiter } from "@oligopoly/web/src/rateLimit";
 import { describe, expect, it } from "vitest";
+import { createRateLimiter } from "../../packages/web/src/rateLimit";
 
 describe("createRateLimiter", () => {
   it("allows requests under the max within the window", () => {
@@ -18,7 +18,7 @@ describe("createRateLimiter", () => {
   });
 
   it("blocks requests at the max within the window", () => {
-    let now = 5_000;
+    const now = 5_000;
     const limiter = createRateLimiter({
       maxRequests: 2,
       windowMs: 10_000,

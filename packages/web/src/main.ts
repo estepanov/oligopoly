@@ -6,7 +6,8 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
 
-const getElementById = (id: string): HTMLElement | null => document.getElementById(id);
+const getElementById = (id: string): HTMLElement | null =>
+  document.getElementById(id);
 
 const webRateLimiter = createRateLimiter({
   windowMs: RATE_LIMIT_WINDOW_MS,
