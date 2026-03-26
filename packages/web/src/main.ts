@@ -13,6 +13,7 @@ const webRateLimiter = createRateLimiter({
   windowMs: RATE_LIMIT_WINDOW_MS,
   maxRequests: RATE_LIMIT_MAX_REQUESTS,
 });
+let latestHealthRequestId = 0;
 
 async function webRateLimitedFetch(path: string): Promise<Response> {
   if (webRateLimiter.checkAndTrack()) {
@@ -26,13 +27,20 @@ async function checkHealth() {
   if (!el) {
     return;
   }
+  const requestId = ++latestHealthRequestId;
 
   try {
     const res = await webRateLimitedFetch("/api/health");
     const data = await res.json();
+    if (requestId !== latestHealthRequestId) {
+      return;
+    }
     el.textContent = `Status: ${data.status} | Service: ${data.service} | Time: ${new Date(data.timestamp).toLocaleString()}`;
     el.className = "ok";
   } catch (error) {
+    if (requestId !== latestHealthRequestId) {
+      return;
+    }
     if (error instanceof Error && error.message === "web_rate_limited") {
       el.textContent = "Too many refreshes. Please wait a moment.";
       el.className = "error";
