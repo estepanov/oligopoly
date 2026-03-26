@@ -29,10 +29,12 @@ Wrangler emulates D1, KV, and R2 locally via Miniflare — no Cloudflare account
 - The worker exports a Hono `app` object as default; integration tests can call `app.request()` directly without running the server.
 - Cloudflare API credentials (account ID, API token) are **not required** for local development — Wrangler's local mode emulates all bindings.
 
-### Lint / Typecheck / Test
+### Lint / Format / Typecheck / Test
 
 ```
-pnpm run lint        # ESLint (flat config)
+pnpm run lint        # Biome check (lint + format + imports)
+pnpm run lint:fix    # Biome check with auto-fix
+pnpm run format      # Biome format (write)
 pnpm run typecheck   # TypeScript project references build
 pnpm run test:unit   # Vitest — unit tests
 pnpm run test:integration  # Vitest — integration tests

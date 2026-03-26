@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
 import {
+  HealthResponseSchema,
+  NegotiationErrorKeys,
   ProfileVisibilitySchema,
   UpdateUserSettingsInputSchema,
-  NegotiationErrorKeys,
-  HealthResponseSchema,
 } from "@oligopoly/validation";
+import { describe, expect, it } from "vitest";
 
 describe("ProfileVisibilitySchema", () => {
   it("accepts valid visibility settings", () => {
