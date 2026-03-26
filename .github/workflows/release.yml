@@ -5,6 +5,10 @@ on:
     tags:
       - "v*"
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -20,7 +24,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
@@ -30,7 +34,17 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Unit tests
+        run: pnpm run test:unit
+
+      - name: Install latest npm (required for Trusted Publishing OIDC)
+        run: npm install -g npm@latest
+
       - name: Publish packages
-        run: pnpm -r --filter "@oligopoly/*" publish --access public --provenance --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm -r --filter "@oligopoly/*" exec npm publish --provenance --access public
