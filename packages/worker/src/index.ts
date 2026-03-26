@@ -2,7 +2,6 @@ import type { HealthResponse } from "@oligopoly/validation";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { banCacheMiddleware } from "./middleware/banCache";
-import { rateLimitMiddleware } from "./middleware/rateLimit";
 
 type Bindings = {
   ALLOWED_ORIGINS?: string;
@@ -22,7 +21,6 @@ app.use(
     },
   }),
 );
-app.use("*", rateLimitMiddleware);
 app.use("*", banCacheMiddleware);
 
 app.get("/api/health", (c) => {
