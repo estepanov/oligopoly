@@ -7,7 +7,7 @@ on:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -15,8 +15,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,5 +43,10 @@ jobs:
       - name: Unit tests
         run: pnpm run test:unit
 
+      - name: Integration tests
+        run: pnpm run test:integration
+
       - name: Publish packages
         run: pnpm -r --filter "@oligopoly/shared" --filter "@oligopoly/validation" publish --access public --provenance --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
