@@ -1,0 +1,9 @@
+{
+  "name": "@oligopoly/tests-e2e",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@oligopoly/validation": "workspace:*"
+  }
+}
