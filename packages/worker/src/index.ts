@@ -16,6 +16,7 @@ app.use(
     origin: (origin, c) => {
       const allowed = c.env?.ALLOWED_ORIGINS?.split(",") ?? [
         "http://localhost:5173",
+        "http://172.30.0.2:5173",
       ];
       return allowed.includes(origin) ? origin : "";
     },
