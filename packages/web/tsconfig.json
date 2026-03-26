@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "preserve",
+    "noEmit": true
+  },
+  "include": ["src", "src/vite-env.d.ts"],
+  "references": [
+    { "path": "../validation" }
+  ]
+}

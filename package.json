@@ -1,0 +1,33 @@
+{
+  "name": "oligopoly",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "dev": "pnpm run --filter @oligopoly/worker dev & pnpm run --filter @oligopoly/web dev & wait",
+    "dev:worker": "pnpm run --filter @oligopoly/worker dev",
+    "dev:web": "pnpm run --filter @oligopoly/web dev",
+    "build": "pnpm run -r build",
+    "typecheck": "tsc --build",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "vitest run --project e2e",
+    "test": "vitest run",
+    "db:migrate:dev": "wrangler d1 migrations apply oligopoly-db --local"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp", "workerd"]
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
+  }
+}

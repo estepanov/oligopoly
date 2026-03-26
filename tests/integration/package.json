@@ -1,0 +1,11 @@
+{
+  "name": "@oligopoly/tests-integration",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@oligopoly/shared": "workspace:*",
+    "@oligopoly/validation": "workspace:*",
+    "@oligopoly/worker": "workspace:*"
+  }
+}

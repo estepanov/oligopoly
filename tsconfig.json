@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/validation" },
+    { "path": "packages/shared" },
+    { "path": "packages/worker" },
+    { "path": "packages/web" }
+  ]
+}

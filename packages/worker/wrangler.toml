@@ -1,0 +1,19 @@
+name = "oligopoly-worker"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[dev]
+port = 8787
+
+[[d1_databases]]
+binding = "DB"
+database_name = "oligopoly-db"
+database_id = "local"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "local"
+
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "oligopoly-assets-dev"
