@@ -15,6 +15,8 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,5 +47,3 @@ jobs:
 
       - name: Publish packages
         run: pnpm -r --filter "@oligopoly/shared" --filter "@oligopoly/validation" publish --access public --provenance --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
