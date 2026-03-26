@@ -37,3 +37,7 @@ export function clampTrustworthiness(score: number): number {
 export function canCreateBindingContract(trustScore: number): boolean {
   return trustScore >= TRUSTWORTHINESS_BINDING_THRESHOLD;
 }
+
+export { OPTIONAL_RULES_REGISTRY } from "./config/optionalRules.js";
+export { OPTIONAL_MARKET_EVENT_CARDS_REGISTRY } from "./config/marketEventCards.js";
+export { ACHIEVEMENTS_REGISTRY } from "./config/achievements.js";
