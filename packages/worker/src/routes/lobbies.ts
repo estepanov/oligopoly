@@ -207,6 +207,10 @@ lobbyRoutes.post("/:id/join", async (c) => {
     return c.json({ error: LobbyErrorKeys.PRIVATE }, 403);
   }
 
+  if (lobby.status !== "waiting") {
+    return c.json({ error: LobbyErrorKeys.ALREADY_STARTED }, 409);
+  }
+
   const playersResult = await db
     .prepare("SELECT * FROM lobby_players WHERE lobby_id = ?")
     .bind(id)
@@ -270,6 +274,10 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
 
   if (!lobby) {
     return c.json({ error: LobbyErrorKeys.NOT_FOUND }, 404);
+  }
+
+  if (lobby.status !== "waiting") {
+    return c.json({ error: LobbyErrorKeys.ALREADY_STARTED }, 409);
   }
 
   const playersResult = await db
@@ -513,6 +521,10 @@ lobbyRoutes.delete("/:id/player/:uid", async (c) => {
 
   if (!targetPlayer) {
     return c.json({ error: LobbyErrorKeys.PLAYER_NOT_FOUND }, 404);
+  }
+
+  if (uid === lobby.host_id) {
+    return c.json({ error: LobbyErrorKeys.NOT_OWNER }, 403);
   }
 
   await db
