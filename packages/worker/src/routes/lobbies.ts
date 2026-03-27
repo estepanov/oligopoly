@@ -390,6 +390,19 @@ lobbyRoutes.put(
     }
 
     const body = c.req.valid("json");
+
+    if (body.maxPlayers !== undefined) {
+      const countResult = await db
+        .prepare(
+          "SELECT COUNT(*) as cnt FROM lobby_players WHERE lobby_id = ?",
+        )
+        .bind(id)
+        .first<{ cnt: number }>();
+      if (countResult && body.maxPlayers < countResult.cnt) {
+        return c.json({ error: LobbyErrorKeys.FULL }, 409);
+      }
+    }
+
     const updates: string[] = [];
     const values: (string | number)[] = [];
 
