@@ -62,7 +62,7 @@ export const lobbyRoutes = new Hono<{ Bindings: Bindings }>();
 lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
   const subject = getSubject(c);
   if (!subject) {
-    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 501);
+    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
   }
 
   const db = c.env?.DB;
@@ -188,7 +188,7 @@ lobbyRoutes.get("/:id", async (c) => {
 lobbyRoutes.post("/:id/join", async (c) => {
   const subject = getSubject(c);
   if (!subject) {
-    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 501);
+    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
   }
 
   const db = c.env?.DB;
@@ -249,7 +249,7 @@ lobbyRoutes.post("/:id/join", async (c) => {
 lobbyRoutes.post("/:id/join/:token", async (c) => {
   const subject = getSubject(c);
   if (!subject) {
-    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 501);
+    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
   }
 
   const db = c.env?.DB;
@@ -318,7 +318,7 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
 lobbyRoutes.post("/:id/invite", async (c) => {
   const subject = getSubject(c);
   if (!subject) {
-    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 501);
+    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
   }
 
   const db = c.env?.DB;
@@ -361,7 +361,7 @@ lobbyRoutes.put(
   async (c) => {
     const subject = getSubject(c);
     if (!subject) {
-      return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 501);
+      return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
     }
 
     const db = c.env?.DB;
@@ -436,7 +436,7 @@ lobbyRoutes.put(
 lobbyRoutes.post("/:id/admin/:uid", async (c) => {
   const subject = getSubject(c);
   if (!subject) {
-    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 501);
+    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
   }
 
   const db = c.env?.DB;
@@ -488,7 +488,7 @@ lobbyRoutes.post("/:id/admin/:uid", async (c) => {
 lobbyRoutes.delete("/:id/player/:uid", async (c) => {
   const subject = getSubject(c);
   if (!subject) {
-    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 501);
+    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
   }
 
   const db = c.env?.DB;
@@ -547,7 +547,7 @@ lobbyRoutes.delete("/:id/player/:uid", async (c) => {
 lobbyRoutes.post("/:id/start", async (c) => {
   const subject = getSubject(c);
   if (!subject) {
-    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 501);
+    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
   }
 
   const db = c.env?.DB;

@@ -261,7 +261,7 @@ describe("POST /api/lobbies", () => {
     expect(body.players[0].isAdmin).toBe(true);
   });
 
-  it("returns 501 without auth", async () => {
+  it("returns 401 without auth", async () => {
     const db = createD1Stub();
     const res = await requestWithEnv("/api/lobbies", {
       method: "POST",
@@ -273,7 +273,7 @@ describe("POST /api/lobbies", () => {
       },
       db,
     });
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(401);
   });
 });
 
