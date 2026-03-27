@@ -396,15 +396,12 @@ describe("POST /api/lobbies/:id/invite + join/:token", () => {
     expect(createRes.status).toBe(201);
 
     // Generate invite token
-    const inviteRes = await requestWithEnv(
-      `/api/lobbies/${lobby.id}/invite`,
-      {
-        method: "POST",
-        headers: { "x-subject": "user-1" },
-        db,
-        kv,
-      },
-    );
+    const inviteRes = await requestWithEnv(`/api/lobbies/${lobby.id}/invite`, {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      db,
+      kv,
+    });
     expect(inviteRes.status).toBe(200);
     const inviteBody = await inviteRes.json();
     expect(inviteBody.token).toBeDefined();
