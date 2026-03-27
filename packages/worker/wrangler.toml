@@ -9,6 +9,7 @@ port = 8787
 binding = "DB"
 database_name = "oligopoly-db"
 database_id = "local"
+migrations_dir = "migrations"
 
 [[kv_namespaces]]
 binding = "KV"
