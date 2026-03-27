@@ -198,3 +198,46 @@ export const NegotiationThreadSchema = z.object({
   handshakeRecord: HandshakeAgreementSchema.optional(),
 });
 export type NegotiationThread = z.infer<typeof NegotiationThreadSchema>;
+
+// ---------------------------------------------------------------------------
+// Lobby schemas
+// ---------------------------------------------------------------------------
+export const LobbyStatusSchema = z.enum([
+  "waiting",
+  "starting",
+  "in_game",
+  "finished",
+]);
+export type LobbyStatus = z.infer<typeof LobbyStatusSchema>;
+
+export const CreateLobbyInputSchema = z.object({
+  name: z.string().min(1).max(64),
+  maxPlayers: z.number().int().min(2).max(6),
+  isPrivate: z.boolean(),
+  optionalRuleIds: z.array(z.string()).default([]),
+});
+export type CreateLobbyInput = z.infer<typeof CreateLobbyInputSchema>;
+
+export const UpdateLobbySettingsInputSchema = z.object({
+  name: z.string().min(1).max(64).optional(),
+  maxPlayers: z.number().int().min(2).max(6).optional(),
+  isPrivate: z.boolean().optional(),
+  optionalRuleIds: z.array(z.string()).optional(),
+});
+export type UpdateLobbySettingsInput = z.infer<
+  typeof UpdateLobbySettingsInputSchema
+>;
+
+export const LobbyErrorKeys = {
+  NOT_FOUND: "lobby.not_found",
+  FULL: "lobby.full",
+  PRIVATE: "lobby.private",
+  ALREADY_JOINED: "lobby.already_joined",
+  ALREADY_STARTED: "lobby.already_started",
+  NOT_ENOUGH_PLAYERS: "lobby.not_enough_players",
+  NOT_ADMIN: "lobby.not_admin",
+  NOT_OWNER: "lobby.not_owner",
+  INVALID_TOKEN: "lobby.invalid_token",
+  PLAYER_NOT_FOUND: "lobby.player_not_found",
+  AUTH_REQUIRED: "lobby.auth_required",
+} as const;
