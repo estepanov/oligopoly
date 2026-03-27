@@ -2,9 +2,9 @@ import {
   canCreateBindingContract,
   clampTrustworthiness,
   DEFAULT_PROFILE_VISIBILITY,
+  type FullUserProfile,
   serializeProfileForAudience,
   TRUSTWORTHINESS_DEFAULT,
-  type FullUserProfile,
 } from "@oligopoly/shared";
 import { describe, expect, it } from "vitest";
 

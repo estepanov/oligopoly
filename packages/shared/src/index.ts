@@ -11,6 +11,7 @@ export {
   UpdateUserSettingsInputSchema,
   VisibilitySettingSchema,
 } from "@oligopoly/validation";
+export { serializeProfileForAudience } from "./profile/serializeProfileForAudience.js";
 export type {
   AchievementUnlock,
   CareerStats,
@@ -24,7 +25,6 @@ export type {
   ViewerContext,
   ViewerUserProfile,
 } from "./profile/types.js";
-export { serializeProfileForAudience } from "./profile/serializeProfileForAudience.js";
 
 export const DEFAULT_PROFILE_VISIBILITY = {
   rank: "public" as const,

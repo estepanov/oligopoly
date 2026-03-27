@@ -1,4 +1,7 @@
-import type { ProfileVisibility, VisibilitySetting } from "@oligopoly/validation";
+import type {
+  ProfileVisibility,
+  VisibilitySetting,
+} from "@oligopoly/validation";
 import type {
   FullUserProfile,
   PrivateUserProfile,
@@ -14,7 +17,9 @@ function clonePublicFields(profile: FullUserProfile): PublicUserProfile {
     rankTier: profile.rankTier,
     rankTitle: profile.rankTitle,
     careerStats: profile.careerStats ? { ...profile.careerStats } : undefined,
-    achievements: profile.achievements?.map((achievement) => ({ ...achievement })),
+    achievements: profile.achievements?.map((achievement) => ({
+      ...achievement,
+    })),
     recentGames: profile.recentGames?.map((game) => ({ ...game })),
     onlineStatus: profile.onlineStatus,
     lastSeenAt: profile.lastSeenAt,
@@ -81,13 +86,19 @@ export function serializeProfileForAudience(
     };
   }
 
-  if (profile.achievements && isVisibleToAudience(visibility.achievements, audience)) {
+  if (
+    profile.achievements &&
+    isVisibleToAudience(visibility.achievements, audience)
+  ) {
     serialized.achievements = profile.achievements.map((achievement) => ({
       ...achievement,
     }));
   }
 
-  if (profile.recentGames && isVisibleToAudience(visibility.recentGames, audience)) {
+  if (
+    profile.recentGames &&
+    isVisibleToAudience(visibility.recentGames, audience)
+  ) {
     serialized.recentGames = profile.recentGames.map((game) => ({ ...game }));
   }
 
