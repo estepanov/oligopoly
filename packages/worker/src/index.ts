@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { banCacheMiddleware } from "./middleware/banCache";
 import { rateLimitMiddleware } from "./middleware/rateLimit";
 import { lobbyRoutes } from "./routes/lobbies";
+import { userRoutes } from "./routes/users";
 
 type Bindings = {
   ALLOWED_ORIGINS?: string;
@@ -54,6 +55,8 @@ app.route("/api/lobbies", lobbyRoutes);
 app.all("/api/auth/*", (c) => {
   return c.json({ error: "Auth adapter not configured" }, 501);
 });
+
+app.route("/api/users", userRoutes);
 
 app.notFound((c) => {
   return c.json({ error: "Not found" }, 404);
