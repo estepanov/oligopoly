@@ -526,6 +526,11 @@ lobbyRoutes.delete("/:id/player/:uid", async (c) => {
   if (uid === lobby.host_id) {
     return c.json({ error: LobbyErrorKeys.NOT_OWNER }, 403);
   }
+  }
+
+  if (uid === lobby.host_id) {
+    return c.json({ error: LobbyErrorKeys.NOT_OWNER }, 403);
+  }
 
   await db
     .prepare("DELETE FROM lobby_players WHERE lobby_id = ? AND user_id = ?")
