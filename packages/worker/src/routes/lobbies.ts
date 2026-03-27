@@ -126,17 +126,20 @@ lobbyRoutes.get("/", async (c) => {
 
   let rows: LobbyRow[];
   if (cursor) {
+    const sepIdx = cursor.indexOf(":");
+    const cursorTime = Number(cursor.slice(0, sepIdx));
+    const cursorId = cursor.slice(sepIdx + 1);
     const result = await db
       .prepare(
-        `SELECT * FROM lobbies WHERE status = 'waiting' AND is_private = 0 AND created_at < ? ORDER BY created_at DESC LIMIT ?`,
+        `SELECT * FROM lobbies WHERE status = 'waiting' AND is_private = 0 AND (created_at < ? OR (created_at = ? AND id < ?)) ORDER BY created_at DESC, id DESC LIMIT ?`,
       )
-      .bind(Number(cursor), limit + 1)
+      .bind(cursorTime, cursorTime, cursorId, limit + 1)
       .all<LobbyRow>();
     rows = result.results;
   } else {
     const result = await db
       .prepare(
-        `SELECT * FROM lobbies WHERE status = 'waiting' AND is_private = 0 ORDER BY created_at DESC LIMIT ?`,
+        `SELECT * FROM lobbies WHERE status = 'waiting' AND is_private = 0 ORDER BY created_at DESC, id DESC LIMIT ?`,
       )
       .bind(limit + 1)
       .all<LobbyRow>();
@@ -145,8 +148,9 @@ lobbyRoutes.get("/", async (c) => {
 
   const hasMore = rows.length > limit;
   const items = hasMore ? rows.slice(0, limit) : rows;
+  const lastItem = items[items.length - 1];
   const nextCursor = hasMore
-    ? String(items[items.length - 1].created_at)
+    ? `${lastItem.created_at}:${lastItem.id}`
     : null;
 
   return c.json({

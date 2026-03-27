@@ -79,21 +79,34 @@ const createD1Stub = () => {
       return { results: row ? [row] : [], first: row };
     }
 
-    // SELECT * FROM lobbies WHERE status = 'waiting' AND is_private = 0 ORDER BY
+    // SELECT * FROM lobbies WHERE status = 'waiting' AND is_private = 0 ... ORDER BY
     if (
       trimmed.includes(
-        "FROM lobbies WHERE status = 'waiting' AND is_private = 0 ORDER BY",
-      )
+        "FROM lobbies WHERE status = 'waiting' AND is_private = 0",
+      ) &&
+      trimmed.includes("ORDER BY")
     ) {
       const limit = binds[binds.length - 1] as number;
       let rows = tables.lobbies.filter(
         (r) => r.status === "waiting" && r.is_private === 0,
       );
-      if (binds.length === 2) {
-        const cursor = binds[0] as number;
-        rows = rows.filter((r) => (r.created_at as number) < cursor);
+      if (binds.length === 4) {
+        // Compound cursor: (created_at < ? OR (created_at = ? AND id < ?))
+        const cursorTime = binds[0] as number;
+        const cursorId = binds[2] as string;
+        rows = rows.filter(
+          (r) =>
+            (r.created_at as number) < cursorTime ||
+            ((r.created_at as number) === cursorTime &&
+              (r.id as string) < cursorId),
+        );
       }
-      rows.sort((a, b) => (b.created_at as number) - (a.created_at as number));
+      rows.sort((a, b) => {
+        const timeDiff =
+          (b.created_at as number) - (a.created_at as number);
+        if (timeDiff !== 0) return timeDiff;
+        return (b.id as string) < (a.id as string) ? -1 : 1;
+      });
       return { results: rows.slice(0, limit) };
     }
 
