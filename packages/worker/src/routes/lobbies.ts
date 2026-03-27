@@ -280,6 +280,10 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
     return c.json({ error: LobbyErrorKeys.ALREADY_STARTED }, 409);
   }
 
+  if (lobby.status !== "waiting") {
+    return c.json({ error: LobbyErrorKeys.ALREADY_STARTED }, 409);
+  }
+
   const playersResult = await db
     .prepare("SELECT * FROM lobby_players WHERE lobby_id = ?")
     .bind(id)
