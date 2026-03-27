@@ -23,8 +23,8 @@ CREATE TABLE IF NOT EXISTS lobbies (
 -- Players currently in a lobby. Composite PK prevents duplicate joins.
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS lobby_players (
-  lobby_id              TEXT    NOT NULL,
-  user_id               TEXT    NOT NULL,
+  lobby_id              TEXT    NOT NULL REFERENCES lobbies(id),
+  user_id               TEXT    NOT NULL REFERENCES users(id),
   is_admin              INTEGER NOT NULL DEFAULT 0,
   joined_at             INTEGER NOT NULL,
   PRIMARY KEY (lobby_id, user_id)
