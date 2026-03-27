@@ -41,3 +41,21 @@ export function canCreateBindingContract(trustScore: number): boolean {
 export { ACHIEVEMENTS_REGISTRY } from "./config/achievements.js";
 export { OPTIONAL_MARKET_EVENT_CARDS_REGISTRY } from "./config/marketEventCards.js";
 export { OPTIONAL_RULES_REGISTRY } from "./config/optionalRules.js";
+export {
+  validateContributionWeights,
+  validateRevenueSplit,
+} from "./engine/charter.js";
+export {
+  calcThreadExpiry,
+  isActionBlockedByContracts,
+  isThreadExpired,
+  validateContractTerms,
+  validateContractTileOwnership,
+} from "./engine/negotiation.js";
+export type { TrustworthinessRestrictions } from "./engine/trustworthiness.js";
+export {
+  applyHandshakeBreach,
+  applyThreadExpiry,
+  getTrustworthinessRestrictions,
+} from "./engine/trustworthiness.js";
+export type { BindingContract, BindingContractTerm } from "./engine/types.js";
