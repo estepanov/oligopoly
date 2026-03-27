@@ -173,11 +173,19 @@ const createD1Stub = () => {
         const result = execSql(sql, boundValues);
         return (result.first ?? result.results[0] ?? null) as T | null;
       },
+      _exec: () => execSql(sql, boundValues),
     };
     return stmt;
   };
 
-  return { prepare } as unknown as D1Database;
+  const batch = async (stmts: unknown[]) => {
+    return stmts.map((s) => {
+      const stmt = s as { _exec: () => { results: unknown[] } };
+      return stmt._exec();
+    });
+  };
+
+  return { prepare, batch } as unknown as D1Database;
 };
 
 const createKvStub = () => {

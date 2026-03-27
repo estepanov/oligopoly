@@ -74,28 +74,27 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
   const id = generateId();
   const now = Date.now();
 
-  await db
-    .prepare(
-      `INSERT INTO lobbies (id, name, host_id, status, max_players, is_private, optional_rule_ids_json, created_at)
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO lobbies (id, name, host_id, status, max_players, is_private, optional_rule_ids_json, created_at)
          VALUES (?, ?, ?, 'waiting', ?, ?, ?, ?)`,
-    )
-    .bind(
-      id,
-      body.name,
-      subject,
-      body.maxPlayers,
-      body.isPrivate ? 1 : 0,
-      JSON.stringify(body.optionalRuleIds),
-      now,
-    )
-    .run();
-
-  await db
-    .prepare(
-      `INSERT INTO lobby_players (lobby_id, user_id, is_admin, joined_at) VALUES (?, ?, 1, ?)`,
-    )
-    .bind(id, subject, now)
-    .run();
+      )
+      .bind(
+        id,
+        body.name,
+        subject,
+        body.maxPlayers,
+        body.isPrivate ? 1 : 0,
+        JSON.stringify(body.optionalRuleIds),
+        now,
+      ),
+    db
+      .prepare(
+        `INSERT INTO lobby_players (lobby_id, user_id, is_admin, joined_at) VALUES (?, ?, 1, ?)`,
+      )
+      .bind(id, subject, now),
+  ]);
 
   const lobby = {
     id,
@@ -274,10 +273,6 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
 
   if (!lobby) {
     return c.json({ error: LobbyErrorKeys.NOT_FOUND }, 404);
-  }
-
-  if (lobby.status !== "waiting") {
-    return c.json({ error: LobbyErrorKeys.ALREADY_STARTED }, 409);
   }
 
   if (lobby.status !== "waiting") {
@@ -525,11 +520,6 @@ lobbyRoutes.delete("/:id/player/:uid", async (c) => {
 
   if (!targetPlayer) {
     return c.json({ error: LobbyErrorKeys.PLAYER_NOT_FOUND }, 404);
-  }
-
-  if (uid === lobby.host_id) {
-    return c.json({ error: LobbyErrorKeys.NOT_OWNER }, 403);
-  }
   }
 
   if (uid === lobby.host_id) {
