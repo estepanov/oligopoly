@@ -25,6 +25,46 @@ const createRequestWithEnv = (
   );
 };
 
+describe("rateLimitMiddleware", () => {
+  it("returns 429 when auth IP key is flagged", async () => {
+    const res = await createRequestWithEnv("/api/auth/login", {
+      method: "POST",
+      headers: {
+        "cf-connecting-ip": "203.0.113.2",
+      },
+      kvGet: async (key) => (key === "ratelimit:auth:203.0.113.2" ? "1" : null),
+    });
+
+    expect(res.status).toBe(429);
+    await expect(res.json()).resolves.toEqual({ error: "rate_limit_exceeded" });
+  });
+
+  it("returns 429 when read subject key is flagged", async () => {
+    const res = await createRequestWithEnv("/api/game-config", {
+      method: "GET",
+      headers: {
+        "x-subject": "user-123",
+      },
+      kvGet: async (key) => (key === "ratelimit:read:user-123" ? "1" : null),
+    });
+
+    expect(res.status).toBe(429);
+    await expect(res.json()).resolves.toEqual({ error: "rate_limit_exceeded" });
+  });
+
+  it("passes through when no limiting key exists", async () => {
+    const res = await createRequestWithEnv("/api/game-config", {
+      method: "GET",
+      headers: {
+        "x-subject": "user-456",
+      },
+      kvGet: async () => null,
+    });
+
+    expect(res.status).toBe(200);
+  });
+});
+
 describe("banCacheMiddleware", () => {
   it("returns 403 when ban key is flagged", async () => {
     const res = await createRequestWithEnv("/api/game-config", {
@@ -39,24 +79,24 @@ describe("banCacheMiddleware", () => {
     await expect(res.json()).resolves.toEqual({ error: "account_banned" });
   });
 
-  it("passes through when no ban key exists", async () => {
+  it("checks rate limit before ban cache", async () => {
     const res = await createRequestWithEnv("/api/game-config", {
       method: "GET",
       headers: {
-        "x-subject": "user-ok",
+        "x-subject": "user-priority-check",
       },
-      kvGet: async () => null,
+      kvGet: async (key) => {
+        if (key === "ratelimit:read:user-priority-check") {
+          return "1";
+        }
+        if (key === "ban:user-priority-check") {
+          return "1";
+        }
+        return null;
+      },
     });
 
-    expect(res.status).toBe(200);
-  });
-
-  it("passes through when subject is missing", async () => {
-    const res = await createRequestWithEnv("/api/game-config", {
-      method: "GET",
-      kvGet: async () => "1",
-    });
-
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(429);
+    await expect(res.json()).resolves.toEqual({ error: "rate_limit_exceeded" });
   });
 });
