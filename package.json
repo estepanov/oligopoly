@@ -20,7 +20,7 @@
     "test:integration": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e",
     "test": "vitest run",
-    "db:migrate:dev": "wrangler d1 migrations apply oligopoly-db --local"
+    "db:migrate:dev": "pnpm --filter @oligopoly/worker exec wrangler d1 migrations apply oligopoly-db --local"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
