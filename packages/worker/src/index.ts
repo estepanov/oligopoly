@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { banCacheMiddleware } from "./middleware/banCache";
 import { rateLimitMiddleware } from "./middleware/rateLimit";
+import { adminRoutes } from "./routes/admin";
 import { gameRoutes } from "./routes/games";
 import { lobbyRoutes } from "./routes/lobbies";
 import { userRoutes } from "./routes/users";
@@ -57,6 +58,7 @@ app.all("/api/auth/*", (c) => {
   return c.json({ error: "Auth adapter not configured" }, 501);
 });
 
+app.route("/api/admin", adminRoutes);
 app.route("/api/games", gameRoutes);
 app.route("/api/users", userRoutes);
 
