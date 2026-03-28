@@ -15,6 +15,11 @@ type AppEnv = { Bindings: Bindings; Variables: Variables };
 
 const generateId = () => crypto.randomUUID();
 
+/** Escape SQL LIKE wildcards so user input is matched literally. */
+function escapeLike(input: string): string {
+  return input.replace(/[%_\\]/g, "\\$&");
+}
+
 // ---------------------------------------------------------------------------
 // Helper: write an entry to the admin_audit_log table
 // ---------------------------------------------------------------------------
@@ -66,8 +71,8 @@ adminRoutes.get("/users", async (c) => {
 
   if (search) {
     query =
-      "SELECT id, username, email, created_at, updated_at FROM users WHERE username LIKE ? OR email LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?";
-    const pattern = `%${search}%`;
+      "SELECT id, username, email, created_at, updated_at FROM users WHERE username LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' ORDER BY created_at DESC LIMIT ? OFFSET ?";
+    const pattern = `%${escapeLike(search)}%`;
     params = [pattern, pattern, limit, offset];
   } else {
     query =
