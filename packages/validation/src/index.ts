@@ -271,6 +271,63 @@ export type UpdateLobbySettingsInput = z.infer<
   typeof UpdateLobbySettingsInputSchema
 >;
 
+// ---------------------------------------------------------------------------
+// Leaderboard schemas
+// ---------------------------------------------------------------------------
+export const LeaderboardEntrySchema = z.object({
+  userId: z.string(),
+  username: z.string(),
+});
+export type LeaderboardEntry = z.infer<typeof LeaderboardEntrySchema>;
+
+export const LeaderboardWinsEntrySchema = LeaderboardEntrySchema.extend({
+  wins: z.number().int().nonnegative(),
+});
+export type LeaderboardWinsEntry = z.infer<typeof LeaderboardWinsEntrySchema>;
+
+export const LeaderboardCompletionsEntrySchema = LeaderboardEntrySchema.extend({
+  completions: z.number().int().nonnegative(),
+});
+export type LeaderboardCompletionsEntry = z.infer<
+  typeof LeaderboardCompletionsEntrySchema
+>;
+
+export const LeaderboardWinsResponseSchema = z.object({
+  entries: z.array(LeaderboardWinsEntrySchema),
+});
+export type LeaderboardWinsResponse = z.infer<
+  typeof LeaderboardWinsResponseSchema
+>;
+
+export const LeaderboardCompletionsResponseSchema = z.object({
+  entries: z.array(LeaderboardCompletionsEntrySchema),
+});
+export type LeaderboardCompletionsResponse = z.infer<
+  typeof LeaderboardCompletionsResponseSchema
+>;
+
+export const LeaderboardErrorKeys = {
+  INVALID_DATA: "leaderboard.invalid_data",
+} as const;
+
+// ---------------------------------------------------------------------------
+// Calls schemas and error keys
+// ---------------------------------------------------------------------------
+export const CallsSessionTokenResponseSchema = z.object({
+  sessionId: z.string(),
+  sessionToken: z.string(),
+});
+export type CallsSessionTokenResponse = z.infer<
+  typeof CallsSessionTokenResponseSchema
+>;
+
+export const CallsErrorKeys = {
+  AUTH_REQUIRED: "calls.auth_required",
+  NOT_CONFIGURED: "calls.not_configured",
+  TOKEN_FAILED: "calls.token_failed",
+  UPSTREAM_INVALID: "calls.upstream_invalid",
+} as const;
+
 export const LobbyErrorKeys = {
   NOT_FOUND: "lobby.not_found",
   FULL: "lobby.full",
