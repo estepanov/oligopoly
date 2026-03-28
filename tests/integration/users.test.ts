@@ -83,6 +83,7 @@ const SAMPLE_USER = {
   currency: "USD",
   country: "US",
   theme_preference: "dark",
+  role: "user",
   created_at: 1000000,
   updated_at: 1000000,
 };
@@ -243,16 +244,14 @@ describe("GET /api/users/:id/viewer", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns ViewerUserProfile when authenticated via x-subject", async () => {
-    // The app uses x-subject for rate limiting but does NOT populate userId from it
-    // per the current implementation. The /viewer route returns 401 without auth adapter.
-    // This test verifies the 401 behavior is consistent.
+  it("returns 401 when x-subject user does not exist in DB", async () => {
+    // authSubjectMiddleware looks up x-subject in D1. Since "user-2" is not
+    // in the mock users table, userId is never set and the route returns 401.
     const res = await app.request(
       "/api/users/user-1/viewer",
       { headers: { "x-subject": "user-2" } },
       makeEnv(),
     );
-    // Without auth adapter, returns 401
     expect(res.status).toBe(401);
   });
 });

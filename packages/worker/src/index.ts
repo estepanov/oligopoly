@@ -1,8 +1,10 @@
 import type { HealthResponse } from "@oligopoly/validation";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { authSubjectMiddleware } from "./middleware/authSubject";
 import { banCacheMiddleware } from "./middleware/banCache";
 import { rateLimitMiddleware } from "./middleware/rateLimit";
+import { adminRoutes } from "./routes/admin";
 import { callsRoutes } from "./routes/calls";
 import { gameRoutes } from "./routes/games";
 import { leaderboardRoutes } from "./routes/leaderboard";
@@ -17,7 +19,12 @@ type Bindings = {
   CF_CALLS_APP_SECRET?: string;
 };
 
-const app = new Hono<{ Bindings: Bindings }>();
+type Variables = {
+  userId?: string;
+  userRole?: string;
+};
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 app.use(
   "*",
@@ -32,6 +39,7 @@ app.use(
 );
 app.use("*", rateLimitMiddleware);
 app.use("*", banCacheMiddleware);
+app.use("*", authSubjectMiddleware);
 
 app.get("/api/health", (c) => {
   const response: HealthResponse = {
@@ -61,6 +69,7 @@ app.all("/api/auth/*", (c) => {
   return c.json({ error: "Auth adapter not configured" }, 501);
 });
 
+app.route("/api/admin", adminRoutes);
 app.route("/api/games", gameRoutes);
 app.route("/api/users", userRoutes);
 app.route("/api/leaderboard", leaderboardRoutes);

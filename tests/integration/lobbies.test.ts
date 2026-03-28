@@ -9,6 +9,11 @@ type Row = Record<string, unknown>;
 
 const createD1Stub = () => {
   const tables: Record<string, Row[]> = {
+    users: [
+      { id: "user-1", username: "user-1", role: "user" },
+      { id: "user-2", username: "user-2", role: "user" },
+      { id: "user-3", username: "user-3", role: "user" },
+    ],
     lobbies: [],
     lobby_players: [],
   };
@@ -164,6 +169,20 @@ const createD1Stub = () => {
         (r) => !(r.lobby_id === binds[0] && r.user_id === binds[1]),
       );
       return { results: [], success: true };
+    }
+
+    // SELECT id, role FROM users WHERE id = ? (authSubjectMiddleware)
+    if (trimmed.startsWith("SELECT id, role FROM users WHERE id = ?")) {
+      const row = tables.users.find((r) => r.id === binds[0]) ?? null;
+      return { results: row ? [row] : [], first: row };
+    }
+
+    // SELECT COUNT(*) as cnt FROM lobby_players WHERE lobby_id = ?
+    if (trimmed.includes("COUNT(*)")) {
+      const rows = tables.lobby_players.filter(
+        (r) => r.lobby_id === binds[0],
+      );
+      return { results: [{ cnt: rows.length }], first: { cnt: rows.length } };
     }
 
     return { results: [] };

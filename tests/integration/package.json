@@ -6,6 +6,7 @@
   "dependencies": {
     "@oligopoly/shared": "workspace:*",
     "@oligopoly/validation": "workspace:*",
-    "@oligopoly/worker": "workspace:*"
+    "@oligopoly/worker": "workspace:*",
+    "hono": "^4.7.0"
   }
 }
