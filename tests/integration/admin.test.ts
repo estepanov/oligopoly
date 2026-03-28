@@ -292,6 +292,20 @@ describe("POST /api/admin/users/:id/ban", () => {
     expect(kvStore["ban:user-b"]).toBe("1");
   });
 
+  it("returns 404 when banning a nonexistent user", async () => {
+    const kvStore: Record<string, string> = {};
+    const env = makeEnv({ kvStore });
+
+    const res = await adminRequest("/api/admin/users/nonexistent/ban", {
+      method: "POST",
+      env,
+      role: "global_admin",
+      userId: "admin-user",
+    });
+    expect(res.status).toBe(404);
+    expect(kvStore["ban:nonexistent"]).toBeUndefined();
+  });
+
   it("writes audit log entry on ban", async () => {
     const kvStore: Record<string, string> = {};
     const env = makeEnv({ kvStore });
@@ -334,6 +348,21 @@ describe("DELETE /api/admin/users/:id/ban", () => {
     });
     expect(res.status).toBe(200);
     expect(kvStore["ban:user-b"]).toBeUndefined();
+  });
+
+  it("returns 404 when unbanning a nonexistent user", async () => {
+    const kvStore: Record<string, string> = { "ban:nonexistent": "1" };
+    const env = makeEnv({ kvStore });
+
+    const res = await adminRequest("/api/admin/users/nonexistent/ban", {
+      method: "DELETE",
+      env,
+      role: "global_admin",
+      userId: "admin-user",
+    });
+    expect(res.status).toBe(404);
+    // KV should remain untouched
+    expect(kvStore["ban:nonexistent"]).toBe("1");
   });
 
   it("writes audit log entry on unban", async () => {

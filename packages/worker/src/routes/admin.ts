@@ -162,6 +162,14 @@ adminRoutes.post("/users/:id/ban", async (c) => {
   const id = c.req.param("id");
   const adminId = c.get("userId") ?? "unknown";
 
+  const user = await db
+    .prepare("SELECT id FROM users WHERE id = ?")
+    .bind(id)
+    .first<{ id: string }>();
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
   await kv.put(`ban:${id}`, "1");
   await writeAuditLog(db, {
     adminId,
@@ -187,6 +195,14 @@ adminRoutes.delete("/users/:id/ban", async (c) => {
 
   const id = c.req.param("id");
   const adminId = c.get("userId") ?? "unknown";
+
+  const user = await db
+    .prepare("SELECT id FROM users WHERE id = ?")
+    .bind(id)
+    .first<{ id: string }>();
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
+  }
 
   await kv.delete(`ban:${id}`);
   await writeAuditLog(db, {
