@@ -40,3 +40,31 @@ pnpm run test:unit   # Vitest — unit tests
 pnpm run test:integration  # Vitest — integration tests
 pnpm run test:e2e    # Vitest — e2e tests
 ```
+
+## Planning docs as required implementation context
+
+The root planning/rules markdown files are **authoritative context** for feature work and must be actively used:
+
+- `oligopoly_technical_plan.md` — canonical technical architecture, contracts, and phased implementation plan.
+- `oligopoly_game_rules.md` — canonical gameplay behavior, lobby/game rules, and product semantics.
+- `oligopoly_dev_guide.md` — local development workflow and command-level execution guidance.
+
+### Required workflow for implementation tasks
+
+When implementing, reviewing, or refactoring gameplay/runtime behavior:
+
+1. Read relevant sections of `oligopoly_technical_plan.md` and `oligopoly_game_rules.md` before coding.
+2. Treat these docs as default source-of-truth unless a higher-priority instruction in the prompt explicitly overrides them.
+3. If code changes alter behavior/contracts described in those docs, update the impacted sections in the same change set (or explicitly document why no doc update is needed).
+4. Keep naming and terminology aligned with these docs (for example: lobby/admin/co-admin/syndicate/trustworthiness wording).
+5. For ambiguous requirements, prefer the stricter interpretation that preserves determinism, server authority, and schema-backed contracts.
+
+### PR/documentation quality gate
+
+Before finalizing a task, verify and note:
+
+- Which sections of `oligopoly_technical_plan.md` informed the implementation.
+- Which sections of `oligopoly_game_rules.md` were validated against behavior.
+- Whether either file required updates, and exactly what changed.
+
+If no updates were needed, state that explicitly in the final summary.
