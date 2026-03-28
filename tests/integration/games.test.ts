@@ -37,13 +37,13 @@ function applyWhere(rows: Row[], query: string, params: unknown[]): Row[] {
   // Simple WHERE id = ? support
   const idMatch = query.match(/WHERE\s+id\s*=\s*\?/i);
   if (idMatch && params.length > 0) {
-    return rows.filter((r) => r["id"] === params[0]);
+    return rows.filter((r) => r.id === params[0]);
   }
 
   // WHERE status = ?
   const statusMatch = query.match(/WHERE\s+status\s*=\s*\?/i);
   if (statusMatch && params.length > 0) {
-    return rows.filter((r) => r["status"] === params[0]);
+    return rows.filter((r) => r.status === params[0]);
   }
 
   return rows;
@@ -159,7 +159,11 @@ describe("GET /api/games/:id", () => {
 // ---------------------------------------------------------------------------
 describe("GET /api/games/:id/state", () => {
   it("returns 401 when no x-subject header", async () => {
-    const res = await app.request("/api/games/game-active/state", {}, makeEnv());
+    const res = await app.request(
+      "/api/games/game-active/state",
+      {},
+      makeEnv(),
+    );
     expect(res.status).toBe(401);
   });
 

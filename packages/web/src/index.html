@@ -4,81 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Oligopoly Online</title>
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-        color: #e0e0e0;
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-      }
-      .container {
-        text-align: center;
-        max-width: 600px;
-        padding: 2rem;
-      }
-      h1 {
-        font-size: 2.5rem;
-        background: linear-gradient(90deg, #f9d423, #ff4e50);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 0.5rem;
-      }
-      .tagline {
-        font-size: 1.1rem;
-        color: #aaa;
-        margin-bottom: 2rem;
-        font-style: italic;
-      }
-      .status-card {
-        background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin-bottom: 1.5rem;
-      }
-      .status-card h2 { font-size: 1.2rem; margin-bottom: 1rem; color: #f9d423; }
-      #health-status { font-size: 1rem; color: #999; }
-      #health-status.ok { color: #4caf50; }
-      #health-status.error { color: #f44336; }
-      #game-config { text-align: left; font-size: 0.9rem; line-height: 1.8; }
-      #game-config code { background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; }
-      button {
-        background: linear-gradient(90deg, #f9d423, #ff4e50);
-        border: none;
-        padding: 0.8rem 2rem;
-        border-radius: 8px;
-        font-size: 1rem;
-        color: #000;
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform 0.2s;
-      }
-      button:hover { transform: scale(1.05); }
-    </style>
   </head>
   <body>
-    <div class="container">
-      <h1>Oligopoly Online</h1>
-      <p class="tagline">A game of markets, alliances, and permanent commitment</p>
-
-      <div class="status-card">
-        <h2>Worker Health</h2>
-        <p id="health-status">Checking...</p>
-      </div>
-
-      <div class="status-card">
-        <h2>Game Configuration</h2>
-        <div id="game-config">Loading...</div>
-      </div>
-
-      <button onclick="checkHealth()">Refresh Status</button>
-    </div>
-
-    <script type="module" src="./main.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
   </body>
 </html>

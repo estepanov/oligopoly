@@ -62,14 +62,17 @@ gameRoutes.get("/", async (c) => {
     }
   }
 
-  const { results } = await db.prepare(query).bind(...params).all<{
-    id: string;
-    status: string;
-    player_ids_json: string;
-    started_at: number;
-    ended_at: number | null;
-    winner_id: string | null;
-  }>();
+  const { results } = await db
+    .prepare(query)
+    .bind(...params)
+    .all<{
+      id: string;
+      status: string;
+      player_ids_json: string;
+      started_at: number;
+      ended_at: number | null;
+      winner_id: string | null;
+    }>();
 
   const games: GameSummary[] = results.map((row) => ({
     id: row.id,
@@ -145,9 +148,7 @@ gameRoutes.get("/:id/state", async (c) => {
   }
 
   const row = await db
-    .prepare(
-      "SELECT id, player_ids_json, state_json FROM games WHERE id = ?",
-    )
+    .prepare("SELECT id, player_ids_json, state_json FROM games WHERE id = ?")
     .bind(id)
     .first<{
       id: string;
