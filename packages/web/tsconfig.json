@@ -7,11 +7,14 @@
     "jsx": "react-jsx",
     "noEmit": true,
     "types": ["vite/client", "vitest/globals"],
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }
   },
   "include": ["src", "src/vite-env.d.ts"],
-  "references": [{ "path": "../validation" }]
+  "references": [
+    {
+      "path": "../validation"
+    }
+  ]
 }
