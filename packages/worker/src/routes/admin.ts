@@ -388,13 +388,18 @@ adminRoutes.get("/analytics/costs", async (c) => {
   const costs: { date: string; cost: string }[] = [];
   const now = new Date();
 
+  const dateKeys: { dateStr: string; key: string }[] = [];
   for (let i = 0; i < 30; i++) {
     const date = new Date(now);
     date.setUTCDate(date.getUTCDate() - i);
     const dateStr = date.toISOString().slice(0, 10);
-    const value = await kv.get(`ai_cost:daily:${dateStr}`);
-    if (value !== null) {
-      costs.push({ date: dateStr, cost: value });
+    dateKeys.push({ dateStr, key: `ai_cost:daily:${dateStr}` });
+  }
+
+  const values = await Promise.all(dateKeys.map(({ key }) => kv.get(key)));
+  for (let i = 0; i < dateKeys.length; i++) {
+    if (values[i] !== null) {
+      costs.push({ date: dateKeys[i].dateStr, cost: values[i]! });
     }
   }
 
