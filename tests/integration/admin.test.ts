@@ -211,11 +211,11 @@ function adminRequest(
 // Tests: requireAdmin middleware
 // ---------------------------------------------------------------------------
 describe("requireAdmin middleware", () => {
-  it("returns 501 when no auth adapter is configured (no userRole set)", async () => {
+  it("returns 401 when no auth adapter is configured (no userRole set)", async () => {
     const res = await adminRequest("/api/admin/users", {
       role: undefined,
     });
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(401);
     const body = await res.json<{ error: string }>();
     expect(body.error).toContain("not configured");
   });

@@ -17,7 +17,7 @@ export const requireAdmin: MiddlewareHandler<{
   const role = c.get("userRole");
 
   if (role === undefined) {
-    return c.json({ error: "Auth adapter not configured" }, 501);
+    return c.json({ error: "Auth adapter not configured" }, 401);
   }
 
   if (role !== "global_admin") {
