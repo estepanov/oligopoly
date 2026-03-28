@@ -102,8 +102,7 @@ const createD1Stub = () => {
         );
       }
       rows.sort((a, b) => {
-        const timeDiff =
-          (b.created_at as number) - (a.created_at as number);
+        const timeDiff = (b.created_at as number) - (a.created_at as number);
         if (timeDiff !== 0) return timeDiff;
         return (b.id as string) < (a.id as string) ? -1 : 1;
       });

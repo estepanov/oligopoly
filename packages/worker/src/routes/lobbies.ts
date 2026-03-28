@@ -149,9 +149,7 @@ lobbyRoutes.get("/", async (c) => {
   const hasMore = rows.length > limit;
   const items = hasMore ? rows.slice(0, limit) : rows;
   const lastItem = items[items.length - 1];
-  const nextCursor = hasMore
-    ? `${lastItem.created_at}:${lastItem.id}`
-    : null;
+  const nextCursor = hasMore ? `${lastItem.created_at}:${lastItem.id}` : null;
 
   return c.json({
     lobbies: items.map((row) => toLobbyResponse(row)),
@@ -397,9 +395,7 @@ lobbyRoutes.put(
 
     if (body.maxPlayers !== undefined) {
       const countResult = await db
-        .prepare(
-          "SELECT COUNT(*) as cnt FROM lobby_players WHERE lobby_id = ?",
-        )
+        .prepare("SELECT COUNT(*) as cnt FROM lobby_players WHERE lobby_id = ?")
         .bind(id)
         .first<{ cnt: number }>();
       if (countResult && body.maxPlayers < countResult.cnt) {
