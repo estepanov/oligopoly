@@ -37,8 +37,14 @@ const generateId = () => crypto.randomUUID();
 
 const getSubject = (c: {
   get: (key: string) => string | undefined;
+  req: { header: (name: string) => string | undefined };
 }): string | null => {
-  return c.get("userId") ?? null;
+  const contextSubject = c.get("userId");
+  if (contextSubject) {
+    return contextSubject;
+  }
+  const headerSubject = c.req.header("x-subject")?.trim();
+  return headerSubject ? headerSubject : null;
 };
 
 const toLobbyResponse = (row: LobbyRow, players: LobbyPlayerRow[] = []) => ({
@@ -603,21 +609,54 @@ lobbyRoutes.post("/:id/start", async (c) => {
     .bind(id)
     .all<LobbyPlayerRow>();
 
-  if (playersResult.results.length < 2) {
+  const lobbyPlayers = playersResult.results;
+  if (lobbyPlayers.length < 2) {
     return c.json({ error: LobbyErrorKeys.NOT_ENOUGH_PLAYERS }, 409);
   }
 
-  await db
-    .prepare("UPDATE lobbies SET status = 'starting' WHERE id = ?")
-    .bind(id)
-    .run();
+  const gameId = generateId();
+  const gameStartedLogId = generateId();
+  const now = Date.now();
+  const playerIds = [...lobbyPlayers]
+    .sort((a, b) => a.joined_at - b.joined_at)
+    .map((p) => p.user_id);
+
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO games (id, lobby_id, status, started_at, ended_at, winner_id, player_ids_json, state_json)
+         VALUES (?, ?, 'active', ?, NULL, NULL, ?, ?)`,
+      )
+      .bind(
+        gameId,
+        id,
+        now,
+        JSON.stringify(playerIds),
+        JSON.stringify({ gameId, round: 1 }),
+      ),
+    db
+      .prepare(
+        `INSERT INTO game_log (id, game_id, round, player_id, action_type, payload_json, created_at)
+         VALUES (?, ?, 1, NULL, 'game_started', ?, ?)`,
+      )
+      .bind(
+        gameStartedLogId,
+        gameId,
+        JSON.stringify({ lobbyId: id, startedBy: subject, playerIds }),
+        now,
+      ),
+    db.prepare("UPDATE lobbies SET status = 'in_game' WHERE id = ?").bind(id),
+  ]);
 
   const updated = {
     ...lobby,
-    status: "starting",
+    status: "in_game",
   };
 
-  return c.json(toLobbyResponse(updated, playersResult.results));
+  return c.json({
+    ...toLobbyResponse(updated, lobbyPlayers),
+    gameId,
+  });
 });
 
 // GET /:id/ws — WebSocket stub (returns 501)

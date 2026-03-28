@@ -12,10 +12,10 @@ export class ApiError extends Error {
 }
 
 /**
- * GET JSON and validate with a Zod schema. Throws {@link ApiError} on HTTP or parse failure.
- * For routes that require `x-subject`, add header support here when `/api/auth/*` is wired.
+ * Fetch JSON and validate with a Zod schema.
+ * Throws {@link ApiError} on HTTP or parse failure.
  */
-export async function getJson<T>(
+export async function requestJson<T>(
   url: string,
   schema: ZodType<T>,
   init?: RequestInit,
@@ -51,4 +51,15 @@ export async function getJson<T>(
     );
   }
   return parsed.data;
+}
+
+/**
+ * Convenience helper for simple GET requests.
+ */
+export function getJson<T>(
+  url: string,
+  schema: ZodType<T>,
+  init?: RequestInit,
+): Promise<T> {
+  return requestJson(url, schema, init);
 }
