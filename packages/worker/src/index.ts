@@ -4,9 +4,12 @@ import { cors } from "hono/cors";
 import { banCacheMiddleware } from "./middleware/banCache";
 import { rateLimitMiddleware } from "./middleware/rateLimit";
 import { gameRoutes } from "./routes/games";
+import { lobbyRoutes } from "./routes/lobbies";
+import { userRoutes } from "./routes/users";
 
 type Bindings = {
   ALLOWED_ORIGINS?: string;
+  DB?: D1Database;
   KV?: KVNamespace;
 };
 
@@ -48,11 +51,14 @@ app.get("/api/game-config", (c) => {
   });
 });
 
+app.route("/api/lobbies", lobbyRoutes);
+
 app.all("/api/auth/*", (c) => {
   return c.json({ error: "Auth adapter not configured" }, 501);
 });
 
 app.route("/api/games", gameRoutes);
+app.route("/api/users", userRoutes);
 
 app.notFound((c) => {
   return c.json({ error: "Not found" }, 404);
