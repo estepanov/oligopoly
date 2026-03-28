@@ -380,6 +380,10 @@ lobbyRoutes.put(
       return c.json({ error: LobbyErrorKeys.NOT_FOUND }, 404);
     }
 
+    if (lobby.status !== "waiting") {
+      return c.json({ error: LobbyErrorKeys.ALREADY_STARTED }, 409);
+    }
+
     const player = await db
       .prepare("SELECT * FROM lobby_players WHERE lobby_id = ? AND user_id = ?")
       .bind(id, subject)
