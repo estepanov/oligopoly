@@ -1,0 +1,223 @@
+:root {
+  --color-bg-start: #0f0c29;
+  --color-bg-mid: #302b63;
+  --color-bg-end: #24243e;
+  --color-text: #e0e0e0;
+  --color-muted: #aaa;
+  --color-accent-start: #f9d423;
+  --color-accent-end: #ff4e50;
+  --color-card-border: rgba(255, 255, 255, 0.1);
+  --color-card-bg: rgba(255, 255, 255, 0.05);
+  --color-code-bg: rgba(255, 255, 255, 0.1);
+  --color-success: #4caf50;
+  --color-error: #f44336;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: linear-gradient(
+    135deg,
+    var(--color-bg-start),
+    var(--color-bg-mid),
+    var(--color-bg-end)
+  );
+  color: var(--color-text);
+  min-height: 100vh;
+}
+
+a {
+  color: var(--color-accent-start);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.appRoot {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--color-card-border);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.brand {
+  font-size: 1.25rem;
+  font-weight: 700;
+  background: linear-gradient(
+    90deg,
+    var(--color-accent-start),
+    var(--color-accent-end)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.brand:hover {
+  text-decoration: none;
+}
+
+.navLinks {
+  display: flex;
+  gap: 1.25rem;
+  list-style: none;
+  align-items: center;
+}
+
+.navLinks a {
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.navLinks a:hover {
+  color: var(--color-text);
+}
+
+.navLinks a.active {
+  color: var(--color-accent-start);
+}
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.pageTitle {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(
+    90deg,
+    var(--color-accent-start),
+    var(--color-accent-end)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.tagline {
+  font-size: 1.1rem;
+  color: var(--color-muted);
+  margin-bottom: 1.5rem;
+  font-style: italic;
+}
+
+.card {
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.card h2 {
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+  color: var(--color-accent-start);
+}
+
+.muted {
+  color: var(--color-muted);
+}
+
+.ok {
+  color: var(--color-success);
+}
+
+.errorText {
+  color: var(--color-error);
+}
+
+code.inline {
+  background: var(--color-code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.configGrid {
+  text-align: left;
+  font-size: 0.9rem;
+  line-height: 1.8;
+}
+
+.configRow {
+  margin-bottom: 0.35rem;
+}
+
+.gamesTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.gamesTable th,
+.gamesTable td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.gamesTable th {
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+.button {
+  background: linear-gradient(
+    90deg,
+    var(--color-accent-start),
+    var(--color-accent-end)
+  );
+  border: none;
+  padding: 0.65rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  color: #000;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.button:hover {
+  transform: scale(1.02);
+}
+
+.buttonSecondary {
+  background: transparent;
+  border: 1px solid var(--color-card-border);
+  color: var(--color-text);
+}
+
+.linkList {
+  list-style: disc;
+  padding-left: 1.25rem;
+  line-height: 1.8;
+}
+
+.emptyState {
+  color: var(--color-muted);
+  font-style: italic;
+}

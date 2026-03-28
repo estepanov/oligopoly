@@ -200,6 +200,49 @@ export const NegotiationThreadSchema = z.object({
 export type NegotiationThread = z.infer<typeof NegotiationThreadSchema>;
 
 // ---------------------------------------------------------------------------
+// Game status
+// ---------------------------------------------------------------------------
+export const GameStatusSchema = z.enum(["active", "completed"]);
+export type GameStatus = z.infer<typeof GameStatusSchema>;
+
+// ---------------------------------------------------------------------------
+// Game summary — returned by GET /api/games and GET /api/games/:id
+// ---------------------------------------------------------------------------
+export const GameSummarySchema = z.object({
+  id: z.string(),
+  status: GameStatusSchema,
+  playerCount: z.number().int(),
+  startedAt: z.number(),
+  endedAt: z.number().nullable(),
+  winnerId: z.string().nullable(),
+});
+export type GameSummary = z.infer<typeof GameSummarySchema>;
+
+// ---------------------------------------------------------------------------
+// Game state snapshot — returned by GET /api/games/:id/state
+// Placeholder: only gameId and round are required for now.
+// ---------------------------------------------------------------------------
+export const GameStateSchema = z.object({
+  gameId: z.string(),
+  round: z.number().int(),
+});
+export type GameState = z.infer<typeof GameStateSchema>;
+
+// ---------------------------------------------------------------------------
+// Game log entry — returned by GET /api/games/:id/log and /replay
+// ---------------------------------------------------------------------------
+export const GameLogEntrySchema = z.object({
+  id: z.string(),
+  gameId: z.string(),
+  round: z.number().int(),
+  playerId: z.string().nullable(),
+  actionType: z.string(),
+  payload: z.unknown().nullable(),
+  createdAt: z.number(),
+});
+export type GameLogEntry = z.infer<typeof GameLogEntrySchema>;
+
+// ---------------------------------------------------------------------------
 // Lobby schemas
 // ---------------------------------------------------------------------------
 export const LobbyStatusSchema = z.enum([
