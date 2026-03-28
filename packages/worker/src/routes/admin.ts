@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { requireAdmin } from "../middleware/requireAdmin";
 
 type Bindings = {
@@ -14,6 +15,33 @@ type Variables = {
 type AppEnv = { Bindings: Bindings; Variables: Variables };
 
 const generateId = () => crypto.randomUUID();
+
+/** Schema for the `player_ids_json` column — must be an array of strings. */
+const playerIdsSchema = z.array(z.string());
+
+/** Safely parse a JSON string with a zod schema, returning a fallback on failure. */
+function safeParseJson<T>(
+  raw: string | null | undefined,
+  schema: z.ZodType<T>,
+  fallback: T,
+): T {
+  if (raw == null) return fallback;
+  try {
+    return schema.parse(JSON.parse(raw));
+  } catch {
+    return fallback;
+  }
+}
+
+/** Safely parse an arbitrary JSON string, returning `null` on failure. */
+function safeJsonParse(raw: string | null | undefined): unknown {
+  if (raw == null) return null;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
 
 /** Parse and validate the `page` query parameter. Returns 1 for invalid input. */
 function parsePage(raw: string | undefined): number {
@@ -308,7 +336,8 @@ adminRoutes.get("/games", async (c) => {
     games: results.map((row) => ({
       id: row.id,
       status: row.status,
-      playerCount: (JSON.parse(row.player_ids_json) as string[]).length,
+      playerCount: safeParseJson(row.player_ids_json, playerIdsSchema, [])
+        .length,
       startedAt: row.started_at,
       endedAt: row.ended_at,
       winnerId: row.winner_id,
@@ -365,18 +394,18 @@ adminRoutes.get("/games/:id", async (c) => {
   return c.json({
     id: game.id,
     status: game.status,
-    playerIds: JSON.parse(game.player_ids_json) as string[],
+    playerIds: safeParseJson(game.player_ids_json, playerIdsSchema, []),
     startedAt: game.started_at,
     endedAt: game.ended_at,
     winnerId: game.winner_id,
-    state: game.state_json ? JSON.parse(game.state_json) : null,
+    state: safeJsonParse(game.state_json),
     log: logResults.map((row) => ({
       id: row.id,
       gameId: row.game_id,
       round: row.round,
       playerId: row.player_id,
       actionType: row.action_type,
-      payload: row.payload_json ? JSON.parse(row.payload_json) : null,
+      payload: safeJsonParse(row.payload_json),
       createdAt: row.created_at,
     })),
   });
@@ -473,7 +502,7 @@ adminRoutes.get("/audit-log", async (c) => {
       adminId: row.admin_id,
       targetId: row.target_id,
       action: row.action,
-      metadata: row.metadata_json ? JSON.parse(row.metadata_json) : null,
+      metadata: safeJsonParse(row.metadata_json),
       createdAt: row.created_at,
     })),
     page,
