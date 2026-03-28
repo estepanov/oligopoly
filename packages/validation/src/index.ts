@@ -274,17 +274,19 @@ export type UpdateLobbySettingsInput = z.infer<
 // ---------------------------------------------------------------------------
 // Leaderboard schemas
 // ---------------------------------------------------------------------------
-export const LeaderboardWinsEntrySchema = z.object({
+export const LeaderboardEntrySchema = z.object({
   userId: z.string(),
   username: z.string(),
-  wins: z.number().int(),
+});
+export type LeaderboardEntry = z.infer<typeof LeaderboardEntrySchema>;
+
+export const LeaderboardWinsEntrySchema = LeaderboardEntrySchema.extend({
+  wins: z.number().int().nonnegative(),
 });
 export type LeaderboardWinsEntry = z.infer<typeof LeaderboardWinsEntrySchema>;
 
-export const LeaderboardCompletionsEntrySchema = z.object({
-  userId: z.string(),
-  username: z.string(),
-  completions: z.number().int(),
+export const LeaderboardCompletionsEntrySchema = LeaderboardEntrySchema.extend({
+  completions: z.number().int().nonnegative(),
 });
 export type LeaderboardCompletionsEntry = z.infer<
   typeof LeaderboardCompletionsEntrySchema
@@ -303,6 +305,28 @@ export const LeaderboardCompletionsResponseSchema = z.object({
 export type LeaderboardCompletionsResponse = z.infer<
   typeof LeaderboardCompletionsResponseSchema
 >;
+
+export const LeaderboardErrorKeys = {
+  INVALID_DATA: "leaderboard.invalid_data",
+} as const;
+
+// ---------------------------------------------------------------------------
+// Calls schemas and error keys
+// ---------------------------------------------------------------------------
+export const CallsSessionTokenResponseSchema = z.object({
+  sessionId: z.string(),
+  sessionToken: z.string(),
+});
+export type CallsSessionTokenResponse = z.infer<
+  typeof CallsSessionTokenResponseSchema
+>;
+
+export const CallsErrorKeys = {
+  AUTH_REQUIRED: "calls.auth_required",
+  NOT_CONFIGURED: "calls.not_configured",
+  TOKEN_FAILED: "calls.token_failed",
+  UPSTREAM_INVALID: "calls.upstream_invalid",
+} as const;
 
 export const LobbyErrorKeys = {
   NOT_FOUND: "lobby.not_found",

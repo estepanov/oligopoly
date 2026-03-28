@@ -1,3 +1,7 @@
+import {
+  CallsErrorKeys,
+  CallsSessionTokenResponseSchema,
+} from "@oligopoly/validation";
 import { Hono } from "hono";
 
 type Bindings = {
@@ -18,35 +22,48 @@ const getSubject = (c: {
 callsRoutes.post("/token", async (c) => {
   const subject = getSubject(c);
   if (!subject) {
-    return c.json({ error: "calls.auth_required" }, 401);
+    return c.json({ error: CallsErrorKeys.AUTH_REQUIRED }, 401);
   }
 
   const appId = c.env?.CF_CALLS_APP_ID;
   const appSecret = c.env?.CF_CALLS_APP_SECRET;
 
   if (!appId || !appSecret) {
-    return c.json({ error: "calls_not_configured" }, 501);
+    return c.json({ error: CallsErrorKeys.NOT_CONFIGURED }, 501);
   }
 
-  const response = await fetch(
-    `https://rtc.live.cloudflare.com/v1/apps/${appId}/sessions/new`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${appSecret}`,
-        "Content-Type": "application/json",
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://rtc.live.cloudflare.com/v1/apps/${encodeURIComponent(appId)}/sessions/new`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${appSecret}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
       },
-      body: JSON.stringify({}),
-    },
-  );
+    );
+  } catch {
+    return c.json({ error: CallsErrorKeys.TOKEN_FAILED }, 502);
+  }
 
   if (!response.ok) {
-    return c.json({ error: "calls_token_failed" }, 502);
+    return c.json({ error: CallsErrorKeys.TOKEN_FAILED }, 502);
   }
 
-  const data = await response.json<{
-    sessionId: string;
-    sessionToken: string;
-  }>();
-  return c.json({ sessionId: data.sessionId, sessionToken: data.sessionToken });
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return c.json({ error: CallsErrorKeys.UPSTREAM_INVALID }, 502);
+  }
+
+  const parsed = CallsSessionTokenResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: CallsErrorKeys.UPSTREAM_INVALID }, 502);
+  }
+
+  return c.json(parsed.data);
 });

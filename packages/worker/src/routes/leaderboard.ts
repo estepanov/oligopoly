@@ -1,6 +1,7 @@
-import type {
-  LeaderboardCompletionsEntry,
-  LeaderboardWinsEntry,
+import {
+  LeaderboardCompletionsResponseSchema,
+  LeaderboardErrorKeys,
+  LeaderboardWinsResponseSchema,
 } from "@oligopoly/validation";
 import { Hono } from "hono";
 
@@ -22,8 +23,19 @@ leaderboardRoutes.get("/wins", async (c) => {
     return c.json({ entries: [] });
   }
 
-  const entries = JSON.parse(raw) as LeaderboardWinsEntry[];
-  return c.json({ entries });
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return c.json({ error: LeaderboardErrorKeys.INVALID_DATA }, 500);
+  }
+
+  const result = LeaderboardWinsResponseSchema.safeParse({ entries: parsed });
+  if (!result.success) {
+    return c.json({ error: LeaderboardErrorKeys.INVALID_DATA }, 500);
+  }
+
+  return c.json(result.data);
 });
 
 // GET /completions — Return leaderboard ranked by completions
@@ -38,6 +50,19 @@ leaderboardRoutes.get("/completions", async (c) => {
     return c.json({ entries: [] });
   }
 
-  const entries = JSON.parse(raw) as LeaderboardCompletionsEntry[];
-  return c.json({ entries });
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return c.json({ error: LeaderboardErrorKeys.INVALID_DATA }, 500);
+  }
+
+  const result = LeaderboardCompletionsResponseSchema.safeParse({
+    entries: parsed,
+  });
+  if (!result.success) {
+    return c.json({ error: LeaderboardErrorKeys.INVALID_DATA }, 500);
+  }
+
+  return c.json(result.data);
 });

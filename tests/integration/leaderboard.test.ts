@@ -1,5 +1,5 @@
 import app from "@oligopoly/worker";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const createKvStub = () => {
   const store = new Map<string, string>();
@@ -83,6 +83,30 @@ describe("GET /api/leaderboard/wins", () => {
     expect(body.entries[1].userId).toBe("user-2");
     expect(body.entries[1].wins).toBe(7);
   });
+
+  it("returns 500 with typed error when KV value is malformed JSON", async () => {
+    const kv = createKvStub();
+    await kv.put("leaderboard:wins", "this is not json{{{");
+
+    const res = await requestWithEnv("/api/leaderboard/wins", { kv });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toBe("leaderboard.invalid_data");
+  });
+
+  it("returns 500 with typed error when KV value has wrong shape", async () => {
+    const kv = createKvStub();
+    // Array of objects missing required fields
+    await kv.put(
+      "leaderboard:wins",
+      JSON.stringify([{ userId: "u1", wins: "not-a-number" }]),
+    );
+
+    const res = await requestWithEnv("/api/leaderboard/wins", { kv });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toBe("leaderboard.invalid_data");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -122,6 +146,29 @@ describe("GET /api/leaderboard/completions", () => {
     expect(body.entries[0].completions).toBe(25);
     expect(body.entries[1].completions).toBe(18);
   });
+
+  it("returns 500 with typed error when KV value is malformed JSON", async () => {
+    const kv = createKvStub();
+    await kv.put("leaderboard:completions", "<<<bad json>>>");
+
+    const res = await requestWithEnv("/api/leaderboard/completions", { kv });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toBe("leaderboard.invalid_data");
+  });
+
+  it("returns 500 with typed error when KV value has wrong shape", async () => {
+    const kv = createKvStub();
+    await kv.put(
+      "leaderboard:completions",
+      JSON.stringify([{ userId: "u1", completions: "oops" }]),
+    );
+
+    const res = await requestWithEnv("/api/leaderboard/completions", { kv });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toBe("leaderboard.invalid_data");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -129,11 +176,19 @@ describe("GET /api/leaderboard/completions", () => {
 // ---------------------------------------------------------------------------
 
 describe("POST /api/calls/token", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("returns 401 without auth", async () => {
     const res = await requestWithEnv("/api/calls/token", { method: "POST" });
     expect(res.status).toBe(401);
     const body = await res.json();
-    expect(body.error).toContain("auth_required");
+    expect(body.error).toBe("calls.auth_required");
   });
 
   it("returns 501 when CF_CALLS_APP_ID and CF_CALLS_APP_SECRET are absent", async () => {
@@ -143,7 +198,7 @@ describe("POST /api/calls/token", () => {
     });
     expect(res.status).toBe(501);
     const body = await res.json();
-    expect(body.error).toBe("calls_not_configured");
+    expect(body.error).toBe("calls.not_configured");
   });
 
   it("returns 501 when only CF_CALLS_APP_ID is set", async () => {
@@ -154,7 +209,7 @@ describe("POST /api/calls/token", () => {
     });
     expect(res.status).toBe(501);
     const body = await res.json();
-    expect(body.error).toBe("calls_not_configured");
+    expect(body.error).toBe("calls.not_configured");
   });
 
   it("returns 501 when only CF_CALLS_APP_SECRET is set", async () => {
@@ -165,6 +220,94 @@ describe("POST /api/calls/token", () => {
     });
     expect(res.status).toBe(501);
     const body = await res.json();
-    expect(body.error).toBe("calls_not_configured");
+    expect(body.error).toBe("calls.not_configured");
+  });
+
+  it("returns 502 when Cloudflare Calls API returns a non-ok status", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 }),
+    );
+
+    const res = await requestWithEnv("/api/calls/token", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      callsAppId: "my-app-id",
+      callsAppSecret: "my-secret",
+    });
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).toBe("calls.token_failed");
+  });
+
+  it("returns 502 when Cloudflare Calls API fetch throws (network error)", async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new Error("Network failure"));
+
+    const res = await requestWithEnv("/api/calls/token", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      callsAppId: "my-app-id",
+      callsAppSecret: "my-secret",
+    });
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).toBe("calls.token_failed");
+  });
+
+  it("returns 502 when Cloudflare response body has unexpected shape", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ unexpected: "shape" }), { status: 200 }),
+    );
+
+    const res = await requestWithEnv("/api/calls/token", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      callsAppId: "my-app-id",
+      callsAppSecret: "my-secret",
+    });
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).toBe("calls.upstream_invalid");
+  });
+
+  it("returns 200 with sessionId and sessionToken on success", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          sessionId: "sess-abc-123",
+          sessionToken: "tok-xyz-456",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const res = await requestWithEnv("/api/calls/token", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      callsAppId: "my-app-id",
+      callsAppSecret: "my-secret",
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.sessionId).toBe("sess-abc-123");
+    expect(body.sessionToken).toBe("tok-xyz-456");
+  });
+
+  it("uses encodeURIComponent on the app ID in the upstream URL", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ sessionId: "s", sessionToken: "t" }), {
+        status: 200,
+      }),
+    );
+
+    await requestWithEnv("/api/calls/token", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      callsAppId: "app/id with spaces",
+      callsAppSecret: "secret",
+    });
+
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(calledUrl).toContain("app%2Fid%20with%20spaces");
+    expect(calledUrl).not.toContain("app/id with spaces");
   });
 });
