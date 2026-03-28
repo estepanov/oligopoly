@@ -179,7 +179,7 @@ userRoutes.get(
     const db = c.env?.DB;
 
     if (!db) {
-      return c.json({ error: "Database not configured" }, 501);
+      return c.json({ error: "Database not configured" }, 500);
     }
 
     const existing = await db
@@ -197,12 +197,12 @@ userRoutes.get(
 userRoutes.get("/me", async (c) => {
   const userId = getUserId(c);
   if (!userId) {
-    return c.json({ error: "Auth adapter not configured" }, 501);
+    return c.json({ error: "Auth adapter not configured" }, 401);
   }
 
   const db = c.env?.DB;
   if (!db) {
-    return c.json({ error: "Database not configured" }, 501);
+    return c.json({ error: "Database not configured" }, 500);
   }
 
   const result = await fetchFullProfile(db, userId);
@@ -237,12 +237,12 @@ userRoutes.put(
   async (c) => {
     const userId = getUserId(c);
     if (!userId) {
-      return c.json({ error: "Auth adapter not configured" }, 501);
+      return c.json({ error: "Auth adapter not configured" }, 401);
     }
 
     const db = c.env?.DB;
     if (!db) {
-      return c.json({ error: "Database not configured" }, 501);
+      return c.json({ error: "Database not configured" }, 500);
     }
 
     const body = c.req.valid("json");
@@ -355,12 +355,12 @@ userRoutes.put(
 userRoutes.delete("/me", async (c) => {
   const userId = getUserId(c);
   if (!userId) {
-    return c.json({ error: "Auth adapter not configured" }, 501);
+    return c.json({ error: "Auth adapter not configured" }, 401);
   }
 
   const db = c.env?.DB;
   if (!db) {
-    return c.json({ error: "Database not configured" }, 501);
+    return c.json({ error: "Database not configured" }, 500);
   }
 
   await db.prepare("DELETE FROM users WHERE id = ?").bind(userId).run();
@@ -374,7 +374,7 @@ userRoutes.delete("/me", async (c) => {
 userRoutes.get("/me/games", async (c) => {
   const userId = getUserId(c);
   if (!userId) {
-    return c.json({ error: "Auth adapter not configured" }, 501);
+    return c.json({ error: "Auth adapter not configured" }, 401);
   }
 
   // Placeholder: game history table not yet in schema
@@ -387,12 +387,12 @@ userRoutes.get("/me/games", async (c) => {
 userRoutes.get("/me/achievements", async (c) => {
   const userId = getUserId(c);
   if (!userId) {
-    return c.json({ error: "Auth adapter not configured" }, 501);
+    return c.json({ error: "Auth adapter not configured" }, 401);
   }
 
   const db = c.env?.DB;
   if (!db) {
-    return c.json({ error: "Database not configured" }, 501);
+    return c.json({ error: "Database not configured" }, 500);
   }
 
   const rows = await db
@@ -411,12 +411,12 @@ userRoutes.get("/me/achievements", async (c) => {
 userRoutes.get("/me/rank", async (c) => {
   const userId = getUserId(c);
   if (!userId) {
-    return c.json({ error: "Auth adapter not configured" }, 501);
+    return c.json({ error: "Auth adapter not configured" }, 401);
   }
 
   const db = c.env?.DB;
   if (!db) {
-    return c.json({ error: "Database not configured" }, 501);
+    return c.json({ error: "Database not configured" }, 500);
   }
 
   const row = await db
@@ -443,7 +443,7 @@ userRoutes.get("/me/rank", async (c) => {
 userRoutes.get("/me/notifications", async (c) => {
   const userId = getUserId(c);
   if (!userId) {
-    return c.json({ error: "Auth adapter not configured" }, 501);
+    return c.json({ error: "Auth adapter not configured" }, 401);
   }
 
   // Notification prefs not stored in schema yet; return empty object
@@ -467,12 +467,12 @@ userRoutes.put(
   async (c) => {
     const userId = getUserId(c);
     if (!userId) {
-      return c.json({ error: "Auth adapter not configured" }, 501);
+      return c.json({ error: "Auth adapter not configured" }, 401);
     }
 
     const db = c.env?.DB;
     if (!db) {
-      return c.json({ error: "Database not configured" }, 501);
+      return c.json({ error: "Database not configured" }, 500);
     }
 
     const { locale } = c.req.valid("json");
@@ -508,12 +508,12 @@ userRoutes.put(
   async (c) => {
     const userId = getUserId(c);
     if (!userId) {
-      return c.json({ error: "Auth adapter not configured" }, 501);
+      return c.json({ error: "Auth adapter not configured" }, 401);
     }
 
     const db = c.env?.DB;
     if (!db) {
-      return c.json({ error: "Database not configured" }, 501);
+      return c.json({ error: "Database not configured" }, 500);
     }
 
     const { themePreference } = c.req.valid("json");
@@ -542,7 +542,7 @@ userRoutes.put(
   async (c) => {
     const userId = getUserId(c);
     if (!userId) {
-      return c.json({ error: "Auth adapter not configured" }, 501);
+      return c.json({ error: "Auth adapter not configured" }, 401);
     }
 
     // Notification prefs not yet persisted; echo back
@@ -564,7 +564,7 @@ userRoutes.put(
   async (c) => {
     const userId = getUserId(c);
     if (!userId) {
-      return c.json({ error: "Auth adapter not configured" }, 501);
+      return c.json({ error: "Auth adapter not configured" }, 401);
     }
 
     const { gid } = c.req.param();
@@ -581,7 +581,7 @@ userRoutes.get("/:id/presence", async (c) => {
   const db = c.env?.DB;
 
   if (!db) {
-    return c.json({ error: "Database not configured" }, 501);
+    return c.json({ error: "Database not configured" }, 500);
   }
 
   const user = await db
@@ -603,12 +603,12 @@ userRoutes.get("/:id/presence", async (c) => {
 userRoutes.get("/:id/viewer", async (c) => {
   const userId = getUserId(c);
   if (!userId) {
-    return c.json({ error: "Auth adapter not configured" }, 501);
+    return c.json({ error: "Auth adapter not configured" }, 401);
   }
 
   const db = c.env?.DB;
   if (!db) {
-    return c.json({ error: "Database not configured" }, 501);
+    return c.json({ error: "Database not configured" }, 500);
   }
 
   const { id } = c.req.param();
@@ -634,7 +634,7 @@ userRoutes.get("/:id/viewer", async (c) => {
 userRoutes.get("/:id", async (c) => {
   const db = c.env?.DB;
   if (!db) {
-    return c.json({ error: "Database not configured" }, 501);
+    return c.json({ error: "Database not configured" }, 500);
   }
 
   const { id } = c.req.param();

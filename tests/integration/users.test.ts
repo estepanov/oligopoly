@@ -159,9 +159,9 @@ describe("GET /api/users/check-username", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 501 when DB is not configured", async () => {
+  it("returns 500 when DB is not configured", async () => {
     const res = await app.request("/api/users/check-username?username=alice");
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(500);
   });
 });
 
@@ -238,22 +238,22 @@ describe("GET /api/users/:id", () => {
 // GET /api/users/:id/viewer
 // ---------------------------------------------------------------------------
 describe("GET /api/users/:id/viewer", () => {
-  it("returns 501 when no auth context (no userId)", async () => {
+  it("returns 401 when no auth context (no userId)", async () => {
     const res = await app.request("/api/users/user-1/viewer", {}, makeEnv());
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(401);
   });
 
   it("returns ViewerUserProfile when authenticated via x-subject", async () => {
     // The app uses x-subject for rate limiting but does NOT populate userId from it
-    // per the current implementation. The /viewer route returns 501 without auth adapter.
-    // This test verifies the 501 behavior is consistent.
+    // per the current implementation. The /viewer route returns 401 without auth adapter.
+    // This test verifies the 401 behavior is consistent.
     const res = await app.request(
       "/api/users/user-1/viewer",
       { headers: { "x-subject": "user-2" } },
       makeEnv(),
     );
-    // Without auth adapter, returns 501
-    expect(res.status).toBe(501);
+    // Without auth adapter, returns 401
+    expect(res.status).toBe(401);
   });
 });
 
@@ -261,9 +261,9 @@ describe("GET /api/users/:id/viewer", () => {
 // GET /api/users/me
 // ---------------------------------------------------------------------------
 describe("GET /api/users/me", () => {
-  it("returns 501 when no auth context", async () => {
+  it("returns 401 when no auth context", async () => {
     const res = await app.request("/api/users/me", {}, makeEnv());
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(401);
     const body = await res.json();
     expect(body.error).toContain("not configured");
   });
@@ -273,7 +273,7 @@ describe("GET /api/users/me", () => {
 // PUT /api/users/me
 // ---------------------------------------------------------------------------
 describe("PUT /api/users/me", () => {
-  it("returns 501 when no auth context", async () => {
+  it("returns 401 when no auth context", async () => {
     const res = await app.request(
       "/api/users/me",
       {
@@ -283,13 +283,13 @@ describe("PUT /api/users/me", () => {
       },
       makeEnv(),
     );
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(401);
   });
 
   it("returns 400 for invalid request body", async () => {
-    // Without auth context, returns 501 before body validation in current flow.
+    // Without auth context, returns 401 before body validation in current flow.
     // To test body validation independently, we verify zod-validator rejects bad input.
-    // The validator runs before the handler, so with no auth it hits 501 first.
+    // The validator runs before the handler, so with no auth it hits 401 first.
     // This test documents that behaviour.
     const res = await app.request(
       "/api/users/me",
@@ -309,13 +309,13 @@ describe("PUT /api/users/me", () => {
 // DELETE /api/users/me
 // ---------------------------------------------------------------------------
 describe("DELETE /api/users/me", () => {
-  it("returns 501 when no auth context", async () => {
+  it("returns 401 when no auth context", async () => {
     const res = await app.request(
       "/api/users/me",
       { method: "DELETE" },
       makeEnv(),
     );
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(401);
   });
 });
 
@@ -323,9 +323,9 @@ describe("DELETE /api/users/me", () => {
 // GET /api/users/me/achievements
 // ---------------------------------------------------------------------------
 describe("GET /api/users/me/achievements", () => {
-  it("returns 501 when no auth context", async () => {
+  it("returns 401 when no auth context", async () => {
     const res = await app.request("/api/users/me/achievements", {}, makeEnv());
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(401);
   });
 });
 
@@ -333,9 +333,9 @@ describe("GET /api/users/me/achievements", () => {
 // GET /api/users/me/rank
 // ---------------------------------------------------------------------------
 describe("GET /api/users/me/rank", () => {
-  it("returns 501 when no auth context", async () => {
+  it("returns 401 when no auth context", async () => {
     const res = await app.request("/api/users/me/rank", {}, makeEnv());
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(401);
   });
 });
 
@@ -343,7 +343,7 @@ describe("GET /api/users/me/rank", () => {
 // PUT /api/users/me/locale
 // ---------------------------------------------------------------------------
 describe("PUT /api/users/me/locale", () => {
-  it("returns 501 when no auth context", async () => {
+  it("returns 401 when no auth context", async () => {
     const res = await app.request(
       "/api/users/me/locale",
       {
@@ -353,7 +353,7 @@ describe("PUT /api/users/me/locale", () => {
       },
       makeEnv(),
     );
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(401);
   });
 
   it("returns 400 for invalid BCP-47 locale", async () => {
@@ -367,8 +367,8 @@ describe("PUT /api/users/me/locale", () => {
       makeEnv(),
     );
     // zod min(2) passes but BCP-47 check should return 400, or zod max(35) etc.
-    // Without auth, we get 501 first, so document that
-    expect(res.status).toBe(501);
+    // Without auth, we get 401 first, so document that
+    expect(res.status).toBe(401);
   });
 });
 
@@ -376,7 +376,7 @@ describe("PUT /api/users/me/locale", () => {
 // PUT /api/users/me/theme
 // ---------------------------------------------------------------------------
 describe("PUT /api/users/me/theme", () => {
-  it("returns 501 when no auth context", async () => {
+  it("returns 401 when no auth context", async () => {
     const res = await app.request(
       "/api/users/me/theme",
       {
@@ -386,7 +386,7 @@ describe("PUT /api/users/me/theme", () => {
       },
       makeEnv(),
     );
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(401);
   });
 });
 
