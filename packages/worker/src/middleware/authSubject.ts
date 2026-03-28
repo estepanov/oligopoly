@@ -32,8 +32,7 @@ export const authSubjectMiddleware: MiddlewareHandler<{
     return;
   }
 
-  const row = await c.env.DB
-    .prepare("SELECT id, role FROM users WHERE id = ?")
+  const row = await c.env.DB.prepare("SELECT id, role FROM users WHERE id = ?")
     .bind(subject)
     .first<{ id: string; role: string }>();
   if (row) {

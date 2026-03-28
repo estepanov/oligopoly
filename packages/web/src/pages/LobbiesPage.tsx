@@ -1,5 +1,5 @@
 import type { LobbyStatus } from "@oligopoly/validation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   ApiError,
@@ -34,9 +34,9 @@ export function LobbiesPage() {
   const [publicLobbies, setPublicLobbies] = useState<
     Awaited<ReturnType<typeof listPublicLobbies>>["lobbies"]
   >([]);
-  const [selectedLobby, setSelectedLobby] = useState<
-    Awaited<ReturnType<typeof fetchLobby>> | null
-  >(null);
+  const [selectedLobby, setSelectedLobby] = useState<Awaited<
+    ReturnType<typeof fetchLobby>
+  > | null>(null);
 
   const [busyCreate, setBusyCreate] = useState(false);
   const [busyJoin, setBusyJoin] = useState(false);
@@ -45,7 +45,7 @@ export function LobbiesPage() {
 
   const selectedLobbyId = selectedLobby?.id ?? joinLobbyId;
 
-  const refreshPublicLobbies = async () => {
+  const refreshPublicLobbies = useCallback(async () => {
     setLoadingPublicLobbies(true);
     try {
       const data = await listPublicLobbies();
@@ -61,9 +61,9 @@ export function LobbiesPage() {
     } finally {
       setLoadingPublicLobbies(false);
     }
-  };
+  }, []);
 
-  const refreshSelectedLobby = async (id: string) => {
+  const refreshSelectedLobby = useCallback(async (id: string) => {
     if (!id) {
       setSelectedLobby(null);
       return;
@@ -86,17 +86,17 @@ export function LobbiesPage() {
             : "Failed to load lobby",
       });
     }
-  };
+  }, []);
 
   useEffect(() => {
     void refreshPublicLobbies();
-  }, []);
+  }, [refreshPublicLobbies]);
 
   useEffect(() => {
     if (initialLobbyId) {
       void refreshSelectedLobby(initialLobbyId);
     }
-  }, [initialLobbyId]);
+  }, [initialLobbyId, refreshSelectedLobby]);
 
   const isCurrentSubjectAdmin = useMemo(() => {
     if (!selectedLobby) return false;

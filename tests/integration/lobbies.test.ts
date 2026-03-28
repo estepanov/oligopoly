@@ -185,7 +185,11 @@ const createD1Stub = () => {
     }
 
     // SELECT id, status, player_ids_json, started_at, ended_at, winner_id FROM games WHERE id = ?
-    if (trimmed.startsWith("SELECT id, status, player_ids_json, started_at, ended_at, winner_id FROM games WHERE id = ?")) {
+    if (
+      trimmed.startsWith(
+        "SELECT id, status, player_ids_json, started_at, ended_at, winner_id FROM games WHERE id = ?",
+      )
+    ) {
       const row = tables.games.find((r) => r.id === binds[0]) ?? null;
       return { results: row ? [row] : [], first: row };
     }
