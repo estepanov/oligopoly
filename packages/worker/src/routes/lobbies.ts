@@ -59,7 +59,10 @@ const toLobbyResponse = (row: LobbyRow, players: LobbyPlayerRow[] = []) => ({
   })),
 });
 
-export const lobbyRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+export const lobbyRoutes = new Hono<{
+  Bindings: Bindings;
+  Variables: Variables;
+}>();
 
 // POST /  — Create a lobby
 lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {

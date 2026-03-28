@@ -461,8 +461,9 @@ adminRoutes.get("/analytics/costs", async (c) => {
 
   const values = await Promise.all(dateKeys.map(({ key }) => kv.get(key)));
   for (let i = 0; i < dateKeys.length; i++) {
-    if (values[i] !== null) {
-      costs.push({ date: dateKeys[i].dateStr, cost: values[i]! });
+    const value = values[i];
+    if (typeof value === "string") {
+      costs.push({ date: dateKeys[i].dateStr, cost: value });
     }
   }
 

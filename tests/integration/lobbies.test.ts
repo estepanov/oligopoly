@@ -179,9 +179,7 @@ const createD1Stub = () => {
 
     // SELECT COUNT(*) as cnt FROM lobby_players WHERE lobby_id = ?
     if (trimmed.includes("COUNT(*)")) {
-      const rows = tables.lobby_players.filter(
-        (r) => r.lobby_id === binds[0],
-      );
+      const rows = tables.lobby_players.filter((r) => r.lobby_id === binds[0]);
       return { results: [{ cnt: rows.length }], first: { cnt: rows.length } };
     }
 
