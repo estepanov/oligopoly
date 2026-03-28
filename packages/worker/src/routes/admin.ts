@@ -176,6 +176,10 @@ adminRoutes.post("/users/:id/ban", async (c) => {
   const id = c.req.param("id");
   const adminId = c.get("userId") ?? "unknown";
 
+  if (id === adminId) {
+    return c.json({ error: "Cannot ban yourself" }, 400);
+  }
+
   const user = await db
     .prepare("SELECT id FROM users WHERE id = ?")
     .bind(id)

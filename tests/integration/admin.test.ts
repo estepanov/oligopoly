@@ -292,6 +292,22 @@ describe("POST /api/admin/users/:id/ban", () => {
     expect(kvStore["ban:user-b"]).toBe("1");
   });
 
+  it("returns 400 when admin tries to ban themselves", async () => {
+    const kvStore: Record<string, string> = {};
+    const env = makeEnv({ kvStore });
+
+    const res = await adminRequest("/api/admin/users/admin-user/ban", {
+      method: "POST",
+      env,
+      role: "global_admin",
+      userId: "admin-user",
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe("Cannot ban yourself");
+    expect(kvStore["ban:admin-user"]).toBeUndefined();
+  });
+
   it("returns 404 when banning a nonexistent user", async () => {
     const kvStore: Record<string, string> = {};
     const env = makeEnv({ kvStore });
