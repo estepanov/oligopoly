@@ -1,6 +1,7 @@
 import type { HealthResponse } from "@oligopoly/validation";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { authSubjectMiddleware } from "./middleware/authSubject";
 import { banCacheMiddleware } from "./middleware/banCache";
 import { rateLimitMiddleware } from "./middleware/rateLimit";
 import { adminRoutes } from "./routes/admin";
@@ -14,7 +15,12 @@ type Bindings = {
   KV?: KVNamespace;
 };
 
-const app = new Hono<{ Bindings: Bindings }>();
+type Variables = {
+  userId?: string;
+  userRole?: string;
+};
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 app.use(
   "*",
@@ -29,6 +35,7 @@ app.use(
 );
 app.use("*", rateLimitMiddleware);
 app.use("*", banCacheMiddleware);
+app.use("*", authSubjectMiddleware);
 
 app.get("/api/health", (c) => {
   const response: HealthResponse = {
