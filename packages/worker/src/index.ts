@@ -3,7 +3,9 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { banCacheMiddleware } from "./middleware/banCache";
 import { rateLimitMiddleware } from "./middleware/rateLimit";
+import { callsRoutes } from "./routes/calls";
 import { gameRoutes } from "./routes/games";
+import { leaderboardRoutes } from "./routes/leaderboard";
 import { lobbyRoutes } from "./routes/lobbies";
 import { userRoutes } from "./routes/users";
 
@@ -11,6 +13,8 @@ type Bindings = {
   ALLOWED_ORIGINS?: string;
   DB?: D1Database;
   KV?: KVNamespace;
+  CF_CALLS_APP_ID?: string;
+  CF_CALLS_APP_SECRET?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -59,6 +63,8 @@ app.all("/api/auth/*", (c) => {
 
 app.route("/api/games", gameRoutes);
 app.route("/api/users", userRoutes);
+app.route("/api/leaderboard", leaderboardRoutes);
+app.route("/api/calls", callsRoutes);
 
 app.notFound((c) => {
   return c.json({ error: "Not found" }, 404);

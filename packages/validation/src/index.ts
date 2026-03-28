@@ -271,6 +271,39 @@ export type UpdateLobbySettingsInput = z.infer<
   typeof UpdateLobbySettingsInputSchema
 >;
 
+// ---------------------------------------------------------------------------
+// Leaderboard schemas
+// ---------------------------------------------------------------------------
+export const LeaderboardWinsEntrySchema = z.object({
+  userId: z.string(),
+  username: z.string(),
+  wins: z.number().int(),
+});
+export type LeaderboardWinsEntry = z.infer<typeof LeaderboardWinsEntrySchema>;
+
+export const LeaderboardCompletionsEntrySchema = z.object({
+  userId: z.string(),
+  username: z.string(),
+  completions: z.number().int(),
+});
+export type LeaderboardCompletionsEntry = z.infer<
+  typeof LeaderboardCompletionsEntrySchema
+>;
+
+export const LeaderboardWinsResponseSchema = z.object({
+  entries: z.array(LeaderboardWinsEntrySchema),
+});
+export type LeaderboardWinsResponse = z.infer<
+  typeof LeaderboardWinsResponseSchema
+>;
+
+export const LeaderboardCompletionsResponseSchema = z.object({
+  entries: z.array(LeaderboardCompletionsEntrySchema),
+});
+export type LeaderboardCompletionsResponse = z.infer<
+  typeof LeaderboardCompletionsResponseSchema
+>;
+
 export const LobbyErrorKeys = {
   NOT_FOUND: "lobby.not_found",
   FULL: "lobby.full",
