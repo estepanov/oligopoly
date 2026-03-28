@@ -11,6 +11,10 @@ type Bindings = {
   KV?: KVNamespace;
 };
 
+type Variables = {
+  userId?: string;
+};
+
 type LobbyRow = {
   id: string;
   name: string;
@@ -32,10 +36,9 @@ type LobbyPlayerRow = {
 const generateId = () => crypto.randomUUID();
 
 const getSubject = (c: {
-  req: { header: (name: string) => string | undefined };
+  get: (key: string) => string | undefined;
 }): string | null => {
-  const subject = c.req.header("x-subject")?.trim();
-  return subject || null;
+  return c.get("userId") ?? null;
 };
 
 const toLobbyResponse = (row: LobbyRow, players: LobbyPlayerRow[] = []) => ({
@@ -56,7 +59,10 @@ const toLobbyResponse = (row: LobbyRow, players: LobbyPlayerRow[] = []) => ({
   })),
 });
 
-export const lobbyRoutes = new Hono<{ Bindings: Bindings }>();
+export const lobbyRoutes = new Hono<{
+  Bindings: Bindings;
+  Variables: Variables;
+}>();
 
 // POST /  — Create a lobby
 lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
