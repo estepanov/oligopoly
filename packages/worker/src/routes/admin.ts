@@ -15,6 +15,15 @@ type AppEnv = { Bindings: Bindings; Variables: Variables };
 
 const generateId = () => crypto.randomUUID();
 
+/** Parse and validate the `page` query parameter. Returns 1 for invalid input. */
+function parsePage(raw: string | undefined): number {
+  const n = Number(raw ?? "1");
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+    return 1;
+  }
+  return n;
+}
+
 /** Escape SQL LIKE wildcards so user input is matched literally. */
 function escapeLike(input: string): string {
   return input.replace(/[%_\\]/g, "\\$&");
@@ -62,7 +71,7 @@ adminRoutes.get("/users", async (c) => {
   }
 
   const search = c.req.query("search");
-  const page = Number(c.req.query("page") ?? "1");
+  const page = parsePage(c.req.query("page"));
   const limit = 50;
   const offset = (page - 1) * limit;
 
@@ -273,7 +282,7 @@ adminRoutes.get("/games", async (c) => {
     return c.json({ error: "Database not configured" }, 500);
   }
 
-  const page = Number(c.req.query("page") ?? "1");
+  const page = parsePage(c.req.query("page"));
   const limit = 50;
   const offset = (page - 1) * limit;
 
@@ -436,7 +445,7 @@ adminRoutes.get("/audit-log", async (c) => {
     return c.json({ error: "Database not configured" }, 500);
   }
 
-  const page = Number(c.req.query("page") ?? "1");
+  const page = parsePage(c.req.query("page"));
   const limit = 50;
   const offset = (page - 1) * limit;
 
