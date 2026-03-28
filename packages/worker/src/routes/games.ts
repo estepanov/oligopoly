@@ -12,14 +12,18 @@ type Bindings = {
   DB?: D1Database;
 };
 
-type AppEnv = { Bindings: Bindings };
+type Variables = {
+  userId?: string;
+};
+
+type AppEnv = { Bindings: Bindings; Variables: Variables };
 
 export const gameRoutes = new Hono<AppEnv>();
 
 // ---------------------------------------------------------------------------
 // GET /api/games
 // Returns a paginated list of games. Supports ?status=active|completed.
-// Auth is optional; when an x-subject header is present, results are filtered
+// Auth is optional; when the user is authenticated, results are filtered
 // to games the user participates in.
 // ---------------------------------------------------------------------------
 gameRoutes.get("/", async (c) => {
@@ -34,7 +38,7 @@ gameRoutes.get("/", async (c) => {
     return c.json({ games: [] as GameSummary[] });
   }
 
-  const subject = c.req.header("x-subject");
+  const subject = c.get("userId");
 
   let query: string;
   let params: (string | null)[];
@@ -131,12 +135,12 @@ gameRoutes.get("/:id", async (c) => {
 // ---------------------------------------------------------------------------
 // GET /api/games/:id/state
 // Returns the current game state snapshot.
-// Auth required (x-subject must be a player or spectator).
+// Auth required (user must be a player or spectator).
 // 403 for non-participants; 404 if game not found.
 // ---------------------------------------------------------------------------
 gameRoutes.get("/:id/state", async (c) => {
   const id = c.req.param("id");
-  const subject = c.req.header("x-subject");
+  const subject = c.get("userId");
 
   if (!subject) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -179,7 +183,7 @@ gameRoutes.get("/:id/state", async (c) => {
 // ---------------------------------------------------------------------------
 gameRoutes.get("/:id/log", async (c) => {
   const id = c.req.param("id");
-  const subject = c.req.header("x-subject");
+  const subject = c.get("userId");
 
   if (!subject) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -239,7 +243,7 @@ gameRoutes.get("/:id/log", async (c) => {
 // ---------------------------------------------------------------------------
 gameRoutes.get("/:id/replay", async (c) => {
   const id = c.req.param("id");
-  const subject = c.req.header("x-subject");
+  const subject = c.get("userId");
 
   if (!subject) {
     return c.json({ error: "Unauthorized" }, 401);

@@ -95,9 +95,28 @@ const logEntryCompleted: Row = {
   created_at: 501,
 };
 
+const userA: Row = {
+  id: PLAYER_A,
+  username: "player-a",
+  role: "user",
+};
+
+const userB: Row = {
+  id: PLAYER_B,
+  username: "player-b",
+  role: "user",
+};
+
+const outsiderUser: Row = {
+  id: "outsider",
+  username: "outsider",
+  role: "user",
+};
+
 function makeEnv(extraTables: Record<string, Row[]> = {}) {
   return {
     DB: makeDb({
+      users: [userA, userB, outsiderUser],
       games: [activeGame, completedGame],
       game_log: [logEntry, logEntryCompleted],
       ...extraTables,
