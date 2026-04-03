@@ -11,11 +11,14 @@ export function HomePage() {
       <div className="card">
         <h2>Play</h2>
         <p className="muted" style={{ marginBottom: "1rem" }}>
-          Browse active and completed games backed by the worker API.
+          Create, join, and start a lobby before entering a game.
         </p>
-        <Link to="/games" className="button">
-          View games
+        <Link to="/lobbies" className="button">
+          Open lobbies
         </Link>
+        <p className="muted" style={{ marginTop: "0.75rem", marginBottom: 0 }}>
+          You can still browse all games from the Games tab.
+        </p>
       </div>
       <div className="card">
         <h2>Developers</h2>

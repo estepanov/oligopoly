@@ -24,4 +24,15 @@ describe("App", () => {
       screen.getByRole("heading", { level: 1, name: /^games$/i }),
     ).toBeInTheDocument();
   });
+
+  it("navigates to lobbies route", () => {
+    render(
+      <MemoryRouter initialEntries={["/lobbies"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("heading", { level: 1, name: /^lobbies$/i }),
+    ).toBeInTheDocument();
+  });
 });

@@ -21,6 +21,14 @@ export function Layout() {
             </li>
             <li>
               <NavLink
+                to="/lobbies"
+                className={({ isActive }) => (isActive ? "active" : undefined)}
+              >
+                Lobbies
+              </NavLink>
+            </li>
+            <li>
+              <NavLink
                 to="/games"
                 className={({ isActive }) => (isActive ? "active" : undefined)}
               >

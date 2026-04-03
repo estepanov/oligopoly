@@ -16,6 +16,8 @@ const createD1Stub = () => {
     ],
     lobbies: [],
     lobby_players: [],
+    games: [],
+    game_log: [],
   };
 
   const execSql = (sql: string, binds: unknown[]) => {
@@ -133,11 +135,63 @@ const createD1Stub = () => {
       return { results: rows };
     }
 
-    // UPDATE lobbies SET status = 'starting' WHERE id = ?
-    if (trimmed.startsWith("UPDATE lobbies SET status = 'starting'")) {
-      const row = tables.lobbies.find((r) => r.id === binds[0]);
-      if (row) row.status = "starting";
+    // INSERT INTO games
+    if (trimmed.startsWith("INSERT INTO games")) {
+      const [id, lobby_id, started_at, player_ids_json, state_json] = binds as [
+        string,
+        string,
+        number,
+        string,
+        string,
+      ];
+      tables.games.push({
+        id,
+        lobby_id,
+        status: "active",
+        started_at,
+        ended_at: null,
+        winner_id: null,
+        player_ids_json,
+        state_json,
+      });
       return { results: [], success: true };
+    }
+
+    // INSERT INTO game_log
+    if (trimmed.startsWith("INSERT INTO game_log")) {
+      const [id, game_id, payload_json, created_at] = binds as [
+        string,
+        string,
+        string,
+        number,
+      ];
+      tables.game_log.push({
+        id,
+        game_id,
+        round: 1,
+        player_id: null,
+        action_type: "game_started",
+        payload_json,
+        created_at,
+      });
+      return { results: [], success: true };
+    }
+
+    // UPDATE lobbies SET status = 'starting' WHERE id = ?
+    if (trimmed.startsWith("UPDATE lobbies SET status = 'in_game'")) {
+      const row = tables.lobbies.find((r) => r.id === binds[0]);
+      if (row) row.status = "in_game";
+      return { results: [], success: true };
+    }
+
+    // SELECT id, status, player_ids_json, started_at, ended_at, winner_id FROM games WHERE id = ?
+    if (
+      trimmed.startsWith(
+        "SELECT id, status, player_ids_json, started_at, ended_at, winner_id FROM games WHERE id = ?",
+      )
+    ) {
+      const row = tables.games.find((r) => r.id === binds[0]) ?? null;
+      return { results: row ? [row] : [], first: row };
     }
 
     // UPDATE lobbies SET ... WHERE id = ? (settings update)
@@ -379,7 +433,7 @@ describe("POST /api/lobbies/:id/start", () => {
     expect(body.error).toContain("not_enough_players");
   });
 
-  it("transitions to starting with 2+ players", async () => {
+  it("creates game and transitions lobby to in_game with 2+ players", async () => {
     const db = createD1Stub();
     const createRes = await requestWithEnv("/api/lobbies", {
       method: "POST",
@@ -407,7 +461,17 @@ describe("POST /api/lobbies/:id/start", () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.status).toBe("starting");
+    expect(body.status).toBe("in_game");
+    expect(typeof body.gameId).toBe("string");
+
+    const gameRes = await requestWithEnv(`/api/games/${body.gameId}`, {
+      method: "GET",
+      db,
+    });
+    expect(gameRes.status).toBe(200);
+    const game = await gameRes.json();
+    expect(game.status).toBe("active");
+    expect(game.playerCount).toBe(2);
   });
 });
 
