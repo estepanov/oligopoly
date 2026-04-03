@@ -37,14 +37,8 @@ const generateId = () => crypto.randomUUID();
 
 const getSubject = (c: {
   get: (key: string) => string | undefined;
-  req: { header: (name: string) => string | undefined };
 }): string | null => {
-  const contextSubject = c.get("userId");
-  if (contextSubject) {
-    return contextSubject;
-  }
-  const headerSubject = c.req.header("x-subject")?.trim();
-  return headerSubject ? headerSubject : null;
+  return c.get("userId") ?? null;
 };
 
 const toLobbyResponse = (row: LobbyRow, players: LobbyPlayerRow[] = []) => ({
