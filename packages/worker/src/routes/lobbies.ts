@@ -2,7 +2,9 @@ import { zValidator } from "@hono/zod-validator";
 import {
   AFFINITY_CARD_IDS,
   getStartingCapital,
+  initTileStates,
   TRUSTWORTHINESS_DEFAULT,
+  ACTION_POINTS_PER_TURN,
 } from "@oligopoly/shared";
 import {
   CreateLobbyInputSchema,
@@ -758,12 +760,17 @@ lobbyRoutes.post("/:id/start", async (c) => {
   const initialState = {
     gameId,
     round: 1,
-    phase: "market_event",
+    phase: "waiting_for_roll",
     currentPlayerIndex: 0,
     turnOrder: playerIds,
     freeMarketPool: 0,
     affinityAssignments: playerAffinityMap,
-    players: playerIds.map((pid) => ({
+    pendingBuyTilePosition: null as number | string | null,
+    lastDiceRoll: null as [number, number] | null,
+    winnerId: null as string | null,
+    eliminatedPlayerIds: [] as string[],
+    tiles: initTileStates(),
+    players: playerIds.map((pid, idx) => ({
       playerId: pid,
       position: 0,
       capital: startingCapital,
@@ -771,7 +778,7 @@ lobbyRoutes.post("/:id/start", async (c) => {
       mortgagedTilePositions: [] as (number | string)[],
       developmentTokens: {} as Record<string, number>,
       trustworthiness: TRUSTWORTHINESS_DEFAULT,
-      actionPointsRemaining: 0,
+      actionPointsRemaining: idx === 0 ? ACTION_POINTS_PER_TURN : 0,
       inRegulation: false,
       doublesCount: 0,
       isOnDiagonal: false,

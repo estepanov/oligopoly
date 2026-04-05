@@ -196,3 +196,20 @@ export {
   SOLO_WIN_THRESHOLD,
   SYNDICATE_WIN_THRESHOLD,
 } from "./engine/winCondition.js";
+
+// ---------------------------------------------------------------------------
+// Game State Machine
+// ---------------------------------------------------------------------------
+export type {
+  ApplyActionResult,
+  GameActionInput,
+  InternalGameState,
+  InternalPlayerState,
+  InternalTileState,
+  LogEntry,
+} from "./engine/gameStateMachine.js";
+export {
+  applyAction,
+  initTileStates,
+  normalizeGameState,
+} from "./engine/gameStateMachine.js";

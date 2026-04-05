@@ -300,6 +300,30 @@ export const CallsErrorKeys = {
   UPSTREAM_INVALID: "calls.upstream_invalid",
 } as const;
 
+export const GameErrorKeys = {
+  AUTH_REQUIRED: "game.auth_required",
+  NOT_FOUND: "game.not_found",
+  NOT_PLAYER: "game.not_player",
+  GAME_COMPLETED: "game.completed",
+  NOT_YOUR_TURN: "game.not_your_turn",
+  INVALID_ACTION: "game.invalid_action",
+  MUST_ROLL_FIRST: "game.must_roll_first",
+  ALREADY_ROLLED: "game.already_rolled",
+  TILE_NOT_PURCHASABLE: "game.tile_not_purchasable",
+  TILE_ALREADY_OWNED: "game.tile_already_owned",
+  INSUFFICIENT_CAPITAL: "game.insufficient_capital",
+  NO_PENDING_BUY: "game.no_pending_buy",
+  WRONG_TILE: "game.wrong_tile",
+  PATH_CHOICE_NOT_NEEDED: "game.path_choice_not_needed",
+  CANNOT_END_TURN: "game.cannot_end_turn",
+  TILE_NOT_OWNED: "game.tile_not_owned",
+  TILE_MORTGAGED: "game.tile_mortgaged",
+  MAX_DEVELOPMENT: "game.max_development",
+  INSUFFICIENT_AP: "game.insufficient_ap",
+  TILE_NOT_MORTGAGED: "game.tile_not_mortgaged",
+  DB_NOT_CONFIGURED: "game.db_not_configured",
+} as const;
+
 export const LobbyErrorKeys = {
   NOT_FOUND: "lobby.not_found",
   FULL: "lobby.full",
@@ -510,6 +534,11 @@ export const GamePhaseSchema = z.enum([
   "market_event",
   "action",
   "syndicate_coordination",
+  "waiting_for_roll",
+  "waiting_for_buy",
+  "waiting_for_path_choice",
+  "rolling_doubles",
+  "game_over",
 ]);
 export type GamePhase = z.infer<typeof GamePhaseSchema>;
 
@@ -557,6 +586,20 @@ export const GameStateSchema = z.object({
   turnOrder: z.array(z.string()).optional(),
   /** The requesting player's own affinity card (hidden from other players) */
   myAffinityCardId: z.string().nullable().optional(),
+  /** Position of tile awaiting purchase decision */
+  pendingBuyTilePosition: z
+    .union([z.number().int(), z.string()])
+    .nullable()
+    .optional(),
+  /** Last dice roll result */
+  lastDiceRoll: z
+    .tuple([z.number().int().min(1).max(6), z.number().int().min(1).max(6)])
+    .nullable()
+    .optional(),
+  /** ID of the winner (player or syndicate leader) */
+  winnerId: z.string().nullable().optional(),
+  /** IDs of eliminated players */
+  eliminatedPlayerIds: z.array(z.string()).optional(),
   settings: z
     .object({
       turnTimeout: TurnTimeoutSchema.optional(),
