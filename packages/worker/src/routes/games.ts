@@ -403,17 +403,15 @@ gameRoutes.post("/:id/action", async (c) => {
   const actionBody = parsed.data;
 
   // Server generates the path-choice die for rolls that may pass through START
-  const engineInput: Record<string, unknown> = { ...actionBody };
-  if (actionBody.type === "roll_dice") {
-    engineInput.pathChoiceDie = rollPathChoiceDie();
-  }
+  const engineInput = {
+    ...actionBody,
+    ...(actionBody.type === "roll_dice"
+      ? { pathChoiceDie: rollPathChoiceDie() }
+      : {}),
+  };
 
   try {
-    const result = applyAction(
-      gameState,
-      subject,
-      engineInput as Parameters<typeof applyAction>[2],
-    );
+    const result = applyAction(gameState, subject, engineInput);
 
     const now = Date.now();
     const stateJson = JSON.stringify(result.state);
