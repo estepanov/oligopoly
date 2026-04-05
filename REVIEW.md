@@ -13,9 +13,9 @@ pnpm run test:integration  # Integration tests
 
 ## HTTP status codes
 
-- **401** — Use for any unauthenticated request (missing auth context, no `x-subject` header, auth adapter not configured). Every authenticated route in the codebase follows this pattern. Do **not** use 501 for missing auth.
+- **401** — Use for any unauthenticated request (missing auth context, no `Authorization: Bearer` token or legacy `x-subject` header). Every authenticated route in the codebase follows this pattern. Do **not** use 501 for missing auth.
 - **403** — Use when the user is authenticated but lacks the required role or permission (e.g., not a `global_admin`).
-- **501** — Reserve for features that are genuinely not implemented (e.g., hosted-only stubs like impersonate, session invalidation, or the `/api/auth/*` catch-all).
+- **501** — Reserve for features that are genuinely not implemented (e.g., hosted-only stubs like impersonate or session invalidation).
 - **404** — Use when a specific resource (user, game, lobby) is not found.
 - **500** — Use when a required binding (DB, KV) is not configured.
 

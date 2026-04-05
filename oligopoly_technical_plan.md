@@ -135,7 +135,14 @@ Global middleware order:
 Route contract table:
 
 ```text
-ALL    /api/auth/*                    # extension point; deployments may mount an implementation
+# Auth (passkey / WebAuthn)
+POST   /api/auth/register/options     # generate registration challenge
+POST   /api/auth/register/verify      # verify registration, create user + session
+POST   /api/auth/login/options        # generate authentication challenge
+POST   /api/auth/login/verify         # verify authentication, create session
+GET    /api/auth/session              # get current session info (Bearer token)
+POST   /api/auth/logout               # destroy current session
+
 GET    /api/game-config               # game config
 
 # Lobbies
@@ -200,9 +207,13 @@ GET    /api/admin/audit-log
 
 Auth consistency rule:
 
-- Route contracts include auth integration endpoints.
-- In runtimes without an auth adapter, endpoints requiring identity must return typed `501` or `401` according to configured runtime policy.
-- Contract tests must verify schema and status behavior in both modes.
+- Passkey (WebAuthn) is the base authentication mechanism.
+- Session tokens are issued after successful registration or login and sent via `Authorization: Bearer <token>` header.
+- The legacy `x-subject` header is still supported for backwards compatibility with integration tests.
+- Challenges are stored in KV with a 5-minute TTL.
+- Sessions are stored in D1 `auth_sessions` table with a 30-day TTL.
+- Passkey credentials are stored in D1 `passkey_credentials` table.
+- RP ID, RP name, and expected origin are configurable via environment variables (`WEBAUTHN_RP_ID`, `WEBAUTHN_RP_NAME`, `WEBAUTHN_ORIGIN`).
 
 ---
 
@@ -516,6 +527,8 @@ D1 tables required for this plan:
 - `user_visibility`
 - `user_ranks`
 - `achievements`
+- `passkey_credentials`
+- `auth_sessions`
 - `negotiation_threads`
 - `negotiation_messages`
 - `binding_contracts`
@@ -538,6 +551,8 @@ ratelimit:auth:{ip}
 ratelimit:write:{subject}
 ratelimit:read:{subject}
 ai_cost:daily:{date}
+webauthn:challenge:register:{challenge}
+webauthn:challenge:login:{challenge}
 ```
 
 No deployment-specific delivery or session keys are defined in this plan.

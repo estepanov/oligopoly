@@ -4,20 +4,20 @@ type BanCacheBindings = {
   KV?: Pick<KVNamespace, "get">;
 };
 
-const toValue = (value: string | null | undefined): string | null => {
-  const normalized = value?.trim();
-  return normalized ? normalized : null;
+type BanCacheVariables = {
+  userId?: string;
 };
 
 export const banCacheMiddleware: MiddlewareHandler<{
   Bindings: BanCacheBindings;
+  Variables: BanCacheVariables;
 }> = async (c, next) => {
   if (!c.env?.KV) {
     await next();
     return;
   }
 
-  const subject = toValue(c.req.header("x-subject"));
+  const subject = c.get("userId");
   if (!subject) {
     await next();
     return;

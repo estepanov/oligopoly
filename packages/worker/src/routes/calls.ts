@@ -9,13 +9,19 @@ type Bindings = {
   CF_CALLS_APP_SECRET?: string;
 };
 
-export const callsRoutes = new Hono<{ Bindings: Bindings }>();
+type Variables = {
+  userId?: string;
+};
+
+export const callsRoutes = new Hono<{
+  Bindings: Bindings;
+  Variables: Variables;
+}>();
 
 const getSubject = (c: {
-  req: { header: (name: string) => string | undefined };
+  get: (key: string) => string | undefined;
 }): string | null => {
-  const subject = c.req.header("x-subject")?.trim();
-  return subject || null;
+  return c.get("userId") ?? null;
 };
 
 // POST /token — Exchange credentials with Cloudflare Calls API and return session token

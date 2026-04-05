@@ -5,6 +5,7 @@ import { authSubjectMiddleware } from "./middleware/authSubject";
 import { banCacheMiddleware } from "./middleware/banCache";
 import { rateLimitMiddleware } from "./middleware/rateLimit";
 import { adminRoutes } from "./routes/admin";
+import { authRoutes } from "./routes/auth";
 import { callsRoutes } from "./routes/calls";
 import { gameRoutes } from "./routes/games";
 import { leaderboardRoutes } from "./routes/leaderboard";
@@ -17,6 +18,9 @@ type Bindings = {
   KV?: KVNamespace;
   CF_CALLS_APP_ID?: string;
   CF_CALLS_APP_SECRET?: string;
+  WEBAUTHN_RP_ID?: string;
+  WEBAUTHN_RP_NAME?: string;
+  WEBAUTHN_ORIGIN?: string;
 };
 
 type Variables = {
@@ -37,9 +41,9 @@ app.use(
     },
   }),
 );
+app.use("*", authSubjectMiddleware);
 app.use("*", rateLimitMiddleware);
 app.use("*", banCacheMiddleware);
-app.use("*", authSubjectMiddleware);
 
 app.get("/api/health", (c) => {
   const response: HealthResponse = {
@@ -65,9 +69,7 @@ app.get("/api/game-config", (c) => {
 
 app.route("/api/lobbies", lobbyRoutes);
 
-app.all("/api/auth/*", (c) => {
-  return c.json({ error: "Auth adapter not configured" }, 501);
-});
+app.route("/api/auth", authRoutes);
 
 app.route("/api/admin", adminRoutes);
 app.route("/api/games", gameRoutes);
