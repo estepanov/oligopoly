@@ -5,11 +5,11 @@
 // ---------------------------------------------------------------------------
 
 import {
+  ALL_TILES,
   CORNER_POSITIONS,
+  DIAGONAL_TILES,
   getTileByPosition,
   TOTAL_BOARD_MARKET_VALUE,
-  DIAGONAL_TILES,
-  ALL_TILES,
 } from "../config/board.js";
 import {
   BOARD_SIZE,
@@ -17,6 +17,7 @@ import {
   moveOnPerimeter,
   TRIPLE_DOUBLES_LIMIT,
 } from "./dice.js";
+import { calculateMortgageValue, calculateRedemptionCost } from "./mortgage.js";
 import {
   calculateDevelopmentCost,
   calculateHubRent,
@@ -25,18 +26,14 @@ import {
   MAX_DEVELOPMENT_TOKENS,
 } from "./rent.js";
 import {
+  ACTION_COSTS,
   ACTION_POINTS_PER_TURN,
   CORPORATE_TAX_I,
   CORPORATE_TAX_II,
   FREE_MARKET_MINIMUM,
   GOVERNMENT_GRANT,
   PASS_START_BONUS,
-  ACTION_COSTS,
 } from "./setup.js";
-import {
-  calculateMortgageValue,
-  calculateRedemptionCost,
-} from "./mortgage.js";
 import { checkSoloWin } from "./winCondition.js";
 
 // ---------------------------------------------------------------------------
@@ -177,10 +174,7 @@ function hasSectorControl(
   });
 }
 
-function playerMarketValue(
-  state: InternalGameState,
-  playerId: string,
-): number {
+function playerMarketValue(state: InternalGameState, playerId: string): number {
   return state.tiles
     .filter((t) => t.ownerId === playerId)
     .reduce((sum, t) => {
@@ -217,7 +211,9 @@ function checkWinConditions(state: InternalGameState): string | null {
 export function initTileStates(): InternalTileState[] {
   return ALL_TILES.filter(
     (t) =>
-      t.type === "sector_tile" || t.type === "sector_hub" || t.type === "utility",
+      t.type === "sector_tile" ||
+      t.type === "sector_hub" ||
+      t.type === "utility",
   ).map((t) => ({
     position: t.position,
     ownerId: null,
@@ -230,7 +226,9 @@ export function initTileStates(): InternalTileState[] {
  * Convert a raw state_json from DB into our internal format,
  * ensuring all fields exist.
  */
-export function normalizeGameState(raw: Record<string, unknown>): InternalGameState {
+export function normalizeGameState(
+  raw: Record<string, unknown>,
+): InternalGameState {
   const state = raw as unknown as InternalGameState;
   if (!state.tiles || state.tiles.length === 0) {
     state.tiles = initTileStates();
@@ -306,10 +304,7 @@ function handleRollDice(
   playerId: string,
   action: GameActionInput,
 ): ApplyActionResult {
-  if (
-    state.phase !== "waiting_for_roll" &&
-    state.phase !== "rolling_doubles"
-  ) {
+  if (state.phase !== "waiting_for_roll" && state.phase !== "rolling_doubles") {
     throw "game.already_rolled";
   }
 
@@ -721,8 +716,7 @@ function handleEndTurn(
   }
 
   const roundWrapped =
-    nextIndex <= newState.currentPlayerIndex ||
-    nextIndex === 0;
+    nextIndex <= newState.currentPlayerIndex || nextIndex === 0;
   newState.currentPlayerIndex = nextIndex;
 
   if (roundWrapped && nextIndex === 0) {
@@ -800,9 +794,7 @@ function handleDevelopTile(
   const tile = getTileByPosition(pos);
   if (!tile || tile.type !== "sector_tile") throw "game.tile_not_purchasable";
 
-  const tileState = state.tiles.find(
-    (t) => String(t.position) === String(pos),
-  );
+  const tileState = state.tiles.find((t) => String(t.position) === String(pos));
   if (!tileState || tileState.ownerId !== playerId) throw "game.tile_not_owned";
   if (tileState.mortgaged) throw "game.tile_mortgaged";
   if (tileState.developmentTokens >= MAX_DEVELOPMENT_TOKENS)
@@ -817,9 +809,7 @@ function handleDevelopTile(
   np.capital -= cost;
   np.actionPointsRemaining -= ACTION_COSTS.DEVELOP_TILE;
 
-  const nts = newState.tiles.find(
-    (t) => String(t.position) === String(pos),
-  )!;
+  const nts = newState.tiles.find((t) => String(t.position) === String(pos))!;
   nts.developmentTokens += 1;
   np.developmentTokens[String(pos)] = nts.developmentTokens;
 
@@ -849,9 +839,7 @@ function handleMortgageTile(
   const pos = action.tilePosition;
   if (pos === undefined) throw "game.invalid_action";
 
-  const tileState = state.tiles.find(
-    (t) => String(t.position) === String(pos),
-  );
+  const tileState = state.tiles.find((t) => String(t.position) === String(pos));
   if (!tileState || tileState.ownerId !== playerId) throw "game.tile_not_owned";
   if (tileState.mortgaged) throw "game.tile_mortgaged";
 
@@ -865,9 +853,7 @@ function handleMortgageTile(
   np.capital += mortgageValue;
   np.mortgagedTilePositions.push(pos);
 
-  const nts = newState.tiles.find(
-    (t) => String(t.position) === String(pos),
-  )!;
+  const nts = newState.tiles.find((t) => String(t.position) === String(pos))!;
   nts.mortgaged = true;
 
   const logs: LogEntry[] = [
@@ -895,9 +881,7 @@ function handleRedeemTile(
   const pos = action.tilePosition;
   if (pos === undefined) throw "game.invalid_action";
 
-  const tileState = state.tiles.find(
-    (t) => String(t.position) === String(pos),
-  );
+  const tileState = state.tiles.find((t) => String(t.position) === String(pos));
   if (!tileState || tileState.ownerId !== playerId) throw "game.tile_not_owned";
   if (!tileState.mortgaged) throw "game.tile_not_mortgaged";
 
@@ -915,9 +899,7 @@ function handleRedeemTile(
     (p) => String(p) !== String(pos),
   );
 
-  const nts = newState.tiles.find(
-    (t) => String(t.position) === String(pos),
-  )!;
+  const nts = newState.tiles.find((t) => String(t.position) === String(pos))!;
   nts.mortgaged = false;
 
   const logs: LogEntry[] = [

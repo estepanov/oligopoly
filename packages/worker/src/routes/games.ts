@@ -1,7 +1,4 @@
-import {
-  applyAction,
-  normalizeGameState,
-} from "@oligopoly/shared";
+import { applyAction, normalizeGameState } from "@oligopoly/shared";
 import type {
   GameLogEntry,
   GameState,
@@ -393,14 +390,18 @@ gameRoutes.post("/:id/action", async (c) => {
   }
 
   try {
-    const result = applyAction(gameState, subject, actionBody as {
-      type: string;
-      result?: [number, number];
-      tilePosition?: number | string;
-      tokenNumber?: number;
-      choice?: "perimeter" | "diagonal";
-      amount?: number;
-    });
+    const result = applyAction(
+      gameState,
+      subject,
+      actionBody as {
+        type: string;
+        result?: [number, number];
+        tilePosition?: number | string;
+        tokenNumber?: number;
+        choice?: "perimeter" | "diagonal";
+        amount?: number;
+      },
+    );
 
     const now = Date.now();
     const stateJson = JSON.stringify(result.state);
@@ -429,9 +430,7 @@ gameRoutes.post("/:id/action", async (c) => {
       if (lobbyRow) {
         statements.push(
           db
-            .prepare(
-              "UPDATE lobbies SET status = 'finished' WHERE id = ?",
-            )
+            .prepare("UPDATE lobbies SET status = 'finished' WHERE id = ?")
             .bind(lobbyRow.lobby_id),
         );
       }
