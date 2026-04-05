@@ -778,8 +778,8 @@ lobbyRoutes.put(
         effectiveCardIds,
       );
       if (requiredTier > 1) {
-        const hostTier = await getUserRankTier(db, lobby.host_id);
-        if (hostTier < requiredTier) {
+        const adminTier = await getUserRankTier(db, subject);
+        if (adminTier < requiredTier) {
           return c.json({ error: LobbyErrorKeys.RANK_TOO_LOW }, 403);
         }
       }
