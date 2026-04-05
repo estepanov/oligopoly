@@ -30,6 +30,12 @@ export const authSubjectMiddleware: MiddlewareHandler<{
   Variables: AuthSubjectVariables;
 }> = async (c, next) => {
   if (!c.env?.DB) {
+    // No DB available — trust x-subject header directly (dev/test only).
+    // In production, DB is always present and the header is validated below.
+    const subject = toValue(c.req.header("x-subject"));
+    if (subject) {
+      c.set("userId", subject);
+    }
     await next();
     return;
   }
