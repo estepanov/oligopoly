@@ -1674,25 +1674,62 @@ describe("applyAction — rent payment", () => {
   });
 });
 
-describe("applyAction — diagonal overflow does not double-pay Free Market", () => {
+describe("applyAction — diagonal overflow", () => {
   it("pays Free Market pool only once when rolling off diagonal", () => {
     const state = makeTestGameState();
     state.players[0].isOnDiagonal = true;
     state.players[0].position = "D5";
     state.freeMarketPool = 200;
 
+    // D5 is index 4. Roll [1,1]=2 -> newDiagIndex=6, overflow by 1 step
+    // Lands on position 21 (Biotech Research Corp.)
     const result = applyAction(state, "player-1", {
       type: "roll_dice",
-      result: [3, 4],
+      result: [1, 1],
     });
     const p = result.state.players.find((p) => p.playerId === "player-1")!;
-    expect(p.position).toBe(20);
+    expect(p.isOnDiagonal).toBe(false);
     expect(p.capital).toBe(1500 + 200);
     expect(result.state.freeMarketPool).toBe(0);
     const fmLogs = result.logEntries.filter(
       (e) => e.actionType === "collected_free_market",
     );
     expect(fmLogs).toHaveLength(1);
+  });
+
+  it("continues remaining movement on perimeter after reaching FREE MARKET", () => {
+    const state = makeTestGameState();
+    state.players[0].isOnDiagonal = true;
+    state.players[0].position = "D5";
+    state.freeMarketPool = 50;
+
+    // D5 is index 4, roll [3,4]=7 -> newDiagIndex=11, remaining=6 steps from pos 20
+    // Lands on position 26 (MARKET EVENT)
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [3, 4],
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.position).toBe(26);
+    expect(p.isOnDiagonal).toBe(false);
+    expect(p.capital).toBe(1500 + 100); // pool was 50 but minimum is 100
+  });
+
+  it("lands exactly on FREE MARKET when overflow is zero", () => {
+    const state = makeTestGameState();
+    state.players[0].isOnDiagonal = true;
+    state.players[0].position = "D4";
+    state.freeMarketPool = 300;
+
+    // D4 is index 3, roll [1,1]=2 -> newDiagIndex=5 = DIAGONAL_TILES.length
+    // remainingSteps = 0, lands on FREE MARKET
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [1, 1],
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.position).toBe(20);
+    expect(p.capital).toBe(1500 + 300);
   });
 });
 
@@ -1731,5 +1768,60 @@ describe("applyAction — landing on START triggers path choice", () => {
     expect(result.state.players[0].isOnDiagonal).toBe(true);
     expect(result.state.players[0].position).toBe("D1");
     expect(result.state.phase).toBe("action");
+  });
+});
+
+describe("applyAction — regulation penalty persists through next turn", () => {
+  it("does not clear regulation at end of the turn player was sent there", () => {
+    const state = makeTestGameState({ phase: "action" });
+    state.players[0].inRegulation = true;
+    state.lastDiceRoll = null;
+
+    const result = applyAction(state, "player-1", { type: "end_turn" });
+    const p1 = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p1.inRegulation).toBe(true);
+  });
+
+  it("grants 0 AP to a regulated player on their next turn", () => {
+    const state = makeTestGameState({ phase: "action", currentPlayerIndex: 1 });
+    state.turnOrder = ["player-1", "player-2"];
+    state.players[0].inRegulation = true;
+
+    const result = applyAction(state, "player-2", { type: "end_turn" });
+    const p1 = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p1.actionPointsRemaining).toBe(0);
+    expect(result.state.phase).toBe("waiting_for_roll");
+  });
+
+  it("clears regulation after the regulated player completes their penalty turn", () => {
+    const state = makeTestGameState({ phase: "action" });
+    state.players[0].inRegulation = true;
+    state.lastDiceRoll = [3, 4];
+
+    const result = applyAction(state, "player-1", { type: "end_turn" });
+    const p1 = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p1.inRegulation).toBe(false);
+    const servedLogs = result.logEntries.filter(
+      (e) => e.actionType === "regulation_served",
+    );
+    expect(servedLogs).toHaveLength(1);
+  });
+});
+
+describe("applyAction — path-choice auto-roll when passing through START", () => {
+  it("auto-rolls path-choice die when passing through START", () => {
+    const state = makeTestGameState();
+    state.players[0].position = 38;
+
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [2, 4],
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.capital).toBeGreaterThanOrEqual(1500 + PASS_START_BONUS - 100);
+    const pathLog = result.logEntries.find(
+      (e) => e.actionType === "path_choice_auto",
+    );
+    expect(pathLog).toBeDefined();
   });
 });

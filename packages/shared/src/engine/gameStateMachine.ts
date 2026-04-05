@@ -13,8 +13,10 @@ import {
 } from "../config/board.js";
 import {
   BOARD_SIZE,
+  isDiagonalChoice,
   isDoubles,
   moveOnPerimeter,
+  rollPathChoiceDie,
   TRIPLE_DOUBLES_LIMIT,
 } from "./dice.js";
 import { calculateMortgageValue, calculateRedemptionCost } from "./mortgage.js";
@@ -359,18 +361,29 @@ function handleRollDice(
     const newDiagIndex = currentDiagIndex + total;
 
     if (newDiagIndex >= DIAGONAL_TILES.length) {
-      // Roll off diagonal -> FREE MARKET (collect pool here; skip resolveLanding)
-      p.position = CORNER_POSITIONS.FREE_MARKET;
+      // Roll off diagonal -> arrive at FREE MARKET, collect pool,
+      // then continue remaining steps on the perimeter from position 20.
       p.isOnDiagonal = false;
       const pool = Math.max(newState.freeMarketPool, FREE_MARKET_MINIMUM);
       p.capital += pool;
       newState.freeMarketPool = 0;
-      skipLandingResolve = true;
       logs.push({
         playerId,
         actionType: "collected_free_market",
         payload: { amount: pool },
       });
+
+      const remainingSteps = newDiagIndex - DIAGONAL_TILES.length;
+      if (remainingSteps > 0) {
+        const { newPosition } = moveOnPerimeter(
+          CORNER_POSITIONS.FREE_MARKET,
+          remainingSteps,
+        );
+        p.position = newPosition;
+      } else {
+        p.position = CORNER_POSITIONS.FREE_MARKET;
+        skipLandingResolve = true;
+      }
     } else {
       p.position = DIAGONAL_TILES[newDiagIndex].position;
     }
@@ -379,38 +392,70 @@ function handleRollDice(
     const currentPos = p.position as number;
     const { newPosition, passedStart } = moveOnPerimeter(currentPos, total);
 
-    if (passedStart && newPosition !== CORNER_POSITIONS.START) {
-      // Passed through START but didn't land on it — collect bonus
-      // Per game rules: passing through corner 0 triggers path-choice die
-      // The path-choice mechanic is complex (requires extra die roll);
-      // for now, grant the bonus and continue on perimeter.
+    if (passedStart) {
       p.capital += PASS_START_BONUS;
       logs.push({
         playerId,
         actionType: "passed_start",
         payload: { bonus: PASS_START_BONUS },
       });
-    } else if (passedStart && newPosition === CORNER_POSITIONS.START) {
-      // Landed exactly on START — collect bonus
-      p.capital += PASS_START_BONUS;
-      logs.push({
-        playerId,
-        actionType: "passed_start",
-        payload: { bonus: PASS_START_BONUS },
-      });
-    }
 
-    p.position = newPosition;
+      if (newPosition === CORNER_POSITIONS.START) {
+        // Landed exactly on START — player chooses path on their next roll
+        p.position = newPosition;
+        newState.lastDiceRoll = dice;
+        newState.phase = "waiting_for_path_choice";
+        skipLandingResolve = true;
+      } else {
+        // Passed through START — roll path-choice die to determine route
+        const pathDie = rollPathChoiceDie();
+        const stepsFromStart = newPosition;
 
-    // Landing exactly on START -> player chooses path next turn
-    if (newPosition === CORNER_POSITIONS.START && total > 0) {
-      // Per game rules: landing exactly on START, player sits until next turn
-      // then chooses perimeter or diagonal. We enter the path choice phase
-      // only if the player *landed* on START (not just passed through).
-      // Since they've finished their movement, we set waiting_for_path_choice.
-      newState.lastDiceRoll = dice;
-      newState.phase = "waiting_for_path_choice";
-      skipLandingResolve = true;
+        if (isDiagonalChoice(pathDie)) {
+          // Route remaining movement onto the diagonal
+          p.isOnDiagonal = true;
+          if (stepsFromStart <= DIAGONAL_TILES.length) {
+            p.position = DIAGONAL_TILES[stepsFromStart - 1].position;
+          } else {
+            // Overran the diagonal — arrive at FREE MARKET + continue
+            p.isOnDiagonal = false;
+            const pool = Math.max(newState.freeMarketPool, FREE_MARKET_MINIMUM);
+            p.capital += pool;
+            newState.freeMarketPool = 0;
+            logs.push({
+              playerId,
+              actionType: "collected_free_market",
+              payload: { amount: pool },
+            });
+            const overflow = stepsFromStart - DIAGONAL_TILES.length;
+            if (overflow > 0) {
+              const { newPosition: overflowPos } = moveOnPerimeter(
+                CORNER_POSITIONS.FREE_MARKET,
+                overflow,
+              );
+              p.position = overflowPos;
+            } else {
+              p.position = CORNER_POSITIONS.FREE_MARKET;
+              skipLandingResolve = true;
+            }
+          }
+          logs.push({
+            playerId,
+            actionType: "path_choice_auto",
+            payload: { die: pathDie, choice: "diagonal" },
+          });
+        } else {
+          // Stay on perimeter — position already computed
+          p.position = newPosition;
+          logs.push({
+            playerId,
+            actionType: "path_choice_auto",
+            payload: { die: pathDie, choice: "perimeter" },
+          });
+        }
+      }
+    } else {
+      p.position = newPosition;
     }
   }
 
@@ -723,14 +768,23 @@ function handleEndTurn(
   p.doublesCount = 0;
   p.actionPointsRemaining = 0;
 
-  // If player was in regulation, clear it (they served their turn)
-  if (p.inRegulation) {
-    p.inRegulation = false;
-    logs.push({
-      playerId,
-      actionType: "regulation_served",
-      payload: null,
-    });
+  // Regulation penalty tracking:
+  // If the player was serving a regulation penalty this turn (regulationServed),
+  // clear it now. If they were just sent to regulation this turn, keep the flag
+  // so the penalty applies on their *next* turn.
+  if (p.inRegulation && state.phase === "action") {
+    // The player had inRegulation entering this turn and completed it.
+    // Check if they rolled this turn (meaning they served the penalty turn).
+    // We use a heuristic: if lastDiceRoll is set, they rolled and moved,
+    // which means this was their penalty turn.
+    if (newState.lastDiceRoll) {
+      p.inRegulation = false;
+      logs.push({
+        playerId,
+        actionType: "regulation_served",
+        payload: null,
+      });
+    }
   }
 
   logs.push({ playerId, actionType: "end_turn", payload: null });
@@ -762,7 +816,10 @@ function handleEndTurn(
   // Set up next player's turn
   const nextPlayerId = newState.turnOrder[nextIndex];
   const nextPlayer = getPlayer(newState, nextPlayerId)!;
-  nextPlayer.actionPointsRemaining = ACTION_POINTS_PER_TURN;
+  // Regulation penalty: skip optional actions (0 AP) on the penalty turn
+  nextPlayer.actionPointsRemaining = nextPlayer.inRegulation
+    ? 0
+    : ACTION_POINTS_PER_TURN;
   newState.phase = "waiting_for_roll";
   newState.lastDiceRoll = null;
   newState.pendingBuyTilePosition = null;
