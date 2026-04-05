@@ -456,7 +456,9 @@ authRoutes.post(
         )
         .bind(sessionId, user.id, token, expiresAt, now),
       db
-        .prepare("DELETE FROM auth_sessions WHERE user_id = ? AND expires_at < ?")
+        .prepare(
+          "DELETE FROM auth_sessions WHERE user_id = ? AND expires_at < ?",
+        )
         .bind(user.id, now),
     ]);
 
