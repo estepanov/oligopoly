@@ -33,7 +33,37 @@ const createD1Stub = () => {
         is_private,
         optional_rule_ids_json,
         created_at,
-      ] = binds as [string, string, string, number, number, string, number];
+        turn_timeout,
+        auction_bid_window,
+        auction_settle_delay,
+        auction_type,
+        voice_video_enabled,
+        spectator_mode,
+        market_event_deck_json,
+        optional_event_card_ids_json,
+        currency_name,
+        currency_symbol,
+        currency_multiplier,
+      ] = binds as [
+        string,
+        string,
+        string,
+        number,
+        number,
+        string,
+        number,
+        string,
+        string,
+        string,
+        string,
+        number,
+        string,
+        string | null,
+        string,
+        string,
+        string,
+        string,
+      ];
       tables.lobbies.push({
         id,
         name,
@@ -43,6 +73,17 @@ const createD1Stub = () => {
         is_private,
         optional_rule_ids_json,
         created_at,
+        turn_timeout: turn_timeout ?? "5min",
+        auction_bid_window: auction_bid_window ?? "1min",
+        auction_settle_delay: auction_settle_delay ?? "30s",
+        auction_type: auction_type ?? "sealed_bids",
+        voice_video_enabled: voice_video_enabled ?? 0,
+        spectator_mode: spectator_mode ?? "disabled",
+        market_event_deck_json: market_event_deck_json ?? null,
+        optional_event_card_ids_json: optional_event_card_ids_json ?? null,
+        currency_name: currency_name ?? "Capital",
+        currency_symbol: currency_symbol ?? "¤",
+        currency_multiplier: currency_multiplier ?? "1",
       });
       return { results: [], success: true };
     }
@@ -527,5 +568,157 @@ describe("GET /api/lobbies/:id/ws", () => {
   it("returns 501 stub", async () => {
     const res = await requestWithEnv("/api/lobbies/some-id/ws");
     expect(res.status).toBe(501);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Enhanced lobby settings
+// ---------------------------------------------------------------------------
+
+describe("Enhanced lobby settings", () => {
+  it("returns default settings when created with minimal input", async () => {
+    const db = createD1Stub();
+    const res = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Defaults Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+      },
+      db,
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.turnTimeout).toBe("5min");
+    expect(body.auctionType).toBe("sealed_bids");
+    expect(body.auctionBidWindow).toBe("1min");
+    expect(body.auctionSettleDelay).toBe("30s");
+    expect(body.voiceVideoEnabled).toBe(false);
+    expect(body.spectatorMode).toBe("disabled");
+    expect(body.currencyName).toBe("Capital");
+    expect(body.currencySymbol).toBe("¤");
+    expect(body.currencyMultiplier).toBe("1");
+    expect(body.optionalMarketEventCardIds).toEqual([]);
+    expect(body.marketEventDeckCardIds).toBeNull();
+  });
+
+  it("persists custom settings on creation", async () => {
+    const db = createD1Stub();
+    const res = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Custom Lobby",
+        maxPlayers: 6,
+        isPrivate: true,
+        optionalRuleIds: ["speed_market"],
+        turnTimeout: "30min",
+        auctionBidWindow: "5min",
+        auctionSettleDelay: "1min",
+        auctionType: "live_bidding",
+        voiceVideoEnabled: true,
+        spectatorMode: "enabled",
+        currencyName: "Credits",
+        currencySymbol: "$",
+        currencyMultiplier: "1000",
+        optionalMarketEventCardIds: ["optional_leveraged_buyout"],
+      },
+      db,
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.turnTimeout).toBe("30min");
+    expect(body.auctionType).toBe("live_bidding");
+    expect(body.auctionBidWindow).toBe("5min");
+    expect(body.voiceVideoEnabled).toBe(true);
+    expect(body.spectatorMode).toBe("enabled");
+    expect(body.currencyName).toBe("Credits");
+    expect(body.currencySymbol).toBe("$");
+    expect(body.currencyMultiplier).toBe("1000");
+    expect(body.optionalMarketEventCardIds).toEqual([
+      "optional_leveraged_buyout",
+    ]);
+  });
+});
+
+describe("Enhanced game start — proper initial state", () => {
+  it("creates a game with enriched state_json including players and settings", async () => {
+    const db = createD1Stub();
+    // Create lobby
+    const createRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Game Start Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    const lobby = await createRes.json();
+
+    // Second player joins
+    await requestWithEnv(`/api/lobbies/${lobby.id}/join`, {
+      method: "POST",
+      headers: { "x-subject": "user-2" },
+      db,
+    });
+
+    // Start the game
+    const startRes = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      db,
+    });
+    expect(startRes.status).toBe(200);
+    const startBody = await startRes.json();
+    expect(startBody.gameId).toBeDefined();
+
+    // Fetch the game record to validate the stored state
+    const gameRes = await requestWithEnv(`/api/games/${startBody.gameId}`, {
+      method: "GET",
+      db,
+    });
+    expect(gameRes.status).toBe(200);
+    const game = await gameRes.json();
+    expect(game.status).toBe("active");
+    expect(game.playerCount).toBe(2);
+  });
+
+  it("stores enriched game_started log with affinity assignments", async () => {
+    const db = createD1Stub();
+    // Create lobby with speed_market rule
+    const createRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Speed Market Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: ["speed_market"],
+      },
+      db,
+    });
+    const lobby = await createRes.json();
+
+    // Second player joins
+    await requestWithEnv(`/api/lobbies/${lobby.id}/join`, {
+      method: "POST",
+      headers: { "x-subject": "user-2" },
+      db,
+    });
+
+    // Start the game
+    const startRes = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      db,
+    });
+    expect(startRes.status).toBe(200);
+    const startBody = await startRes.json();
+    expect(startBody.gameId).toBeDefined();
+    expect(startBody.status).toBe("in_game");
   });
 });

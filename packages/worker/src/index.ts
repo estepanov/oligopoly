@@ -1,3 +1,16 @@
+import {
+  ACHIEVEMENTS_REGISTRY,
+  AFFINITY_CARDS,
+  DIAGONAL_TILES,
+  DISRUPTION_DECK,
+  MARKET_EVENT_DECK,
+  OPTIONAL_MARKET_EVENT_CARDS_REGISTRY,
+  OPTIONAL_RULES_REGISTRY,
+  PERIMETER_TILES,
+  RANK_THRESHOLDS,
+  SECTORS,
+  TOTAL_BOARD_MARKET_VALUE,
+} from "@oligopoly/shared";
 import type { HealthResponse } from "@oligopoly/validation";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -64,6 +77,17 @@ app.get("/api/game-config", (c) => {
     minPlayers: 2,
     startingCash: 1500,
     trustworthinessDefault: 7,
+    totalBoardMarketValue: TOTAL_BOARD_MARKET_VALUE,
+    sectors: SECTORS,
+    perimeterTiles: PERIMETER_TILES,
+    diagonalTiles: DIAGONAL_TILES,
+    marketEventDeck: MARKET_EVENT_DECK,
+    disruptionDeck: DISRUPTION_DECK,
+    affinityCards: AFFINITY_CARDS,
+    rankThresholds: RANK_THRESHOLDS,
+    achievements: ACHIEVEMENTS_REGISTRY,
+    optionalRules: OPTIONAL_RULES_REGISTRY,
+    optionalMarketEventCards: OPTIONAL_MARKET_EVENT_CARDS_REGISTRY,
   });
 });
 

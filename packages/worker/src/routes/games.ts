@@ -164,14 +164,42 @@ gameRoutes.get("/:id/state", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
+  type StateWithAffinity = GameState & {
+    affinityAssignments?: Record<string, string>;
+    settings?: { spectatorMode?: string; [key: string]: unknown };
+  };
+
   const playerIds = JSON.parse(row.player_ids_json) as string[];
-  if (!playerIds.includes(subject)) {
-    return c.json({ error: "Forbidden" }, 403);
+  const isPlayer = playerIds.includes(subject);
+
+  // If not a player, check whether spectator mode is enabled
+  if (!isPlayer) {
+    const state: StateWithAffinity = row.state_json
+      ? (JSON.parse(row.state_json) as StateWithAffinity)
+      : { gameId: id, round: 0 };
+
+    const spectatorEnabled = state.settings?.spectatorMode === "enabled";
+    if (!spectatorEnabled) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+
+    // Spectators see board state but never see affinity assignments
+    const { affinityAssignments: _hidden, ...spectatorState } = state;
+    return c.json(spectatorState);
   }
 
-  const state: GameState = row.state_json
-    ? (JSON.parse(row.state_json) as GameState)
+  const state: StateWithAffinity = row.state_json
+    ? (JSON.parse(row.state_json) as StateWithAffinity)
     : { gameId: id, round: 0 };
+
+  // Redact hidden information: each player may only see their own affinity card.
+  // Replace the full affinityAssignments map with only the requesting player's card.
+  if (state.affinityAssignments) {
+    const myAffinity = state.affinityAssignments[subject] ?? null;
+    // Remove the full map and expose only the requester's card
+    const { affinityAssignments: _all, ...rest } = state;
+    return c.json({ ...rest, myAffinityCardId: myAffinity });
+  }
 
   return c.json(state);
 });

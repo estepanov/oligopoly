@@ -1,13 +1,28 @@
 import {
+  AuctionTypeSchema,
   BindingContractSchema,
   BindingContractTermSchema,
+  BoardTileSchema,
+  CreateLobbyInputSchema,
+  CurrencyMultiplierSchema,
+  GameActionSchema,
+  GamePhaseSchema,
+  GameStateSchema,
   HandshakeAgreementSchema,
   HealthResponseSchema,
   NegotiationErrorKeys,
   NegotiationMessageSchema,
   NegotiationThreadSchema,
+  PlayerStateSchema,
   ProfileVisibilitySchema,
+  RateCardSchema,
+  SectorIdSchema,
+  SpectatorModeSchema,
   SyndicateCharterSchema,
+  TileStateSchema,
+  TileTypeSchema,
+  TurnTimeoutSchema,
+  UpdateLobbySettingsInputSchema,
   UpdateUserSettingsInputSchema,
 } from "@oligopoly/validation";
 import { describe, expect, it } from "vitest";
@@ -474,6 +489,472 @@ describe("NegotiationThreadSchema", () => {
     const result = NegotiationThreadSchema.safeParse({
       ...validThread,
       messages: [],
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+// ===========================================================================
+// Board & Game Configuration Schemas
+// ===========================================================================
+
+describe("TileTypeSchema", () => {
+  it("accepts valid tile types", () => {
+    for (const t of [
+      "sector_tile",
+      "corner",
+      "special",
+      "utility",
+      "sector_hub",
+    ]) {
+      expect(TileTypeSchema.safeParse(t).success).toBe(true);
+    }
+  });
+  it("rejects invalid tile type", () => {
+    expect(TileTypeSchema.safeParse("invalid").success).toBe(false);
+  });
+});
+
+describe("SectorIdSchema", () => {
+  it("accepts all 8 sector IDs", () => {
+    const sectors = [
+      "emerging_tech",
+      "big_tech",
+      "finance",
+      "healthcare",
+      "energy",
+      "defense_media",
+      "elite_tech",
+      "fast_track",
+    ];
+    for (const s of sectors) {
+      expect(SectorIdSchema.safeParse(s).success).toBe(true);
+    }
+  });
+  it("rejects invalid sector", () => {
+    expect(SectorIdSchema.safeParse("tech").success).toBe(false);
+  });
+});
+
+describe("BoardTileSchema", () => {
+  it("accepts a valid perimeter tile", () => {
+    const result = BoardTileSchema.safeParse({
+      position: 1,
+      name: "Digital Content Co.",
+      type: "sector_tile",
+      sectorId: "emerging_tech",
+      cost: 60,
+      baseRent: 2,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a valid diagonal tile with string position", () => {
+    const result = BoardTileSchema.safeParse({
+      position: "D1",
+      name: "Offshore Capital Corp.",
+      type: "sector_tile",
+      sectorId: "fast_track",
+      cost: 320,
+      baseRent: 28,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a corner tile with null fields", () => {
+    const result = BoardTileSchema.safeParse({
+      position: 0,
+      name: "START",
+      type: "corner",
+      sectorId: null,
+      cost: null,
+      baseRent: null,
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("AuctionTypeSchema", () => {
+  it("accepts all three auction types", () => {
+    for (const t of ["open_bids", "sealed_bids", "live_bidding"]) {
+      expect(AuctionTypeSchema.safeParse(t).success).toBe(true);
+    }
+  });
+  it("rejects invalid auction type", () => {
+    expect(AuctionTypeSchema.safeParse("english").success).toBe(false);
+  });
+});
+
+describe("TurnTimeoutSchema", () => {
+  it("accepts all valid timeout values", () => {
+    const values = [
+      "1min",
+      "5min",
+      "30min",
+      "2h",
+      "8h",
+      "24h",
+      "48h",
+      "7d",
+      "none",
+    ];
+    for (const v of values) {
+      expect(TurnTimeoutSchema.safeParse(v).success).toBe(true);
+    }
+  });
+  it("rejects invalid timeout", () => {
+    expect(TurnTimeoutSchema.safeParse("10min").success).toBe(false);
+  });
+});
+
+describe("SpectatorModeSchema", () => {
+  it("accepts enabled and disabled", () => {
+    expect(SpectatorModeSchema.safeParse("enabled").success).toBe(true);
+    expect(SpectatorModeSchema.safeParse("disabled").success).toBe(true);
+  });
+  it("rejects invalid value", () => {
+    expect(SpectatorModeSchema.safeParse("partial").success).toBe(false);
+  });
+});
+
+describe("CurrencyMultiplierSchema", () => {
+  it("accepts valid multipliers", () => {
+    for (const m of ["1", "10", "100", "1000", "10000", "100000"]) {
+      expect(CurrencyMultiplierSchema.safeParse(m).success).toBe(true);
+    }
+  });
+  it("rejects invalid multiplier", () => {
+    expect(CurrencyMultiplierSchema.safeParse("50").success).toBe(false);
+  });
+});
+
+// ===========================================================================
+// Enhanced Lobby Schemas
+// ===========================================================================
+
+describe("CreateLobbyInputSchema (enhanced)", () => {
+  it("accepts minimal input with defaults", () => {
+    const result = CreateLobbyInputSchema.safeParse({
+      name: "Test Lobby",
+      maxPlayers: 4,
+      isPrivate: false,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.turnTimeout).toBe("5min");
+      expect(result.data.auctionType).toBe("sealed_bids");
+      expect(result.data.voiceVideoEnabled).toBe(false);
+      expect(result.data.spectatorMode).toBe("disabled");
+      expect(result.data.currencyName).toBe("Capital");
+      expect(result.data.currencySymbol).toBe("¤");
+      expect(result.data.currencyMultiplier).toBe("1");
+    }
+  });
+
+  it("accepts full input with all settings", () => {
+    const result = CreateLobbyInputSchema.safeParse({
+      name: "Full Lobby",
+      maxPlayers: 6,
+      isPrivate: true,
+      optionalRuleIds: ["speed_market"],
+      turnTimeout: "30min",
+      auctionBidWindow: "5min",
+      auctionSettleDelay: "1min",
+      auctionType: "live_bidding",
+      voiceVideoEnabled: true,
+      spectatorMode: "enabled",
+      marketEventDeckCardIds: ["tech_boom", "market_crash"],
+      optionalMarketEventCardIds: ["optional_leveraged_buyout"],
+      currencyName: "Credits",
+      currencySymbol: "$",
+      currencyMultiplier: "1000",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects invalid auctionType", () => {
+    const result = CreateLobbyInputSchema.safeParse({
+      name: "Test",
+      maxPlayers: 4,
+      isPrivate: false,
+      auctionType: "dutch",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("UpdateLobbySettingsInputSchema (enhanced)", () => {
+  it("accepts partial update with new fields", () => {
+    const result = UpdateLobbySettingsInputSchema.safeParse({
+      turnTimeout: "2h",
+      auctionType: "open_bids",
+      currencyName: "Coins",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts empty object (no changes)", () => {
+    const result = UpdateLobbySettingsInputSchema.safeParse({});
+    expect(result.success).toBe(true);
+  });
+});
+
+// ===========================================================================
+// Game Action Schema
+// ===========================================================================
+
+describe("GameActionSchema", () => {
+  it("accepts roll_dice action", () => {
+    const result = GameActionSchema.safeParse({
+      type: "roll_dice",
+      result: [3, 4],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts buy_tile action with number position", () => {
+    const result = GameActionSchema.safeParse({
+      type: "buy_tile",
+      tilePosition: 5,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts buy_tile action with string position", () => {
+    const result = GameActionSchema.safeParse({
+      type: "buy_tile",
+      tilePosition: "D1",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts develop_tile action", () => {
+    const result = GameActionSchema.safeParse({
+      type: "develop_tile",
+      tilePosition: 6,
+      tokenNumber: 2,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects develop_tile with tokenNumber > 4", () => {
+    const result = GameActionSchema.safeParse({
+      type: "develop_tile",
+      tilePosition: 6,
+      tokenNumber: 5,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts mortgage_tile action", () => {
+    expect(
+      GameActionSchema.safeParse({ type: "mortgage_tile", tilePosition: 9 })
+        .success,
+    ).toBe(true);
+  });
+
+  it("accepts auction_bid action", () => {
+    const result = GameActionSchema.safeParse({
+      type: "auction_bid",
+      tilePosition: 13,
+      amount: 250,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects auction_bid with 0 amount", () => {
+    const result = GameActionSchema.safeParse({
+      type: "auction_bid",
+      tilePosition: 13,
+      amount: 0,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts path_choice action", () => {
+    expect(
+      GameActionSchema.safeParse({ type: "path_choice", choice: "perimeter" })
+        .success,
+    ).toBe(true);
+    expect(
+      GameActionSchema.safeParse({ type: "path_choice", choice: "diagonal" })
+        .success,
+    ).toBe(true);
+  });
+
+  it("accepts end_turn action", () => {
+    expect(GameActionSchema.safeParse({ type: "end_turn" }).success).toBe(true);
+  });
+
+  it("accepts start_negotiation", () => {
+    const result = GameActionSchema.safeParse({
+      type: "start_negotiation",
+      targetPlayerIds: ["p1", "p2"],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts form_syndicate", () => {
+    const result = GameActionSchema.safeParse({
+      type: "form_syndicate",
+      memberIds: ["p1", "p2", "p3"],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects unknown action type", () => {
+    const result = GameActionSchema.safeParse({
+      type: "fly_to_moon",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ===========================================================================
+// Enhanced Game State Schema
+// ===========================================================================
+
+describe("GamePhaseSchema", () => {
+  it("accepts all valid phases", () => {
+    for (const p of ["market_event", "action", "syndicate_coordination"]) {
+      expect(GamePhaseSchema.safeParse(p).success).toBe(true);
+    }
+  });
+  it("rejects invalid phase", () => {
+    expect(GamePhaseSchema.safeParse("setup").success).toBe(false);
+  });
+});
+
+describe("PlayerStateSchema", () => {
+  it("accepts a valid player state", () => {
+    const result = PlayerStateSchema.safeParse({
+      playerId: "p1",
+      position: 5,
+      capital: 1500,
+      ownedTilePositions: [1, 3],
+      mortgagedTilePositions: [],
+      developmentTokens: { "1": 2, "3": 1 },
+      trustworthiness: 7,
+      actionPointsRemaining: 2,
+      inRegulation: false,
+      doublesCount: 0,
+      isOnDiagonal: false,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects trustworthiness outside 0–10", () => {
+    const result = PlayerStateSchema.safeParse({
+      playerId: "p1",
+      position: 0,
+      capital: 1000,
+      ownedTilePositions: [],
+      mortgagedTilePositions: [],
+      developmentTokens: {},
+      trustworthiness: 11,
+      actionPointsRemaining: 2,
+      inRegulation: false,
+      doublesCount: 0,
+      isOnDiagonal: false,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("TileStateSchema", () => {
+  it("accepts a valid tile state", () => {
+    const result = TileStateSchema.safeParse({
+      position: 1,
+      ownerId: "p1",
+      mortgaged: false,
+      developmentTokens: 2,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts unowned tile", () => {
+    const result = TileStateSchema.safeParse({
+      position: "D1",
+      ownerId: null,
+      mortgaged: false,
+      developmentTokens: 0,
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("RateCardSchema", () => {
+  it("accepts a valid rate card", () => {
+    const result = RateCardSchema.safeParse({
+      sectorId: "energy",
+      syndicateId: "s1",
+      multiplier: 1.5,
+      roundsWithoutLanding: 0,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects multiplier below 0.5", () => {
+    const result = RateCardSchema.safeParse({
+      sectorId: "energy",
+      syndicateId: "s1",
+      multiplier: 0.3,
+      roundsWithoutLanding: 0,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects multiplier above 2.0", () => {
+    const result = RateCardSchema.safeParse({
+      sectorId: "energy",
+      syndicateId: "s1",
+      multiplier: 2.5,
+      roundsWithoutLanding: 0,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("GameStateSchema (enhanced)", () => {
+  it("still accepts minimal state (backward compat)", () => {
+    const result = GameStateSchema.safeParse({
+      gameId: "game-1",
+      round: 1,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts full enhanced state", () => {
+    const result = GameStateSchema.safeParse({
+      gameId: "game-1",
+      round: 3,
+      phase: "action",
+      currentPlayerIndex: 0,
+      players: [
+        {
+          playerId: "p1",
+          position: 5,
+          capital: 1200,
+          ownedTilePositions: [1, 3],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 2,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+      ],
+      tiles: [
+        { position: 1, ownerId: "p1", mortgaged: false, developmentTokens: 0 },
+      ],
+      freeMarketPool: 75,
+      turnOrder: ["p1", "p2"],
+      settings: {
+        turnTimeout: "5min",
+        auctionType: "sealed_bids",
+        optionalRuleIds: [],
+      },
     });
     expect(result.success).toBe(true);
   });

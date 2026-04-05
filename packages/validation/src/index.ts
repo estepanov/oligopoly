@@ -219,16 +219,6 @@ export const GameSummarySchema = z.object({
 export type GameSummary = z.infer<typeof GameSummarySchema>;
 
 // ---------------------------------------------------------------------------
-// Game state snapshot — returned by GET /api/games/:id/state
-// Placeholder: only gameId and round are required for now.
-// ---------------------------------------------------------------------------
-export const GameStateSchema = z.object({
-  gameId: z.string(),
-  round: z.number().int(),
-});
-export type GameState = z.infer<typeof GameStateSchema>;
-
-// ---------------------------------------------------------------------------
 // Game log entry — returned by GET /api/games/:id/log and /replay
 // ---------------------------------------------------------------------------
 export const GameLogEntrySchema = z.object({
@@ -252,24 +242,6 @@ export const LobbyStatusSchema = z.enum([
   "finished",
 ]);
 export type LobbyStatus = z.infer<typeof LobbyStatusSchema>;
-
-export const CreateLobbyInputSchema = z.object({
-  name: z.string().min(1).max(64),
-  maxPlayers: z.number().int().min(2).max(6),
-  isPrivate: z.boolean(),
-  optionalRuleIds: z.array(z.string()).default([]),
-});
-export type CreateLobbyInput = z.infer<typeof CreateLobbyInputSchema>;
-
-export const UpdateLobbySettingsInputSchema = z.object({
-  name: z.string().min(1).max(64).optional(),
-  maxPlayers: z.number().int().min(2).max(6).optional(),
-  isPrivate: z.boolean().optional(),
-  optionalRuleIds: z.array(z.string()).optional(),
-});
-export type UpdateLobbySettingsInput = z.infer<
-  typeof UpdateLobbySettingsInputSchema
->;
 
 // ---------------------------------------------------------------------------
 // Leaderboard schemas
@@ -341,6 +313,267 @@ export const LobbyErrorKeys = {
   PLAYER_NOT_FOUND: "lobby.player_not_found",
   AUTH_REQUIRED: "lobby.auth_required",
 } as const;
+
+// ---------------------------------------------------------------------------
+// Board & game configuration schemas
+// ---------------------------------------------------------------------------
+
+export const TileTypeSchema = z.enum([
+  "sector_tile",
+  "corner",
+  "special",
+  "utility",
+  "sector_hub",
+]);
+export type TileType = z.infer<typeof TileTypeSchema>;
+
+export const SectorIdSchema = z.enum([
+  "emerging_tech",
+  "big_tech",
+  "finance",
+  "healthcare",
+  "energy",
+  "defense_media",
+  "elite_tech",
+  "fast_track",
+]);
+export type SectorId = z.infer<typeof SectorIdSchema>;
+
+export const BoardTileSchema = z.object({
+  position: z.union([z.number().int(), z.string()]),
+  name: z.string(),
+  type: TileTypeSchema,
+  sectorId: SectorIdSchema.nullable(),
+  cost: z.number().nullable(),
+  baseRent: z.number().nullable(),
+});
+export type BoardTile = z.infer<typeof BoardTileSchema>;
+
+export const AuctionTypeSchema = z.enum([
+  "open_bids",
+  "sealed_bids",
+  "live_bidding",
+]);
+export type AuctionType = z.infer<typeof AuctionTypeSchema>;
+
+export const TurnTimeoutSchema = z.enum([
+  "1min",
+  "5min",
+  "30min",
+  "2h",
+  "8h",
+  "24h",
+  "48h",
+  "7d",
+  "none",
+]);
+export type TurnTimeout = z.infer<typeof TurnTimeoutSchema>;
+
+export const SpectatorModeSchema = z.enum(["enabled", "disabled"]);
+export type SpectatorMode = z.infer<typeof SpectatorModeSchema>;
+
+export const CurrencyMultiplierSchema = z.enum([
+  "1",
+  "10",
+  "100",
+  "1000",
+  "10000",
+  "100000",
+]);
+export type CurrencyMultiplier = z.infer<typeof CurrencyMultiplierSchema>;
+
+// ---------------------------------------------------------------------------
+// Enhanced lobby schemas
+// ---------------------------------------------------------------------------
+
+export const CreateLobbyInputSchema = z.object({
+  name: z.string().min(1).max(64),
+  maxPlayers: z.number().int().min(2).max(6),
+  isPrivate: z.boolean(),
+  optionalRuleIds: z.array(z.string()).default([]),
+  turnTimeout: TurnTimeoutSchema.default("5min"),
+  auctionBidWindow: z
+    .enum(["30s", "1min", "5min", "10min", "30min"])
+    .default("1min"),
+  auctionSettleDelay: z.enum(["10s", "30s", "1min", "5min"]).default("30s"),
+  auctionType: AuctionTypeSchema.default("sealed_bids"),
+  voiceVideoEnabled: z.boolean().default(false),
+  spectatorMode: SpectatorModeSchema.default("disabled"),
+  marketEventDeckCardIds: z.array(z.string()).optional(),
+  optionalMarketEventCardIds: z.array(z.string()).default([]),
+  currencyName: z.string().min(1).max(32).default("Capital"),
+  currencySymbol: z.string().min(1).max(8).default("¤"),
+  currencyMultiplier: CurrencyMultiplierSchema.default("1"),
+});
+export type CreateLobbyInput = z.infer<typeof CreateLobbyInputSchema>;
+
+export const UpdateLobbySettingsInputSchema = z.object({
+  name: z.string().min(1).max(64).optional(),
+  maxPlayers: z.number().int().min(2).max(6).optional(),
+  isPrivate: z.boolean().optional(),
+  optionalRuleIds: z.array(z.string()).optional(),
+  turnTimeout: TurnTimeoutSchema.optional(),
+  auctionBidWindow: z
+    .enum(["30s", "1min", "5min", "10min", "30min"])
+    .optional(),
+  auctionSettleDelay: z.enum(["10s", "30s", "1min", "5min"]).optional(),
+  auctionType: AuctionTypeSchema.optional(),
+  voiceVideoEnabled: z.boolean().optional(),
+  spectatorMode: SpectatorModeSchema.optional(),
+  marketEventDeckCardIds: z.array(z.string()).nullable().optional(),
+  optionalMarketEventCardIds: z.array(z.string()).optional(),
+  currencyName: z.string().min(1).max(32).optional(),
+  currencySymbol: z.string().min(1).max(8).optional(),
+  currencyMultiplier: CurrencyMultiplierSchema.optional(),
+});
+export type UpdateLobbySettingsInput = z.infer<
+  typeof UpdateLobbySettingsInputSchema
+>;
+
+// ---------------------------------------------------------------------------
+// Game action schemas (discriminated union)
+// ---------------------------------------------------------------------------
+
+export const GameActionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("roll_dice"),
+    result: z.tuple([
+      z.number().int().min(1).max(6),
+      z.number().int().min(1).max(6),
+    ]),
+  }),
+  z.object({
+    type: z.literal("buy_tile"),
+    tilePosition: z.union([z.number().int(), z.string()]),
+  }),
+  z.object({
+    type: z.literal("decline_tile"),
+    tilePosition: z.union([z.number().int(), z.string()]),
+  }),
+  z.object({
+    type: z.literal("develop_tile"),
+    tilePosition: z.union([z.number().int(), z.string()]),
+    tokenNumber: z.number().int().min(1).max(4),
+  }),
+  z.object({
+    type: z.literal("mortgage_tile"),
+    tilePosition: z.union([z.number().int(), z.string()]),
+  }),
+  z.object({
+    type: z.literal("redeem_tile"),
+    tilePosition: z.union([z.number().int(), z.string()]),
+  }),
+  z.object({
+    type: z.literal("auction_bid"),
+    tilePosition: z.union([z.number().int(), z.string()]),
+    amount: z.number().int().min(1),
+  }),
+  z.object({
+    type: z.literal("start_negotiation"),
+    targetPlayerIds: z.array(z.string()),
+  }),
+  z.object({
+    type: z.literal("sign_contract"),
+    contractId: z.string(),
+  }),
+  z.object({
+    type: z.literal("sign_handshake"),
+    handshakeId: z.string(),
+  }),
+  z.object({
+    type: z.literal("break_handshake"),
+    handshakeId: z.string(),
+  }),
+  z.object({
+    type: z.literal("form_syndicate"),
+    memberIds: z.array(z.string()),
+  }),
+  z.object({
+    type: z.literal("call_vote"),
+    voteType: z.string(),
+  }),
+  z.object({
+    type: z.literal("path_choice"),
+    choice: z.enum(["perimeter", "diagonal"]),
+  }),
+  z.object({
+    type: z.literal("end_turn"),
+  }),
+]);
+export type GameAction = z.infer<typeof GameActionSchema>;
+
+// ---------------------------------------------------------------------------
+// Enhanced game state schema
+// ---------------------------------------------------------------------------
+
+export const GamePhaseSchema = z.enum([
+  "market_event",
+  "action",
+  "syndicate_coordination",
+]);
+export type GamePhase = z.infer<typeof GamePhaseSchema>;
+
+export const PlayerStateSchema = z.object({
+  playerId: z.string(),
+  position: z.union([z.number().int(), z.string()]),
+  capital: z.number(),
+  ownedTilePositions: z.array(z.union([z.number().int(), z.string()])),
+  mortgagedTilePositions: z.array(z.union([z.number().int(), z.string()])),
+  developmentTokens: z.record(z.string(), z.number().int().min(0).max(4)),
+  trustworthiness: z.number().int().min(0).max(10),
+  actionPointsRemaining: z.number().int().min(0),
+  inRegulation: z.boolean(),
+  doublesCount: z.number().int().min(0),
+  isOnDiagonal: z.boolean(),
+});
+export type PlayerState = z.infer<typeof PlayerStateSchema>;
+
+export const TileStateSchema = z.object({
+  position: z.union([z.number().int(), z.string()]),
+  ownerId: z.string().nullable(),
+  mortgaged: z.boolean(),
+  developmentTokens: z.number().int().min(0).max(4),
+});
+export type TileState = z.infer<typeof TileStateSchema>;
+
+export const RateCardSchema = z.object({
+  sectorId: z.string(),
+  syndicateId: z.string(),
+  multiplier: z.number().min(0.5).max(2.0),
+  roundsWithoutLanding: z.number().int().min(0),
+});
+export type RateCard = z.infer<typeof RateCardSchema>;
+
+export const GameStateSchema = z.object({
+  gameId: z.string(),
+  round: z.number().int(),
+  phase: GamePhaseSchema.optional(),
+  currentPlayerIndex: z.number().int().min(0).optional(),
+  players: z.array(PlayerStateSchema).optional(),
+  tiles: z.array(TileStateSchema).optional(),
+  freeMarketPool: z.number().optional(),
+  activeContracts: z.array(BindingContractSchema).optional(),
+  rateCards: z.array(RateCardSchema).optional(),
+  turnOrder: z.array(z.string()).optional(),
+  /** The requesting player's own affinity card (hidden from other players) */
+  myAffinityCardId: z.string().nullable().optional(),
+  settings: z
+    .object({
+      turnTimeout: TurnTimeoutSchema.optional(),
+      auctionType: AuctionTypeSchema.optional(),
+      auctionBidWindow: z.string().optional(),
+      auctionSettleDelay: z.string().optional(),
+      optionalRuleIds: z.array(z.string()).optional(),
+      optionalMarketEventCardIds: z.array(z.string()).optional(),
+      marketEventDeckCardIds: z.array(z.string()).nullable().optional(),
+      currencyName: z.string().optional(),
+      currencySymbol: z.string().optional(),
+      currencyMultiplier: z.string().optional(),
+      spectatorMode: SpectatorModeSchema.optional(),
+    })
+    .optional(),
+});
+export type GameState = z.infer<typeof GameStateSchema>;
 
 // ---------------------------------------------------------------------------
 // Passkey / WebAuthn auth schemas
