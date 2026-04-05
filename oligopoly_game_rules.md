@@ -35,6 +35,8 @@ Co-admins share the admin's lobby controls for the lifetime of the game.
 
 Players join via direct invite (username or email), a shareable invite link, or an 8-character invite code. All invite links expire after 24 hours and are single-use.
 
+**Concurrent Lobby Limit:** A player may be in at most **2 waiting lobbies** at the same time. To create or join another waiting lobby, the player must first leave one of their existing waiting lobbies.
+
 **Lobby Visibility:** Lobbies are **private by default** and require an invite to join. Game admins can toggle a lobby to **public** in the lobby settings, making it discoverable on the lobby discovery page.
 
 **Public Lobbies:** When a lobby is public, it appears on the lobby discovery page showing:
@@ -43,6 +45,8 @@ Players join via direct invite (username or email), a shareable invite link, or 
 - Rule customization status: "Default Rules" or "Custom Rules" (with a concise breakdown of what has been modified)
 - Lobby age (time since creation)
 - Admin's player name
+
+**Leaving a Lobby:** If the final player leaves a waiting lobby, the lobby is deleted immediately instead of remaining idle. If the host leaves while other players remain, host ownership transfers deterministically to the longest-tenured remaining admin; if no admin remains, the longest-tenured remaining player is promoted to admin and becomes host.
 
 **Lobby Disbandment:** A lobby that has not started within **24 hours** of creation is automatically **disbanded** by the system. All members receive a notification. Disbanded lobbies are immediately removed from the discovery page.
 

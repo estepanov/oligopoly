@@ -10,6 +10,7 @@
     "dev": "pnpm run --filter @oligopoly/worker dev & pnpm run --filter @oligopoly/web dev & wait",
     "dev:worker": "pnpm run --filter @oligopoly/worker dev",
     "dev:web": "pnpm run --filter @oligopoly/web dev",
+    "db:reset:dev": "bash ./scripts/db-reset-dev.sh",
     "docs:check": "./scripts/docs-safety-check.sh",
     "build": "pnpm run -r build",
     "typecheck": "tsc --build",

@@ -148,7 +148,9 @@ GET    /api/game-config               # game config
 # Lobbies
 POST   /api/lobbies
 GET    /api/lobbies
+GET    /api/lobbies/mine
 GET    /api/lobbies/:id
+DELETE /api/lobbies/:id/leave
 POST   /api/lobbies/:id/join
 POST   /api/lobbies/:id/join/:token
 POST   /api/lobbies/:id/invite
@@ -204,6 +206,12 @@ GET    /api/admin/analytics
 GET    /api/admin/analytics/costs
 GET    /api/admin/audit-log
 ```
+
+Lobby lifecycle invariants:
+
+- The server enforces a maximum of 2 concurrent waiting-lobby memberships per authenticated user.
+- Leaving the final player deletes the lobby immediately.
+- If the host leaves a non-empty waiting lobby, host ownership transfers deterministically to the longest-tenured remaining admin; if none remain, the longest-tenured remaining player is promoted and becomes host.
 
 Auth consistency rule:
 

@@ -1,8 +1,11 @@
 import { startRegistration } from "@simplewebauthn/browser";
 import { useCallback, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { fetchRegisterOptions, fetchRegisterVerify } from "../api/auth";
 import { useAuth } from "../components/AuthContext";
+
+const getSafeReturnTo = (value: string | null) =>
+  value?.startsWith("/") && !value.startsWith("//") ? value : "/";
 
 export function RegisterPage() {
   const [username, setUsername] = useState("");
@@ -10,6 +13,8 @@ export function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = getSafeReturnTo(searchParams.get("returnTo"));
 
   const handleRegister = useCallback(async () => {
     setError(null);
@@ -19,13 +24,13 @@ export function RegisterPage() {
       const credential = await startRegistration({ optionsJSON: options });
       const session = await fetchRegisterVerify(username, credential);
       login(session.token, session.userId, session.username, session.expiresAt);
-      navigate("/");
+      navigate(returnTo);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Registration failed");
     } finally {
       setLoading(false);
     }
-  }, [username, login, navigate]);
+  }, [username, login, navigate, returnTo]);
 
   return (
     <div>
@@ -68,7 +73,9 @@ export function RegisterPage() {
           <button
             type="button"
             className="button buttonSecondary"
-            onClick={() => navigate("/login")}
+            onClick={() =>
+              navigate(`/login?returnTo=${encodeURIComponent(returnTo)}`)
+            }
             disabled={loading}
           >
             Already have an account? Sign in
