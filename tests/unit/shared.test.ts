@@ -1673,3 +1673,63 @@ describe("applyAction — rent payment", () => {
     expect(payer.capital).toBe(1500 - 25);
   });
 });
+
+describe("applyAction — diagonal overflow does not double-pay Free Market", () => {
+  it("pays Free Market pool only once when rolling off diagonal", () => {
+    const state = makeTestGameState();
+    state.players[0].isOnDiagonal = true;
+    state.players[0].position = "D5";
+    state.freeMarketPool = 200;
+
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [3, 4],
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.position).toBe(20);
+    expect(p.capital).toBe(1500 + 200);
+    expect(result.state.freeMarketPool).toBe(0);
+    const fmLogs = result.logEntries.filter(
+      (e) => e.actionType === "collected_free_market",
+    );
+    expect(fmLogs).toHaveLength(1);
+  });
+});
+
+describe("applyAction — end_turn rejects waiting_for_roll", () => {
+  it("throws when trying to end turn before rolling", () => {
+    const state = makeTestGameState({ phase: "waiting_for_roll" });
+    expect(() => applyAction(state, "player-1", { type: "end_turn" })).toThrow(
+      "game.cannot_end_turn",
+    );
+  });
+});
+
+describe("applyAction — landing on START triggers path choice", () => {
+  it("enters waiting_for_path_choice when landing exactly on START", () => {
+    const state = makeTestGameState();
+    state.players[0].position = 36;
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [1, 3],
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.position).toBe(0);
+    expect(result.state.phase).toBe("waiting_for_path_choice");
+    expect(p.capital).toBe(1500 + PASS_START_BONUS);
+  });
+
+  it("accepts path_choice action after landing on START", () => {
+    const state = makeTestGameState({
+      phase: "waiting_for_path_choice",
+    });
+    state.players[0].position = 0;
+    const result = applyAction(state, "player-1", {
+      type: "path_choice",
+      choice: "diagonal",
+    });
+    expect(result.state.players[0].isOnDiagonal).toBe(true);
+    expect(result.state.players[0].position).toBe("D1");
+    expect(result.state.phase).toBe("action");
+  });
+});

@@ -505,6 +505,46 @@ describe("POST /api/games/:id/action — basics", () => {
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("game.not_your_turn");
   });
+
+  it("rejects invalid dice values via schema validation", async () => {
+    const db = createD1Stub();
+    const { gameId, currentPlayer } = await createAndStartGame(db);
+    const res = await requestWithEnv(`/api/games/${gameId}/action`, {
+      method: "POST",
+      headers: { "x-subject": currentPlayer },
+      body: { type: "roll_dice", result: [0, 7] },
+      db,
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("game.invalid_action");
+  });
+
+  it("rejects unknown action types via schema validation", async () => {
+    const db = createD1Stub();
+    const { gameId, currentPlayer } = await createAndStartGame(db);
+    const res = await requestWithEnv(`/api/games/${gameId}/action`, {
+      method: "POST",
+      headers: { "x-subject": currentPlayer },
+      body: { type: "hack_game" },
+      db,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects end_turn before rolling dice", async () => {
+    const db = createD1Stub();
+    const { gameId, currentPlayer } = await createAndStartGame(db);
+    const res = await requestWithEnv(`/api/games/${gameId}/action`, {
+      method: "POST",
+      headers: { "x-subject": currentPlayer },
+      body: { type: "end_turn" },
+      db,
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("game.cannot_end_turn");
+  });
 });
 
 describe("POST /api/games/:id/action — roll_dice", () => {

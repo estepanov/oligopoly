@@ -350,6 +350,7 @@ function handleRollDice(
   }
 
   // Movement
+  let skipLandingResolve = false;
   if (p.isOnDiagonal) {
     // Move on diagonal
     const currentDiagIndex = DIAGONAL_TILES.findIndex(
@@ -358,12 +359,13 @@ function handleRollDice(
     const newDiagIndex = currentDiagIndex + total;
 
     if (newDiagIndex >= DIAGONAL_TILES.length) {
-      // Roll off diagonal -> FREE MARKET
+      // Roll off diagonal -> FREE MARKET (collect pool here; skip resolveLanding)
       p.position = CORNER_POSITIONS.FREE_MARKET;
       p.isOnDiagonal = false;
       const pool = Math.max(newState.freeMarketPool, FREE_MARKET_MINIMUM);
       p.capital += pool;
       newState.freeMarketPool = 0;
+      skipLandingResolve = true;
       logs.push({
         playerId,
         actionType: "collected_free_market",
@@ -377,7 +379,19 @@ function handleRollDice(
     const currentPos = p.position as number;
     const { newPosition, passedStart } = moveOnPerimeter(currentPos, total);
 
-    if (passedStart) {
+    if (passedStart && newPosition !== CORNER_POSITIONS.START) {
+      // Passed through START but didn't land on it — collect bonus
+      // Per game rules: passing through corner 0 triggers path-choice die
+      // The path-choice mechanic is complex (requires extra die roll);
+      // for now, grant the bonus and continue on perimeter.
+      p.capital += PASS_START_BONUS;
+      logs.push({
+        playerId,
+        actionType: "passed_start",
+        payload: { bonus: PASS_START_BONUS },
+      });
+    } else if (passedStart && newPosition === CORNER_POSITIONS.START) {
+      // Landed exactly on START — collect bonus
       p.capital += PASS_START_BONUS;
       logs.push({
         playerId,
@@ -387,17 +401,34 @@ function handleRollDice(
     }
 
     p.position = newPosition;
+
+    // Landing exactly on START -> player chooses path next turn
+    if (newPosition === CORNER_POSITIONS.START && total > 0) {
+      // Per game rules: landing exactly on START, player sits until next turn
+      // then chooses perimeter or diagonal. We enter the path choice phase
+      // only if the player *landed* on START (not just passed through).
+      // Since they've finished their movement, we set waiting_for_path_choice.
+      newState.lastDiceRoll = dice;
+      newState.phase = "waiting_for_path_choice";
+      skipLandingResolve = true;
+    }
   }
 
   newState.lastDiceRoll = dice;
 
-  // Resolve landing tile
-  const landingResult = resolveLanding(newState, playerId, logs);
-  newState = landingResult.state;
-  logs.push(...landingResult.additionalLogs);
+  // Resolve landing tile (skip if already handled, e.g., diagonal overflow to FREE MARKET)
+  if (!skipLandingResolve) {
+    const landingResult = resolveLanding(newState, playerId, logs);
+    newState = landingResult.state;
+    logs.push(...landingResult.additionalLogs);
+  }
 
-  // Determine next phase
-  if (newState.phase !== "waiting_for_buy" && newState.phase !== "game_over") {
+  // Determine next phase (preserve special phases already set)
+  if (
+    newState.phase !== "waiting_for_buy" &&
+    newState.phase !== "game_over" &&
+    newState.phase !== "waiting_for_path_choice"
+  ) {
     if (doubles && p.doublesCount < TRIPLE_DOUBLES_LIMIT) {
       newState.phase = "rolling_doubles";
     } else {
@@ -680,7 +711,7 @@ function handleEndTurn(
   state: InternalGameState,
   playerId: string,
 ): ApplyActionResult {
-  const allowedPhases = ["action", "rolling_doubles", "waiting_for_roll"];
+  const allowedPhases = ["action", "rolling_doubles"];
   if (!allowedPhases.includes(state.phase)) {
     throw "game.cannot_end_turn";
   }

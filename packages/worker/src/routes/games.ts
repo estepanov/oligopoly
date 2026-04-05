@@ -4,7 +4,11 @@ import type {
   GameState,
   GameSummary,
 } from "@oligopoly/validation";
-import { GameErrorKeys, GameStatusSchema } from "@oligopoly/validation";
+import {
+  GameActionSchema,
+  GameErrorKeys,
+  GameStatusSchema,
+} from "@oligopoly/validation";
 import { Hono } from "hono";
 
 type Bindings = {
@@ -378,30 +382,24 @@ gameRoutes.post("/:id/action", async (c) => {
 
   const gameState = normalizeGameState(rawState);
 
-  let actionBody: Record<string, unknown>;
+  let rawBody: unknown;
   try {
-    actionBody = (await c.req.json()) as Record<string, unknown>;
+    rawBody = await c.req.json();
   } catch {
     return c.json({ error: GameErrorKeys.INVALID_ACTION }, 400);
   }
 
-  if (!actionBody.type || typeof actionBody.type !== "string") {
-    return c.json({ error: GameErrorKeys.INVALID_ACTION }, 400);
+  const parsed = GameActionSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return c.json(
+      { error: GameErrorKeys.INVALID_ACTION, detail: parsed.error.issues },
+      400,
+    );
   }
+  const actionBody = parsed.data;
 
   try {
-    const result = applyAction(
-      gameState,
-      subject,
-      actionBody as {
-        type: string;
-        result?: [number, number];
-        tilePosition?: number | string;
-        tokenNumber?: number;
-        choice?: "perimeter" | "diagonal";
-        amount?: number;
-      },
-    );
+    const result = applyAction(gameState, subject, actionBody);
 
     const now = Date.now();
     const stateJson = JSON.stringify(result.state);
