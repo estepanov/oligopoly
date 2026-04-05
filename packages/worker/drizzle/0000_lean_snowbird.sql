@@ -72,7 +72,18 @@ CREATE TABLE `lobbies` (
 	`max_players` integer NOT NULL,
 	`is_private` integer DEFAULT false NOT NULL,
 	`optional_rule_ids_json` text,
-	`created_at` integer NOT NULL
+	`created_at` integer NOT NULL,
+	`turn_timeout` text DEFAULT '5min' NOT NULL,
+	`auction_bid_window` text DEFAULT '1min' NOT NULL,
+	`auction_settle_delay` text DEFAULT '30s' NOT NULL,
+	`auction_type` text DEFAULT 'sealed_bids' NOT NULL,
+	`voice_video_enabled` integer DEFAULT false NOT NULL,
+	`spectator_mode` text DEFAULT 'disabled' NOT NULL,
+	`market_event_deck_json` text,
+	`optional_event_card_ids_json` text,
+	`currency_name` text DEFAULT 'Capital' NOT NULL,
+	`currency_symbol` text DEFAULT '¤' NOT NULL,
+	`currency_multiplier` text DEFAULT '1' NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `lobby_players` (

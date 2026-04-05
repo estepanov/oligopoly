@@ -205,6 +205,19 @@ export const lobbies = sqliteTable("lobbies", {
     .default(false),
   optionalRuleIdsJson: text("optional_rule_ids_json"),
   createdAt: integer("created_at").notNull(),
+  turnTimeout: text("turn_timeout").notNull().default("5min"),
+  auctionBidWindow: text("auction_bid_window").notNull().default("1min"),
+  auctionSettleDelay: text("auction_settle_delay").notNull().default("30s"),
+  auctionType: text("auction_type").notNull().default("sealed_bids"),
+  voiceVideoEnabled: integer("voice_video_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  spectatorMode: text("spectator_mode").notNull().default("disabled"),
+  marketEventDeckJson: text("market_event_deck_json"),
+  optionalEventCardIdsJson: text("optional_event_card_ids_json"),
+  currencyName: text("currency_name").notNull().default("Capital"),
+  currencySymbol: text("currency_symbol").notNull().default("¤"),
+  currencyMultiplier: text("currency_multiplier").notNull().default("1"),
 });
 
 // -----------------------------------------------------------------------------
