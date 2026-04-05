@@ -41,9 +41,9 @@ app.use(
     },
   }),
 );
+app.use("*", authSubjectMiddleware);
 app.use("*", rateLimitMiddleware);
 app.use("*", banCacheMiddleware);
-app.use("*", authSubjectMiddleware);
 
 app.get("/api/health", (c) => {
   const response: HealthResponse = {

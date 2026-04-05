@@ -6,6 +6,10 @@ type RateLimitBindings = {
   KV?: Pick<KVNamespace, "get">;
 };
 
+type RateLimitVariables = {
+  userId?: string;
+};
+
 const AUTH_PATH_PREFIX = "/api/auth/";
 
 const toValue = (value: string | null | undefined): string | null => {
@@ -18,11 +22,16 @@ const isAuthPath = (path: string) => path.startsWith(AUTH_PATH_PREFIX);
 const isReadMethod = (method: string) => method === "GET";
 
 const getRateLimitInfo = (
-  c: Parameters<MiddlewareHandler<{ Bindings: RateLimitBindings }>>[0],
+  c: Parameters<
+    MiddlewareHandler<{
+      Bindings: RateLimitBindings;
+      Variables: RateLimitVariables;
+    }>
+  >[0],
   path: string,
   method: string,
 ): { target: RateLimitTarget; identifier: string | null } => {
-  const subject = toValue(c.req.header("x-subject"));
+  const subject = c.get("userId") ?? null;
   const ip = toValue(c.req.header("cf-connecting-ip"));
 
   if (isAuthPath(path) && !subject) {
@@ -38,6 +47,7 @@ const getRateLimitInfo = (
 
 export const rateLimitMiddleware: MiddlewareHandler<{
   Bindings: RateLimitBindings;
+  Variables: RateLimitVariables;
 }> = async (c, next) => {
   if (!c.env?.KV) {
     await next();
