@@ -28,7 +28,7 @@ export function calculateMortgageValue(tileCost: number): number {
 
 /**
  * Calculate the cost to redeem (un-mortgage) a tile.
- * Returns ceil(mortgageValue × rate).
+ * Returns ceil(mortgageValue × rate), with floating-point epsilon handling.
  *
  * Standard rate: 110% of mortgage value (55% of acquisition cost).
  * PropTech Pioneer affinity: 105% of mortgage value.
@@ -43,7 +43,13 @@ export function calculateRedemptionCost(
 ): number {
   const mortgageValue = calculateMortgageValue(tileCost);
   const rate = hasPropTechAffinity ? PROPTECH_REDEMPTION_RATE : REDEMPTION_RATE;
-  return Math.ceil(mortgageValue * rate);
+  const raw = mortgageValue * rate;
+  // Handle floating-point: if the value is within epsilon of an integer, round to that integer
+  const rounded = Math.round(raw);
+  if (Math.abs(raw - rounded) < 1e-9) {
+    return rounded;
+  }
+  return Math.ceil(raw);
 }
 
 /**

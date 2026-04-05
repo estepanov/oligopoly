@@ -1,19 +1,48 @@
-import type { BindingContract, BindingContractTerm } from "@oligopoly/shared";
+import type { BindingContract, BindingContractTerm, ContributionInput } from "@oligopoly/shared";
 import {
   applyHandshakeBreach,
+  applyHigherRankBonus,
   applyThreadExpiry,
   calcThreadExpiry,
+  calculateAbsorptionPrice,
+  calculateContributionScores,
+  calculateDevelopmentCost,
+  calculateGameRankPoints,
+  calculateHubRent,
+  calculateMortgageValue,
+  calculateRedemptionCost,
+  calculateSectorTileRent,
+  calculateUtilityRent,
   canCreateBindingContract,
+  checkSoloWin,
+  checkSyndicateWin,
   clampTrustworthiness,
+  DEFAULT_CONTRIBUTION_WEIGHTS,
   DEFAULT_PROFILE_VISIBILITY,
+  FLASH_CRASH_LOSS_PCT,
+  FLASH_CRASH_WINDFALL_PCT,
   type FullUserProfile,
+  getRankForPoints,
+  getStartingCapital,
+  getTileByPosition,
+  getTilesBySector,
   getTrustworthinessRestrictions,
   HANDSHAKE_BREACH_PENALTY,
   isActionBlockedByContracts,
+  isDoubles,
+  isDiagonalChoice,
+  isPerimeterChoice,
   isThreadExpired,
+  MAX_DEVELOPMENT_TOKENS,
+  moveOnPerimeter,
   NEGOTIATION_THREAD_DURATION,
+  PASS_START_BONUS,
+  RANK_POINT_RULES,
   serializeProfileForAudience,
+  SOLO_WIN_THRESHOLD,
+  SYNDICATE_WIN_THRESHOLD,
   THREAD_EXPIRY_PENALTY,
+  TOTAL_BOARD_MARKET_VALUE,
   TRUSTWORTHINESS_DEFAULT,
   validateContractTerms,
   validateContractTileOwnership,
@@ -791,5 +820,547 @@ describe("isActionBlockedByContracts", () => {
       playerId: "p1",
     });
     expect(result.blocked).toBe(false);
+  });
+});
+
+// ===========================================================================
+// Rent Calculation Engine
+// ===========================================================================
+
+describe("calculateSectorTileRent", () => {
+  it("returns base rent with no dev tokens and no sector control", () => {
+    expect(calculateSectorTileRent(10, 0, false)).toBe(10);
+  });
+
+  it("returns 2× base rent with sector control and no dev tokens", () => {
+    expect(calculateSectorTileRent(10, 0, true)).toBe(20);
+  });
+
+  it("returns 5× base rent with 1 dev token", () => {
+    expect(calculateSectorTileRent(10, 1, false)).toBe(50);
+    expect(calculateSectorTileRent(10, 1, true)).toBe(50);
+  });
+
+  it("returns 10× base rent with 2 dev tokens", () => {
+    expect(calculateSectorTileRent(10, 2, false)).toBe(100);
+  });
+
+  it("returns 15× base rent with 3 dev tokens", () => {
+    expect(calculateSectorTileRent(10, 3, false)).toBe(150);
+  });
+
+  it("returns 20× base rent with 4 dev tokens", () => {
+    expect(calculateSectorTileRent(10, 4, false)).toBe(200);
+  });
+
+  it("caps at 20× for tokens > 4", () => {
+    expect(calculateSectorTileRent(10, 5, false)).toBe(200);
+  });
+
+  it("applies rate card multiplier", () => {
+    // Base 120, sector control = 240, rate card 1.5× = 360
+    expect(calculateSectorTileRent(120, 0, true, 1.5)).toBe(360);
+  });
+
+  it("clamps rate card to minimum 0.5", () => {
+    expect(calculateSectorTileRent(100, 0, true, 0.1)).toBe(Math.floor(200 * 0.5));
+  });
+
+  it("clamps rate card to maximum 2.0", () => {
+    expect(calculateSectorTileRent(100, 0, true, 3.0)).toBe(Math.floor(200 * 2.0));
+  });
+});
+
+describe("calculateHubRent", () => {
+  it("returns 25 for 1 hub", () => expect(calculateHubRent(1)).toBe(25));
+  it("returns 50 for 2 hubs", () => expect(calculateHubRent(2)).toBe(50));
+  it("returns 100 for 3 hubs", () => expect(calculateHubRent(3)).toBe(100));
+  it("returns 200 for 4 hubs", () => expect(calculateHubRent(4)).toBe(200));
+  it("returns 0 for 0 hubs", () => expect(calculateHubRent(0)).toBe(0));
+});
+
+describe("calculateUtilityRent", () => {
+  it("returns 6 × dice for 1 utility", () => {
+    expect(calculateUtilityRent(1, 7)).toBe(42);
+  });
+  it("returns 15 × dice for 2 utilities", () => {
+    expect(calculateUtilityRent(2, 10)).toBe(150);
+  });
+  it("returns 0 for 0 utilities", () => {
+    expect(calculateUtilityRent(0, 7)).toBe(0);
+  });
+});
+
+describe("calculateDevelopmentCost", () => {
+  it("first token costs face value", () => {
+    expect(calculateDevelopmentCost(180, 1)).toBe(180);
+  });
+
+  it("subsequent tokens cost floor(1.5 × face value)", () => {
+    expect(calculateDevelopmentCost(180, 2)).toBe(270);
+    expect(calculateDevelopmentCost(180, 3)).toBe(270);
+    expect(calculateDevelopmentCost(180, 4)).toBe(270);
+  });
+
+  it("handles odd costs that need floor", () => {
+    expect(calculateDevelopmentCost(100, 2)).toBe(150);
+    expect(calculateDevelopmentCost(60, 2)).toBe(90);
+    // 80 × 1.5 = 120 (exact)
+    expect(calculateDevelopmentCost(80, 2)).toBe(120);
+  });
+
+  it("applies lean manufacturing 20% discount", () => {
+    // 180 × 0.8 = 144 for first token
+    expect(calculateDevelopmentCost(180, 1, true)).toBe(144);
+    // 270 × 0.8 = 216 for subsequent tokens
+    expect(calculateDevelopmentCost(180, 2, true)).toBe(216);
+  });
+});
+
+// ===========================================================================
+// Mortgage Engine
+// ===========================================================================
+
+describe("calculateMortgageValue", () => {
+  it("returns floor(cost × 0.5)", () => {
+    expect(calculateMortgageValue(180)).toBe(90);
+    expect(calculateMortgageValue(60)).toBe(30);
+    expect(calculateMortgageValue(200)).toBe(100);
+  });
+
+  it("floors odd costs", () => {
+    // 151 × 0.5 = 75.5 → floor → 75
+    expect(calculateMortgageValue(151)).toBe(75);
+  });
+});
+
+describe("calculateRedemptionCost", () => {
+  it("returns ceil(mortgageValue × 1.1) for standard rate", () => {
+    // Cloud Infrastructure: cost 180, mortgage 90, redemption = ceil(90 × 1.1) = ceil(99) = 99
+    expect(calculateRedemptionCost(180)).toBe(99);
+  });
+
+  it("rounds up non-integer results", () => {
+    // cost 60, mortgage 30, redemption = ceil(30 × 1.1) = ceil(33) = 33
+    expect(calculateRedemptionCost(60)).toBe(33);
+    // cost 100, mortgage 50, redemption = ceil(50 × 1.1) = ceil(55) = 55
+    expect(calculateRedemptionCost(100)).toBe(55);
+  });
+
+  it("returns ceil(mortgageValue × 1.05) with PropTech affinity", () => {
+    // cost 180, mortgage 90, redemption = ceil(90 × 1.05) = ceil(94.5) = 95
+    expect(calculateRedemptionCost(180, true)).toBe(95);
+  });
+});
+
+describe("calculateAbsorptionPrice", () => {
+  it("returns floor(cost × 0.6)", () => {
+    expect(calculateAbsorptionPrice(200)).toBe(120);
+    expect(calculateAbsorptionPrice(180)).toBe(108);
+  });
+});
+
+// ===========================================================================
+// Starting Capital & Setup
+// ===========================================================================
+
+describe("getStartingCapital", () => {
+  it("returns 1500 for 2–3 players", () => {
+    expect(getStartingCapital(2)).toBe(1500);
+    expect(getStartingCapital(3)).toBe(1500);
+  });
+
+  it("returns 1200 for 4–5 players", () => {
+    expect(getStartingCapital(4)).toBe(1200);
+    expect(getStartingCapital(5)).toBe(1200);
+  });
+
+  it("returns 1000 for 6 players", () => {
+    expect(getStartingCapital(6)).toBe(1000);
+  });
+
+  it("applies Speed Market 30% bonus", () => {
+    expect(getStartingCapital(2, true)).toBe(Math.floor(1500 * 1.3)); // 1950
+    expect(getStartingCapital(4, true)).toBe(Math.floor(1200 * 1.3)); // 1560
+    expect(getStartingCapital(6, true)).toBe(Math.floor(1000 * 1.3)); // 1300
+  });
+});
+
+describe("setup constants", () => {
+  it("PASS_START_BONUS is 200", () => {
+    expect(PASS_START_BONUS).toBe(200);
+  });
+
+  it("FLASH_CRASH constants are correct", () => {
+    expect(FLASH_CRASH_LOSS_PCT).toBe(0.05);
+    expect(FLASH_CRASH_WINDFALL_PCT).toBe(0.1);
+  });
+});
+
+// ===========================================================================
+// Win Conditions
+// ===========================================================================
+
+describe("checkSyndicateWin", () => {
+  it("returns true when at exactly 60%", () => {
+    expect(checkSyndicateWin(600, 1000)).toBe(true);
+  });
+
+  it("returns true when above 60%", () => {
+    expect(checkSyndicateWin(700, 1000)).toBe(true);
+  });
+
+  it("returns false when below 60%", () => {
+    expect(checkSyndicateWin(599, 1000)).toBe(false);
+  });
+
+  it("returns false for zero total market value", () => {
+    expect(checkSyndicateWin(100, 0)).toBe(false);
+  });
+
+  it("SYNDICATE_WIN_THRESHOLD is 0.6", () => {
+    expect(SYNDICATE_WIN_THRESHOLD).toBe(0.6);
+  });
+});
+
+describe("checkSoloWin", () => {
+  it("returns true when at exactly 35%", () => {
+    expect(checkSoloWin(350, 1000)).toBe(true);
+  });
+
+  it("returns true when above 35%", () => {
+    expect(checkSoloWin(400, 1000)).toBe(true);
+  });
+
+  it("returns false when below 35%", () => {
+    expect(checkSoloWin(349, 1000)).toBe(false);
+  });
+
+  it("returns false for zero total market value", () => {
+    expect(checkSoloWin(100, 0)).toBe(false);
+  });
+
+  it("SOLO_WIN_THRESHOLD is 0.35", () => {
+    expect(SOLO_WIN_THRESHOLD).toBe(0.35);
+  });
+});
+
+// ===========================================================================
+// Contribution Score Calculator
+// ===========================================================================
+
+describe("calculateContributionScores", () => {
+  it("returns empty array for empty members", () => {
+    expect(calculateContributionScores([])).toEqual([]);
+  });
+
+  it("returns 100% for single member", () => {
+    const members: ContributionInput[] = [
+      { playerId: "p1", tileAcquisitionCostShare: 1, rentCollectedShare: 1, dealValueShare: 1 },
+    ];
+    const result = calculateContributionScores(members);
+    expect(result).toHaveLength(1);
+    expect(result[0].percentage).toBe(100);
+  });
+
+  it("matches the worked example from game rules (Alice/Bob/Carol)", () => {
+    const members: ContributionInput[] = [
+      { playerId: "alice", tileAcquisitionCostShare: 0.45, rentCollectedShare: 0.50, dealValueShare: 0.60 },
+      { playerId: "bob", tileAcquisitionCostShare: 0.35, rentCollectedShare: 0.30, dealValueShare: 0.30 },
+      { playerId: "carol", tileAcquisitionCostShare: 0.20, rentCollectedShare: 0.20, dealValueShare: 0.10 },
+    ];
+    const result = calculateContributionScores(members);
+
+    // Alice: 0.35×0.45 + 0.35×0.50 + 0.30×0.60 = 0.5125 (51.25%)
+    // Bob:   0.35×0.35 + 0.35×0.30 + 0.30×0.30 = 0.3175 (31.75%)
+    // Carol: 0.35×0.20 + 0.35×0.20 + 0.30×0.10 = 0.1700 (17.00%)
+    const alice = result.find((r) => r.playerId === "alice")!;
+    const bob = result.find((r) => r.playerId === "bob")!;
+    const carol = result.find((r) => r.playerId === "carol")!;
+
+    // Bob floors to 31, Carol floors to 17, Alice gets remainder: 100-31-17 = 52
+    expect(bob.percentage).toBe(31);
+    expect(carol.percentage).toBe(17);
+    expect(alice.percentage).toBe(52);
+
+    // Sum must be exactly 100
+    const total = result.reduce((s, r) => s + r.percentage, 0);
+    expect(total).toBe(100);
+  });
+
+  it("handles custom weights", () => {
+    const members: ContributionInput[] = [
+      { playerId: "p1", tileAcquisitionCostShare: 1, rentCollectedShare: 0, dealValueShare: 0 },
+      { playerId: "p2", tileAcquisitionCostShare: 0, rentCollectedShare: 1, dealValueShare: 0 },
+    ];
+    const result = calculateContributionScores(members, {
+      assetScorePct: 100,
+      revenueScorePct: 0,
+      negotiationCreditPct: 0,
+    });
+    const p1 = result.find((r) => r.playerId === "p1")!;
+    expect(p1.percentage).toBe(100);
+  });
+
+  it("handles equal contributions", () => {
+    const members: ContributionInput[] = [
+      { playerId: "p1", tileAcquisitionCostShare: 0.5, rentCollectedShare: 0.5, dealValueShare: 0.5 },
+      { playerId: "p2", tileAcquisitionCostShare: 0.5, rentCollectedShare: 0.5, dealValueShare: 0.5 },
+    ];
+    const result = calculateContributionScores(members);
+    const total = result.reduce((s, r) => s + r.percentage, 0);
+    expect(total).toBe(100);
+    expect(result[0].percentage).toBe(50);
+    expect(result[1].percentage).toBe(50);
+  });
+
+  it("DEFAULT_CONTRIBUTION_WEIGHTS sums to 100", () => {
+    const sum =
+      DEFAULT_CONTRIBUTION_WEIGHTS.assetScorePct +
+      DEFAULT_CONTRIBUTION_WEIGHTS.revenueScorePct +
+      DEFAULT_CONTRIBUTION_WEIGHTS.negotiationCreditPct;
+    expect(sum).toBe(100);
+  });
+});
+
+// ===========================================================================
+// Dice & Movement
+// ===========================================================================
+
+describe("isDoubles", () => {
+  it("returns true for matching dice", () => {
+    expect(isDoubles([3, 3])).toBe(true);
+    expect(isDoubles([1, 1])).toBe(true);
+    expect(isDoubles([6, 6])).toBe(true);
+  });
+
+  it("returns false for non-matching dice", () => {
+    expect(isDoubles([1, 2])).toBe(false);
+    expect(isDoubles([5, 6])).toBe(false);
+  });
+});
+
+describe("isPerimeterChoice / isDiagonalChoice", () => {
+  it("odd rolls select perimeter", () => {
+    expect(isPerimeterChoice(1)).toBe(true);
+    expect(isPerimeterChoice(3)).toBe(true);
+    expect(isPerimeterChoice(5)).toBe(true);
+  });
+
+  it("even rolls select diagonal", () => {
+    expect(isDiagonalChoice(2)).toBe(true);
+    expect(isDiagonalChoice(4)).toBe(true);
+    expect(isDiagonalChoice(6)).toBe(true);
+  });
+
+  it("perimeter and diagonal are mutually exclusive", () => {
+    for (let i = 1; i <= 6; i++) {
+      expect(isPerimeterChoice(i)).toBe(!isDiagonalChoice(i));
+    }
+  });
+});
+
+describe("moveOnPerimeter", () => {
+  it("moves forward on the board", () => {
+    const result = moveOnPerimeter(5, 7);
+    expect(result.newPosition).toBe(12);
+    expect(result.passedStart).toBe(false);
+  });
+
+  it("wraps around the board", () => {
+    const result = moveOnPerimeter(38, 5);
+    expect(result.newPosition).toBe(3);
+    expect(result.passedStart).toBe(true);
+  });
+
+  it("landing exactly on START counts as passing", () => {
+    const result = moveOnPerimeter(35, 5);
+    expect(result.newPosition).toBe(0);
+    expect(result.passedStart).toBe(true);
+  });
+
+  it("does not pass start for short moves from low positions", () => {
+    const result = moveOnPerimeter(0, 10);
+    expect(result.newPosition).toBe(10);
+    expect(result.passedStart).toBe(false);
+  });
+});
+
+// ===========================================================================
+// Board Tile Lookups
+// ===========================================================================
+
+describe("getTileByPosition", () => {
+  it("finds perimeter tiles by number", () => {
+    const tile = getTileByPosition(0);
+    expect(tile).toBeDefined();
+    expect(tile!.name).toBe("START");
+  });
+
+  it("finds diagonal tiles by string", () => {
+    const tile = getTileByPosition("D1");
+    expect(tile).toBeDefined();
+    expect(tile!.name).toBe("Offshore Capital Corp.");
+  });
+
+  it("returns undefined for invalid position", () => {
+    expect(getTileByPosition(99)).toBeUndefined();
+    expect(getTileByPosition("D9")).toBeUndefined();
+  });
+});
+
+describe("getTilesBySector", () => {
+  it("returns 3 tiles for Emerging Tech (positions 1, 3, 11)", () => {
+    const tiles = getTilesBySector("emerging_tech");
+    expect(tiles).toHaveLength(3);
+  });
+
+  it("returns 3 tiles for Big Tech", () => {
+    const tiles = getTilesBySector("big_tech");
+    expect(tiles).toHaveLength(3);
+  });
+
+  it("returns 3 tiles for Fast Track (all diagonal)", () => {
+    const tiles = getTilesBySector("fast_track");
+    expect(tiles).toHaveLength(3);
+    for (const tile of tiles) {
+      expect(typeof tile.position).toBe("string");
+    }
+  });
+
+  it("returns 2 tiles for Elite Tech", () => {
+    const tiles = getTilesBySector("elite_tech");
+    expect(tiles).toHaveLength(2);
+  });
+});
+
+describe("TOTAL_BOARD_MARKET_VALUE", () => {
+  it("is a positive number", () => {
+    expect(TOTAL_BOARD_MARKET_VALUE).toBeGreaterThan(0);
+  });
+});
+
+// ===========================================================================
+// Rank Points
+// ===========================================================================
+
+describe("getRankForPoints", () => {
+  it("returns tier 1 for 0 points", () => {
+    const rank = getRankForPoints(0);
+    expect(rank.tier).toBe(1);
+    expect(rank.title).toBe("Market Novice");
+  });
+
+  it("returns tier 1 for 99 points", () => {
+    expect(getRankForPoints(99).tier).toBe(1);
+  });
+
+  it("returns tier 2 for 100 points", () => {
+    expect(getRankForPoints(100).tier).toBe(2);
+    expect(getRankForPoints(100).title).toBe("Sector Investor");
+  });
+
+  it("returns tier 3 for 500 points", () => {
+    expect(getRankForPoints(500).tier).toBe(3);
+  });
+
+  it("returns tier 4 for 1500 points", () => {
+    expect(getRankForPoints(1500).tier).toBe(4);
+  });
+
+  it("returns tier 5 for 5000+ points", () => {
+    expect(getRankForPoints(5000).tier).toBe(5);
+    expect(getRankForPoints(10000).tier).toBe(5);
+  });
+});
+
+describe("calculateGameRankPoints", () => {
+  it("awards 10 points for completing a game", () => {
+    const pts = calculateGameRankPoints({
+      completed: true,
+      won: false,
+      sectorsControlled: 0,
+      tradesCompleted: 0,
+      auctionsWon: 0,
+      achievementPoints: 0,
+    });
+    expect(pts).toBe(10);
+  });
+
+  it("awards 35 points for winning a game (10 completion + 25 win)", () => {
+    const pts = calculateGameRankPoints({
+      completed: true,
+      won: true,
+      sectorsControlled: 0,
+      tradesCompleted: 0,
+      auctionsWon: 0,
+      achievementPoints: 0,
+    });
+    expect(pts).toBe(35);
+  });
+
+  it("awards 5 points per sector controlled", () => {
+    const pts = calculateGameRankPoints({
+      completed: true,
+      won: false,
+      sectorsControlled: 3,
+      tradesCompleted: 0,
+      auctionsWon: 0,
+      achievementPoints: 0,
+    });
+    expect(pts).toBe(10 + 15);
+  });
+
+  it("caps sector control bonus at 8 sectors", () => {
+    const pts = calculateGameRankPoints({
+      completed: true,
+      won: false,
+      sectorsControlled: 10,
+      tradesCompleted: 0,
+      auctionsWon: 0,
+      achievementPoints: 0,
+    });
+    expect(pts).toBe(10 + 40);
+  });
+
+  it("awards 2 points per trade and auction", () => {
+    const pts = calculateGameRankPoints({
+      completed: true,
+      won: false,
+      sectorsControlled: 0,
+      tradesCompleted: 5,
+      auctionsWon: 3,
+      achievementPoints: 0,
+    });
+    expect(pts).toBe(10 + 10 + 6);
+  });
+
+  it("includes achievement points", () => {
+    const pts = calculateGameRankPoints({
+      completed: true,
+      won: false,
+      sectorsControlled: 0,
+      tradesCompleted: 0,
+      auctionsWon: 0,
+      achievementPoints: 25,
+    });
+    expect(pts).toBe(35);
+  });
+});
+
+describe("applyHigherRankBonus", () => {
+  it("returns base points when opponent tier <= player tier", () => {
+    expect(applyHigherRankBonus(100, 2, 3)).toBe(100);
+    expect(applyHigherRankBonus(100, 2, 2)).toBe(100);
+  });
+
+  it("applies multiplier for higher-ranked opponents", () => {
+    // 1 tier diff → 1.125 multiplier → floor(100 × 1.125) = 112
+    expect(applyHigherRankBonus(100, 3, 2)).toBe(112);
+  });
+
+  it("caps at 1.5× multiplier", () => {
+    // 5 tier diff → 1 + 5×0.125 = 1.625 → capped at 1.5
+    expect(applyHigherRankBonus(100, 6, 1)).toBe(150);
   });
 });
