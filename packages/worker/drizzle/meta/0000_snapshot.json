@@ -33,10 +33,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "achievements_user_id_id_pk": {
-          "columns": [
-            "user_id",
-            "id"
-          ],
+          "columns": ["user_id", "id"],
           "name": "achievements_user_id_id_pk"
         }
       },
@@ -583,10 +580,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "lobby_players_lobby_id_user_id_pk": {
-          "columns": [
-            "lobby_id",
-            "user_id"
-          ],
+          "columns": ["lobby_id", "user_id"],
           "name": "lobby_players_lobby_id_user_id_pk"
         }
       },
@@ -1004,16 +998,12 @@
       "indexes": {
         "users_username_unique": {
           "name": "users_username_unique",
-          "columns": [
-            "username"
-          ],
+          "columns": ["username"],
           "isUnique": true
         },
         "users_email_unique": {
           "name": "users_email_unique",
-          "columns": [
-            "email"
-          ],
+          "columns": ["email"],
           "isUnique": true
         }
       },

@@ -154,10 +154,7 @@ const listUserLobbyMemberships = async (db: D1Database, userId: string) => {
     });
 };
 
-const countWaitingLobbyMemberships = async (
-  db: D1Database,
-  userId: string,
-) => {
+const countWaitingLobbyMemberships = async (db: D1Database, userId: string) => {
   const memberships = await listUserLobbyMemberships(db, userId);
   return memberships.filter(({ lobby }) => isWaitingLobbyStatus(lobby.status))
     .length;
@@ -262,7 +259,10 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
     return c.json({ error: "Database not configured" }, 500);
   }
 
-  const waitingMembershipCount = await countWaitingLobbyMemberships(db, subject);
+  const waitingMembershipCount = await countWaitingLobbyMemberships(
+    db,
+    subject,
+  );
   if (waitingMembershipCount >= MAX_WAITING_LOBBIES_PER_USER) {
     return c.json({ error: LobbyErrorKeys.MEMBERSHIP_LIMIT_REACHED }, 409);
   }
@@ -478,7 +478,10 @@ lobbyRoutes.post("/:id/join", async (c) => {
     return c.json({ error: LobbyErrorKeys.ALREADY_JOINED }, 409);
   }
 
-  const waitingMembershipCount = await countWaitingLobbyMemberships(db, subject);
+  const waitingMembershipCount = await countWaitingLobbyMemberships(
+    db,
+    subject,
+  );
   if (waitingMembershipCount >= MAX_WAITING_LOBBIES_PER_USER) {
     return c.json({ error: LobbyErrorKeys.MEMBERSHIP_LIMIT_REACHED }, 409);
   }
@@ -552,7 +555,10 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
     return c.json({ error: LobbyErrorKeys.ALREADY_JOINED }, 409);
   }
 
-  const waitingMembershipCount = await countWaitingLobbyMemberships(db, subject);
+  const waitingMembershipCount = await countWaitingLobbyMemberships(
+    db,
+    subject,
+  );
   if (waitingMembershipCount >= MAX_WAITING_LOBBIES_PER_USER) {
     return c.json({ error: LobbyErrorKeys.MEMBERSHIP_LIMIT_REACHED }, 409);
   }

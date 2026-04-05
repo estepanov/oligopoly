@@ -474,11 +474,14 @@ describe("POST /api/lobbies", () => {
     expect(startingLobbyRes.status).toBe(201);
     const startingLobby = await startingLobbyRes.json();
 
-    const joinRes = await requestWithEnv(`/api/lobbies/${startingLobby.id}/join`, {
-      method: "POST",
-      headers: { "x-subject": "user-1" },
-      db,
-    });
+    const joinRes = await requestWithEnv(
+      `/api/lobbies/${startingLobby.id}/join`,
+      {
+        method: "POST",
+        headers: { "x-subject": "user-1" },
+        db,
+      },
+    );
     expect(joinRes.status).toBe(200);
     setLobbyStatus(db, startingLobby.id, "starting");
 
@@ -609,11 +612,14 @@ describe("GET /api/lobbies/mine", () => {
     expect(startingLobbyRes.status).toBe(201);
     const startingLobby = await startingLobbyRes.json();
 
-    const joinRes = await requestWithEnv(`/api/lobbies/${startingLobby.id}/join`, {
-      method: "POST",
-      headers: { "x-subject": "user-1" },
-      db,
-    });
+    const joinRes = await requestWithEnv(
+      `/api/lobbies/${startingLobby.id}/join`,
+      {
+        method: "POST",
+        headers: { "x-subject": "user-1" },
+        db,
+      },
+    );
     expect(joinRes.status).toBe(200);
     setLobbyStatus(db, startingLobby.id, "starting");
 
