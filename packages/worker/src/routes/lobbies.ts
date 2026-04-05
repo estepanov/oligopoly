@@ -2,6 +2,8 @@ import { zValidator } from "@hono/zod-validator";
 import {
   AFFINITY_CARD_IDS,
   getStartingCapital,
+  OPTIONAL_MARKET_EVENT_CARDS_REGISTRY,
+  OPTIONAL_RULES_REGISTRY,
   TRUSTWORTHINESS_DEFAULT,
 } from "@oligopoly/shared";
 import {
@@ -52,6 +54,50 @@ type LobbyPlayerRow = {
 
 const generateId = () => crypto.randomUUID();
 const MAX_WAITING_LOBBIES_PER_USER = 2;
+
+/**
+ * Return the minimum rank tier required by a set of optional rule IDs and
+ * optional market-event card IDs.  Returns 1 (the lowest tier) when no
+ * rank-gated entries are selected.
+ */
+const getRequiredRankTier = (
+  optionalRuleIds: string[],
+  optionalMarketEventCardIds: string[],
+): number => {
+  let max = 1;
+  for (const ruleId of optionalRuleIds) {
+    const entry =
+      OPTIONAL_RULES_REGISTRY[ruleId as keyof typeof OPTIONAL_RULES_REGISTRY];
+    if (entry && entry.requiredRankTier > max) {
+      max = entry.requiredRankTier;
+    }
+  }
+  for (const cardId of optionalMarketEventCardIds) {
+    const entry =
+      OPTIONAL_MARKET_EVENT_CARDS_REGISTRY[
+        cardId as keyof typeof OPTIONAL_MARKET_EVENT_CARDS_REGISTRY
+      ];
+    if (entry && entry.requiredRankTier > max) {
+      max = entry.requiredRankTier;
+    }
+  }
+  return max;
+};
+
+/**
+ * Look up a user's rank tier from the user_ranks table.  Returns tier 1
+ * (Market Novice) when the row is missing.
+ */
+const getUserRankTier = async (
+  db: D1Database,
+  userId: string,
+): Promise<number> => {
+  const row = await db
+    .prepare("SELECT rank_tier FROM user_ranks WHERE user_id = ?")
+    .bind(userId)
+    .first<{ rank_tier: number }>();
+  return row?.rank_tier ?? 1;
+};
 
 const getSubject = (c: {
   get: (key: string) => string | undefined;
@@ -268,6 +314,19 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
   }
 
   const body = c.req.valid("json");
+
+  // Enforce rank-gate: host must meet the minimum rank tier for selected rules/cards
+  const requiredTier = getRequiredRankTier(
+    body.optionalRuleIds,
+    body.optionalMarketEventCardIds,
+  );
+  if (requiredTier > 1) {
+    const hostTier = await getUserRankTier(db, subject);
+    if (hostTier < requiredTier) {
+      return c.json({ error: LobbyErrorKeys.RANK_TOO_LOW }, 403);
+    }
+  }
+
   const id = generateId();
   const now = Date.now();
 
@@ -698,6 +757,33 @@ lobbyRoutes.put(
     }
 
     const body = c.req.valid("json");
+
+    // Enforce rank-gate when optional rules or cards are being changed
+    if (
+      body.optionalRuleIds !== undefined ||
+      body.optionalMarketEventCardIds !== undefined
+    ) {
+      const effectiveRuleIds =
+        body.optionalRuleIds ??
+        (lobby.optional_rule_ids_json
+          ? JSON.parse(lobby.optional_rule_ids_json)
+          : []);
+      const effectiveCardIds =
+        body.optionalMarketEventCardIds ??
+        (lobby.optional_event_card_ids_json
+          ? JSON.parse(lobby.optional_event_card_ids_json)
+          : []);
+      const requiredTier = getRequiredRankTier(
+        effectiveRuleIds,
+        effectiveCardIds,
+      );
+      if (requiredTier > 1) {
+        const hostTier = await getUserRankTier(db, lobby.host_id);
+        if (hostTier < requiredTier) {
+          return c.json({ error: LobbyErrorKeys.RANK_TOO_LOW }, 403);
+        }
+      }
+    }
 
     if (body.maxPlayers !== undefined) {
       const countResult = await db

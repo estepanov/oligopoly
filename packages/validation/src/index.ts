@@ -314,6 +314,7 @@ export const LobbyErrorKeys = {
   INVALID_TOKEN: "lobby.invalid_token",
   PLAYER_NOT_FOUND: "lobby.player_not_found",
   AUTH_REQUIRED: "lobby.auth_required",
+  RANK_TOO_LOW: "lobby.rank_too_low",
 } as const;
 
 // ---------------------------------------------------------------------------
