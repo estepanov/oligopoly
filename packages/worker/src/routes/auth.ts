@@ -215,37 +215,6 @@ authRoutes.post(
     const userId = generateId();
     const now = Date.now();
 
-    // Create user
-    await db
-      .prepare(
-        "INSERT INTO users (id, username, locale, theme_preference, created_at, updated_at, role) VALUES (?, ?, 'en', 'system', ?, ?, 'user')",
-      )
-      .bind(userId, username, now, now)
-      .run();
-
-    // Create visibility defaults
-    await db
-      .prepare("INSERT INTO user_visibility (user_id) VALUES (?)")
-      .bind(userId)
-      .run();
-
-    // Create rank defaults
-    await db
-      .prepare(
-        "INSERT INTO user_ranks (user_id, tier, rank_points) VALUES (?, 0, 0)",
-      )
-      .bind(userId)
-      .run();
-
-    // Create trustworthiness defaults
-    await db
-      .prepare(
-        "INSERT INTO trustworthiness (user_id, score, last_updated_at) VALUES (?, 7, ?)",
-      )
-      .bind(userId, now)
-      .run();
-
-    // Store passkey credential
     const credId = generateId();
     const publicKeyHex = Array.from(regCredential.publicKey)
       .map((b) => b.toString(16).padStart(2, "0"))
@@ -254,34 +223,51 @@ authRoutes.post(
       ? JSON.stringify(regCredential.transports)
       : null;
 
-    await db
-      .prepare(
-        "INSERT INTO passkey_credentials (id, user_id, credential_id, public_key, counter, device_type, backed_up, transports, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .bind(
-        credId,
-        userId,
-        regCredential.id,
-        publicKeyHex,
-        regCredential.counter,
-        credentialDeviceType,
-        credentialBackedUp ? 1 : 0,
-        transportsJson,
-        now,
-      )
-      .run();
-
-    // Create session
     const token = generateToken();
     const sessionId = generateId();
     const expiresAt = now + SESSION_TTL_MS;
 
-    await db
-      .prepare(
-        "INSERT INTO auth_sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
-      )
-      .bind(sessionId, userId, token, expiresAt, now)
-      .run();
+    // Batch all inserts so they succeed or fail atomically
+    await db.batch([
+      db
+        .prepare(
+          "INSERT INTO users (id, username, locale, theme_preference, created_at, updated_at, role) VALUES (?, ?, 'en', 'system', ?, ?, 'user')",
+        )
+        .bind(userId, username, now, now),
+      db
+        .prepare("INSERT INTO user_visibility (user_id) VALUES (?)")
+        .bind(userId),
+      db
+        .prepare(
+          "INSERT INTO user_ranks (user_id, tier, rank_points) VALUES (?, 0, 0)",
+        )
+        .bind(userId),
+      db
+        .prepare(
+          "INSERT INTO trustworthiness (user_id, score, last_updated_at) VALUES (?, 7, ?)",
+        )
+        .bind(userId, now),
+      db
+        .prepare(
+          "INSERT INTO passkey_credentials (id, user_id, credential_id, public_key, counter, device_type, backed_up, transports, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(
+          credId,
+          userId,
+          regCredential.id,
+          publicKeyHex,
+          regCredential.counter,
+          credentialDeviceType,
+          credentialBackedUp ? 1 : 0,
+          transportsJson,
+          now,
+        ),
+      db
+        .prepare(
+          "INSERT INTO auth_sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(sessionId, userId, token, expiresAt, now),
+    ]);
 
     // Clean up used challenge (single-use per WebAuthn protocol)
     if (matchedChallenge) {
