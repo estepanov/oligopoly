@@ -449,12 +449,16 @@ authRoutes.post(
     const sessionId = generateId();
     const expiresAt = now + SESSION_TTL_MS;
 
-    await db
-      .prepare(
-        "INSERT INTO auth_sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
-      )
-      .bind(sessionId, user.id, token, expiresAt, now)
-      .run();
+    await db.batch([
+      db
+        .prepare(
+          "INSERT INTO auth_sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(sessionId, user.id, token, expiresAt, now),
+      db
+        .prepare("DELETE FROM auth_sessions WHERE user_id = ? AND expires_at < ?")
+        .bind(user.id, now),
+    ]);
 
     // Clean up used challenge (single-use per WebAuthn protocol)
     if (matchedLoginChallenge) {
