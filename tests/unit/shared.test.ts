@@ -1486,6 +1486,7 @@ describe("applyAction — roll_dice", () => {
     const result = applyAction(state, "player-1", {
       type: "roll_dice",
       result: [2, 4],
+      pathChoiceDie: 1,
     });
     const p = result.state.players.find((p) => p.playerId === "player-1")!;
     expect(p.position).toBe(4);
@@ -1809,19 +1810,45 @@ describe("applyAction — regulation penalty persists through next turn", () => 
 });
 
 describe("applyAction — path-choice auto-roll when passing through START", () => {
-  it("auto-rolls path-choice die when passing through START", () => {
+  it("routes to perimeter with odd path-choice die", () => {
     const state = makeTestGameState();
     state.players[0].position = 38;
 
     const result = applyAction(state, "player-1", {
       type: "roll_dice",
       result: [2, 4],
+      pathChoiceDie: 3,
     });
     const p = result.state.players.find((p) => p.playerId === "player-1")!;
-    expect(p.capital).toBeGreaterThanOrEqual(1500 + PASS_START_BONUS - 100);
+    expect(p.position).toBe(4);
+    expect(p.isOnDiagonal).toBe(false);
     const pathLog = result.logEntries.find(
       (e) => e.actionType === "path_choice_auto",
     );
     expect(pathLog).toBeDefined();
+    expect((pathLog!.payload as Record<string, unknown>).choice).toBe(
+      "perimeter",
+    );
+  });
+
+  it("routes to diagonal with even path-choice die", () => {
+    const state = makeTestGameState();
+    state.players[0].position = 38;
+
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [2, 4],
+      pathChoiceDie: 4,
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.isOnDiagonal).toBe(true);
+    expect(p.position).toBe("D4");
+    const pathLog = result.logEntries.find(
+      (e) => e.actionType === "path_choice_auto",
+    );
+    expect(pathLog).toBeDefined();
+    expect((pathLog!.payload as Record<string, unknown>).choice).toBe(
+      "diagonal",
+    );
   });
 });

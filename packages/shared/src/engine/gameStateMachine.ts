@@ -94,6 +94,8 @@ export interface GameActionInput {
   tokenNumber?: number;
   choice?: "perimeter" | "diagonal";
   amount?: number;
+  /** Server-injected path-choice die result (1-6) for passing through START */
+  pathChoiceDie?: number;
 }
 
 export interface ApplyActionResult {
@@ -408,7 +410,7 @@ function handleRollDice(
         skipLandingResolve = true;
       } else {
         // Passed through START — roll path-choice die to determine route
-        const pathDie = rollPathChoiceDie();
+        const pathDie = action.pathChoiceDie ?? rollPathChoiceDie();
         const stepsFromStart = newPosition;
 
         if (isDiagonalChoice(pathDie)) {
