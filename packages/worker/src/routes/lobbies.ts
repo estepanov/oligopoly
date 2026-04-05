@@ -747,6 +747,9 @@ lobbyRoutes.post("/:id/start", async (c) => {
   );
 
   // Build initial game state
+  // NOTE: affinityAssignments is stored as a separate top-level field
+  // (not inside each player) so the /state endpoint can redact opponents'
+  // hidden cards before returning the response.
   const initialState = {
     gameId,
     round: 1,
@@ -754,6 +757,7 @@ lobbyRoutes.post("/:id/start", async (c) => {
     currentPlayerIndex: 0,
     turnOrder: playerIds,
     freeMarketPool: 0,
+    affinityAssignments: playerAffinityMap,
     players: playerIds.map((pid) => ({
       playerId: pid,
       position: 0,
@@ -762,7 +766,6 @@ lobbyRoutes.post("/:id/start", async (c) => {
       mortgagedTilePositions: [] as (number | string)[],
       developmentTokens: {} as Record<string, number>,
       trustworthiness: TRUSTWORTHINESS_DEFAULT,
-      affinityCardId: playerAffinityMap[pid],
       actionPointsRemaining: 0,
       inRegulation: false,
       doublesCount: 0,
@@ -777,6 +780,9 @@ lobbyRoutes.post("/:id/start", async (c) => {
       optionalMarketEventCardIds: lobby.optional_event_card_ids_json
         ? JSON.parse(lobby.optional_event_card_ids_json)
         : [],
+      marketEventDeckCardIds: lobby.market_event_deck_json
+        ? JSON.parse(lobby.market_event_deck_json)
+        : null,
       currencyName: lobby.currency_name ?? "Capital",
       currencySymbol: lobby.currency_symbol ?? "¤",
       currencyMultiplier: lobby.currency_multiplier ?? "1",
@@ -809,7 +815,6 @@ lobbyRoutes.post("/:id/start", async (c) => {
           startedBy: subject,
           playerIds,
           startingCapital,
-          affinityAssignments: playerAffinityMap,
         }),
         now,
       ),

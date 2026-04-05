@@ -521,7 +521,6 @@ export const PlayerStateSchema = z.object({
   mortgagedTilePositions: z.array(z.union([z.number().int(), z.string()])),
   developmentTokens: z.record(z.string(), z.number().int().min(0).max(4)),
   trustworthiness: z.number().int().min(0).max(10),
-  affinityCardId: z.string().nullable(),
   actionPointsRemaining: z.number().int().min(0),
   inRegulation: z.boolean(),
   doublesCount: z.number().int().min(0),
@@ -556,6 +555,8 @@ export const GameStateSchema = z.object({
   activeContracts: z.array(BindingContractSchema).optional(),
   rateCards: z.array(RateCardSchema).optional(),
   turnOrder: z.array(z.string()).optional(),
+  /** The requesting player's own affinity card (hidden from other players) */
+  myAffinityCardId: z.string().nullable().optional(),
   settings: z
     .object({
       turnTimeout: TurnTimeoutSchema.optional(),
@@ -564,6 +565,7 @@ export const GameStateSchema = z.object({
       auctionSettleDelay: z.string().optional(),
       optionalRuleIds: z.array(z.string()).optional(),
       optionalMarketEventCardIds: z.array(z.string()).optional(),
+      marketEventDeckCardIds: z.array(z.string()).nullable().optional(),
       currencyName: z.string().optional(),
       currencySymbol: z.string().optional(),
       currencyMultiplier: z.string().optional(),

@@ -169,9 +169,22 @@ gameRoutes.get("/:id/state", async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const state: GameState = row.state_json
-    ? (JSON.parse(row.state_json) as GameState)
+  type StateWithAffinity = GameState & {
+    affinityAssignments?: Record<string, string>;
+  };
+
+  const state: StateWithAffinity = row.state_json
+    ? (JSON.parse(row.state_json) as StateWithAffinity)
     : { gameId: id, round: 0 };
+
+  // Redact hidden information: each player may only see their own affinity card.
+  // Replace the full affinityAssignments map with only the requesting player's card.
+  if (state.affinityAssignments) {
+    const myAffinity = state.affinityAssignments[subject] ?? null;
+    // Remove the full map and expose only the requester's card
+    const { affinityAssignments: _all, ...rest } = state;
+    return c.json({ ...rest, myAffinityCardId: myAffinity });
+  }
 
   return c.json(state);
 });
