@@ -166,6 +166,7 @@ authRoutes.post(
 
     // Verify the registration response
     let verification: VerifiedRegistrationResponse;
+    let matchedChallenge: string | undefined;
     try {
       verification = await verifyRegistrationResponse({
         response: credential as unknown as RegistrationResponseJSON,
@@ -180,7 +181,11 @@ authRoutes.post(
             userId: string;
             username: string;
           };
-          return data.username === username;
+          if (data.username === username) {
+            matchedChallenge = challenge;
+            return true;
+          }
+          return false;
         },
         requireUserVerification: false,
       });
@@ -278,9 +283,12 @@ authRoutes.post(
       .bind(sessionId, userId, token, expiresAt, now)
       .run();
 
-    // Clean up challenge
-    const challengeKey = `webauthn:challenge:register:${credential.response.clientDataJSON}`;
-    await kv.delete(challengeKey).catch(() => {});
+    // Clean up used challenge (single-use per WebAuthn protocol)
+    if (matchedChallenge) {
+      await kv
+        .delete(`webauthn:challenge:register:${matchedChallenge}`)
+        .catch(() => {});
+    }
 
     return c.json({
       token,
@@ -405,12 +413,17 @@ authRoutes.post(
       : undefined;
 
     let verification: VerifiedAuthenticationResponse;
+    let matchedLoginChallenge: string | undefined;
     try {
       verification = await verifyAuthenticationResponse({
         response: credential as unknown as AuthenticationResponseJSON,
         expectedChallenge: async (challenge: string) => {
           const stored = await kv.get(`webauthn:challenge:login:${challenge}`);
-          return stored !== null;
+          if (stored !== null) {
+            matchedLoginChallenge = challenge;
+            return true;
+          }
+          return false;
         },
         expectedOrigin,
         expectedRPID: [rpId],
@@ -460,6 +473,13 @@ authRoutes.post(
       )
       .bind(sessionId, user.id, token, expiresAt, now)
       .run();
+
+    // Clean up used challenge (single-use per WebAuthn protocol)
+    if (matchedLoginChallenge) {
+      await kv
+        .delete(`webauthn:challenge:login:${matchedLoginChallenge}`)
+        .catch(() => {});
+    }
 
     return c.json({
       token,
