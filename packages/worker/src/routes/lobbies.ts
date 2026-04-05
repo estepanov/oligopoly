@@ -474,7 +474,7 @@ lobbyRoutes.put(
     }
 
     const updates: string[] = [];
-    const values: (string | number)[] = [];
+    const values: (string | number | null)[] = [];
 
     if (body.name !== undefined) {
       updates.push("name = ?");
@@ -518,7 +518,12 @@ lobbyRoutes.put(
     }
     if (body.marketEventDeckCardIds !== undefined) {
       updates.push("market_event_deck_json = ?");
-      values.push(JSON.stringify(body.marketEventDeckCardIds));
+      // null resets to full deck; array sets a custom selection
+      values.push(
+        body.marketEventDeckCardIds === null
+          ? null
+          : JSON.stringify(body.marketEventDeckCardIds),
+      );
     }
     if (body.optionalMarketEventCardIds !== undefined) {
       updates.push("optional_event_card_ids_json = ?");
@@ -786,6 +791,7 @@ lobbyRoutes.post("/:id/start", async (c) => {
       currencyName: lobby.currency_name ?? "Capital",
       currencySymbol: lobby.currency_symbol ?? "¤",
       currencyMultiplier: lobby.currency_multiplier ?? "1",
+      spectatorMode: lobby.spectator_mode ?? "disabled",
     },
   };
 

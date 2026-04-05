@@ -420,7 +420,7 @@ export const UpdateLobbySettingsInputSchema = z.object({
   auctionType: AuctionTypeSchema.optional(),
   voiceVideoEnabled: z.boolean().optional(),
   spectatorMode: SpectatorModeSchema.optional(),
-  marketEventDeckCardIds: z.array(z.string()).optional(),
+  marketEventDeckCardIds: z.array(z.string()).nullable().optional(),
   optionalMarketEventCardIds: z.array(z.string()).optional(),
   currencyName: z.string().min(1).max(32).optional(),
   currencySymbol: z.string().min(1).max(8).optional(),
@@ -569,6 +569,7 @@ export const GameStateSchema = z.object({
       currencyName: z.string().optional(),
       currencySymbol: z.string().optional(),
       currencyMultiplier: z.string().optional(),
+      spectatorMode: SpectatorModeSchema.optional(),
     })
     .optional(),
 });
