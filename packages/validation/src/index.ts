@@ -571,3 +571,86 @@ export const GameStateSchema = z.object({
     .optional(),
 });
 export type GameState = z.infer<typeof GameStateSchema>;
+
+// ---------------------------------------------------------------------------
+// Passkey / WebAuthn auth schemas
+// ---------------------------------------------------------------------------
+
+/** Input for POST /api/auth/register/options */
+export const RegisterOptionsInputSchema = z.object({
+  username: z.string().min(3).max(32),
+});
+export type RegisterOptionsInput = z.infer<typeof RegisterOptionsInputSchema>;
+
+/** Input for POST /api/auth/register/verify */
+export const RegisterVerifyInputSchema = z.object({
+  username: z.string().min(3).max(32),
+  credential: z.object({
+    id: z.string(),
+    rawId: z.string(),
+    response: z.object({
+      attestationObject: z.string(),
+      clientDataJSON: z.string(),
+      transports: z.array(z.string()).optional(),
+    }),
+    authenticatorAttachment: z.string().optional(),
+    clientExtensionResults: z.record(z.unknown()),
+    type: z.literal("public-key"),
+  }),
+});
+export type RegisterVerifyInput = z.infer<typeof RegisterVerifyInputSchema>;
+
+/** Input for POST /api/auth/login/options */
+export const LoginOptionsInputSchema = z.object({
+  username: z.string().min(3).max(32).optional(),
+});
+export type LoginOptionsInput = z.infer<typeof LoginOptionsInputSchema>;
+
+/** Input for POST /api/auth/login/verify */
+export const LoginVerifyInputSchema = z.object({
+  credential: z.object({
+    id: z.string(),
+    rawId: z.string(),
+    response: z.object({
+      authenticatorData: z.string(),
+      clientDataJSON: z.string(),
+      signature: z.string(),
+      userHandle: z.string().optional(),
+    }),
+    authenticatorAttachment: z.string().optional(),
+    clientExtensionResults: z.record(z.unknown()),
+    type: z.literal("public-key"),
+  }),
+});
+export type LoginVerifyInput = z.infer<typeof LoginVerifyInputSchema>;
+
+/** Response from session-creating auth endpoints */
+export const AuthSessionResponseSchema = z.object({
+  token: z.string(),
+  userId: z.string(),
+  username: z.string(),
+  expiresAt: z.number(),
+});
+export type AuthSessionResponse = z.infer<typeof AuthSessionResponseSchema>;
+
+/** Response from GET /api/auth/session */
+export const AuthSessionInfoSchema = z.object({
+  userId: z.string(),
+  username: z.string(),
+  expiresAt: z.number(),
+});
+export type AuthSessionInfo = z.infer<typeof AuthSessionInfoSchema>;
+
+export const AuthErrorKeys = {
+  USERNAME_TAKEN: "auth.username_taken",
+  INVALID_CREDENTIAL: "auth.invalid_credential",
+  CHALLENGE_EXPIRED: "auth.challenge_expired",
+  CHALLENGE_NOT_FOUND: "auth.challenge_not_found",
+  SESSION_EXPIRED: "auth.session_expired",
+  SESSION_NOT_FOUND: "auth.session_not_found",
+  CREDENTIAL_NOT_FOUND: "auth.credential_not_found",
+  REGISTRATION_FAILED: "auth.registration_failed",
+  VERIFICATION_FAILED: "auth.verification_failed",
+  DB_NOT_CONFIGURED: "auth.db_not_configured",
+  PASSKEY_NOT_SUPPORTED: "auth.passkey_not_supported",
+} as const;

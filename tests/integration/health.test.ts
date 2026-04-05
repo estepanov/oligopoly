@@ -75,11 +75,15 @@ describe("GET /api/game-config", () => {
 });
 
 describe("ALL /api/auth/*", () => {
-  it("returns 501 for auth endpoints", async () => {
-    const res = await app.request("/api/auth/login", { method: "POST" });
-    expect(res.status).toBe(501);
+  it("returns error for auth endpoints without DB/KV", async () => {
+    const res = await app.request("/api/auth/login/options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.error).toContain("not configured");
+    expect(body.error).toContain("not_configured");
   });
 });
 
