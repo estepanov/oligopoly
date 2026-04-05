@@ -116,7 +116,6 @@ authRoutes.post(
       return c.json({ error: AuthErrorKeys.USERNAME_TAKEN }, 409);
     }
 
-    const userId = generateId();
     const options = await generateRegistrationOptions({
       rpName: getRpName(c),
       rpID: getRpId(c),
@@ -132,7 +131,7 @@ authRoutes.post(
     // Store challenge in KV with TTL
     await kv.put(
       `webauthn:challenge:register:${options.challenge}`,
-      JSON.stringify({ userId, username }),
+      JSON.stringify({ username }),
       { expirationTtl: CHALLENGE_TTL_SECONDS },
     );
 
@@ -177,10 +176,7 @@ authRoutes.post(
             `webauthn:challenge:register:${challenge}`,
           );
           if (!stored) return false;
-          const data = JSON.parse(stored) as {
-            userId: string;
-            username: string;
-          };
+          const data = JSON.parse(stored) as { username: string };
           if (data.username === username) {
             matchedChallenge = challenge;
             return true;
