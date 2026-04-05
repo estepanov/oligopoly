@@ -1,8 +1,11 @@
 import { startAuthentication } from "@simplewebauthn/browser";
 import { useCallback, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { fetchLoginOptions, fetchLoginVerify } from "../api/auth";
 import { useAuth } from "../components/AuthContext";
+
+const getSafeReturnTo = (value: string | null) =>
+  value?.startsWith("/") && !value.startsWith("//") ? value : "/";
 
 export function LoginPage() {
   const [username, setUsername] = useState("");
@@ -10,6 +13,8 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = getSafeReturnTo(searchParams.get("returnTo"));
 
   const handleLogin = useCallback(
     async (withUsername: boolean) => {
@@ -27,14 +32,14 @@ export function LoginPage() {
           session.username,
           session.expiresAt,
         );
-        navigate("/");
+        navigate(returnTo);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Login failed");
       } finally {
         setLoading(false);
       }
     },
-    [username, login, navigate],
+    [username, login, navigate, returnTo],
   );
 
   return (
@@ -76,7 +81,9 @@ export function LoginPage() {
           <button
             type="button"
             className="button buttonSecondary"
-            onClick={() => navigate("/register")}
+            onClick={() =>
+              navigate(`/register?returnTo=${encodeURIComponent(returnTo)}`)
+            }
             disabled={loading}
           >
             Create an account
