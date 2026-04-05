@@ -1,10 +1,17 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { env } from "../env";
 import { useAuth } from "./AuthContext";
 
 export function Layout() {
   const { user, loading, logout } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
+  const authReturnTo = new URLSearchParams(location.search).get("returnTo");
+  const returnTo =
+    (location.pathname === "/login" || location.pathname === "/register") &&
+    authReturnTo
+      ? authReturnTo
+      : `${location.pathname}${location.search}`;
 
   return (
     <div className="appRoot">
@@ -61,7 +68,7 @@ export function Layout() {
                   </button>
                 ) : (
                   <NavLink
-                    to="/login"
+                    to={`/login?returnTo=${encodeURIComponent(returnTo)}`}
                     className={({ isActive }) =>
                       isActive ? "active" : undefined
                     }

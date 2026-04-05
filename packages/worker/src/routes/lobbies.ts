@@ -51,6 +51,7 @@ type LobbyPlayerRow = {
 };
 
 const generateId = () => crypto.randomUUID();
+const MAX_ACTIVE_LOBBIES_PER_USER = 2;
 
 const getSubject = (c: {
   get: (key: string) => string | undefined;
@@ -92,6 +93,156 @@ const toLobbyResponse = (row: LobbyRow, players: LobbyPlayerRow[] = []) => ({
   currencyMultiplier: row.currency_multiplier ?? "1",
 });
 
+type LeaveLobbyResponse = {
+  lobbyId: string;
+  deleted: boolean;
+  lobby?: ReturnType<typeof toLobbyResponse>;
+};
+
+const isActiveLobbyStatus = (status: string) =>
+  status === "waiting" || status === "starting";
+
+const compareLobbyPlayers = (a: LobbyPlayerRow, b: LobbyPlayerRow) =>
+  a.joined_at - b.joined_at || a.user_id.localeCompare(b.user_id);
+
+const getLobbyById = async (db: D1Database, lobbyId: string) => {
+  return db
+    .prepare("SELECT * FROM lobbies WHERE id = ?")
+    .bind(lobbyId)
+    .first<LobbyRow>();
+};
+
+const listLobbyPlayers = async (db: D1Database, lobbyId: string) => {
+  const playersResult = await db
+    .prepare("SELECT * FROM lobby_players WHERE lobby_id = ?")
+    .bind(lobbyId)
+    .all<LobbyPlayerRow>();
+
+  return playersResult.results;
+};
+
+const listUserLobbyMemberships = async (db: D1Database, userId: string) => {
+  const membershipsResult = await db
+    .prepare("SELECT * FROM lobby_players WHERE user_id = ?")
+    .bind(userId)
+    .all<LobbyPlayerRow>();
+
+  const memberships = await Promise.all(
+    membershipsResult.results.map(async (membership) => {
+      const lobby = await getLobbyById(db, membership.lobby_id);
+      if (!lobby) {
+        return null;
+      }
+      return { lobby, membership };
+    }),
+  );
+
+  return memberships
+    .filter(
+      (
+        membership,
+      ): membership is { lobby: LobbyRow; membership: LobbyPlayerRow } =>
+        membership !== null,
+    )
+    .sort((a, b) => {
+      if (a.membership.is_admin !== b.membership.is_admin) {
+        return b.membership.is_admin - a.membership.is_admin;
+      }
+      return (
+        b.lobby.created_at - a.lobby.created_at ||
+        b.lobby.id.localeCompare(a.lobby.id)
+      );
+    });
+};
+
+const countActiveLobbyMemberships = async (db: D1Database, userId: string) => {
+  const memberships = await listUserLobbyMemberships(db, userId);
+  return memberships.filter(({ lobby }) => isActiveLobbyStatus(lobby.status))
+    .length;
+};
+
+const pickReplacementHost = (players: LobbyPlayerRow[]) => {
+  const adminCandidates = players
+    .filter((player) => player.is_admin === 1)
+    .sort(compareLobbyPlayers);
+
+  if (adminCandidates.length > 0) {
+    return adminCandidates[0];
+  }
+
+  return [...players].sort(compareLobbyPlayers)[0] ?? null;
+};
+
+const leaveLobby = async (
+  db: D1Database,
+  lobby: LobbyRow,
+  userId: string,
+): Promise<LeaveLobbyResponse> => {
+  const players = await listLobbyPlayers(db, lobby.id);
+  const remainingPlayers = players.filter(
+    (player) => player.user_id !== userId,
+  );
+
+  const statements = [
+    db
+      .prepare("DELETE FROM lobby_players WHERE lobby_id = ? AND user_id = ?")
+      .bind(lobby.id, userId),
+  ];
+
+  if (remainingPlayers.length === 0) {
+    statements.push(
+      db.prepare("DELETE FROM lobbies WHERE id = ?").bind(lobby.id),
+    );
+    await db.batch(statements);
+    return {
+      lobbyId: lobby.id,
+      deleted: true,
+    };
+  }
+
+  let updatedLobby = lobby;
+  let updatedPlayers = remainingPlayers;
+
+  if (lobby.host_id === userId) {
+    const replacementHost = pickReplacementHost(remainingPlayers);
+
+    if (replacementHost) {
+      if (replacementHost.is_admin !== 1) {
+        statements.push(
+          db
+            .prepare(
+              "UPDATE lobby_players SET is_admin = 1 WHERE lobby_id = ? AND user_id = ?",
+            )
+            .bind(lobby.id, replacementHost.user_id),
+        );
+        updatedPlayers = remainingPlayers.map((player) =>
+          player.user_id === replacementHost.user_id
+            ? { ...player, is_admin: 1 }
+            : player,
+        );
+      }
+
+      statements.push(
+        db
+          .prepare("UPDATE lobbies SET host_id = ? WHERE id = ?")
+          .bind(replacementHost.user_id, lobby.id),
+      );
+      updatedLobby = {
+        ...lobby,
+        host_id: replacementHost.user_id,
+      };
+    }
+  }
+
+  await db.batch(statements);
+
+  return {
+    lobbyId: lobby.id,
+    deleted: false,
+    lobby: toLobbyResponse(updatedLobby, updatedPlayers),
+  };
+};
+
 export const lobbyRoutes = new Hono<{
   Bindings: Bindings;
   Variables: Variables;
@@ -107,6 +258,11 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
   const db = c.env?.DB;
   if (!db) {
     return c.json({ error: "Database not configured" }, 500);
+  }
+
+  const activeMembershipCount = await countActiveLobbyMemberships(db, subject);
+  if (activeMembershipCount >= MAX_ACTIVE_LOBBIES_PER_USER) {
+    return c.json({ error: LobbyErrorKeys.MEMBERSHIP_LIMIT_REACHED }, 409);
   }
 
   const body = c.req.valid("json");
@@ -182,6 +338,33 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
   ];
 
   return c.json(toLobbyResponse(lobby, players), 201);
+});
+
+// GET /mine — List the current user's active waiting lobbies
+lobbyRoutes.get("/mine", async (c) => {
+  const subject = getSubject(c);
+  if (!subject) {
+    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
+  }
+
+  const db = c.env?.DB;
+  if (!db) {
+    return c.json({ error: "Database not configured" }, 500);
+  }
+
+  const memberships = await listUserLobbyMemberships(db, subject);
+  const lobbies = await Promise.all(
+    memberships
+      .filter(({ lobby }) => isActiveLobbyStatus(lobby.status))
+      .map(async ({ lobby }) =>
+        toLobbyResponse(lobby, await listLobbyPlayers(db, lobby.id)),
+      ),
+  );
+
+  return c.json({
+    lobbies,
+    nextCursor: null,
+  });
 });
 
 // GET /  — List public lobbies (status: waiting)
@@ -293,6 +476,11 @@ lobbyRoutes.post("/:id/join", async (c) => {
     return c.json({ error: LobbyErrorKeys.ALREADY_JOINED }, 409);
   }
 
+  const activeMembershipCount = await countActiveLobbyMemberships(db, subject);
+  if (activeMembershipCount >= MAX_ACTIVE_LOBBIES_PER_USER) {
+    return c.json({ error: LobbyErrorKeys.MEMBERSHIP_LIMIT_REACHED }, 409);
+  }
+
   if (players.length >= lobby.max_players) {
     return c.json({ error: LobbyErrorKeys.FULL }, 409);
   }
@@ -362,6 +550,11 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
     return c.json({ error: LobbyErrorKeys.ALREADY_JOINED }, 409);
   }
 
+  const activeMembershipCount = await countActiveLobbyMemberships(db, subject);
+  if (activeMembershipCount >= MAX_ACTIVE_LOBBIES_PER_USER) {
+    return c.json({ error: LobbyErrorKeys.MEMBERSHIP_LIMIT_REACHED }, 409);
+  }
+
   if (players.length >= lobby.max_players) {
     return c.json({ error: LobbyErrorKeys.FULL }, 409);
   }
@@ -420,6 +613,41 @@ lobbyRoutes.post("/:id/invite", async (c) => {
   await kv.put(`lobby:invite:${token}`, id, { expirationTtl: ttlSeconds });
 
   return c.json({ token, expiresInSeconds: ttlSeconds });
+});
+
+// DELETE /:id/leave — Leave a waiting lobby, deleting it if it becomes empty
+lobbyRoutes.delete("/:id/leave", async (c) => {
+  const subject = getSubject(c);
+  if (!subject) {
+    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
+  }
+
+  const db = c.env?.DB;
+  if (!db) {
+    return c.json({ error: "Database not configured" }, 500);
+  }
+
+  const id = c.req.param("id");
+  const lobby = await getLobbyById(db, id);
+
+  if (!lobby) {
+    return c.json({ error: LobbyErrorKeys.NOT_FOUND }, 404);
+  }
+
+  if (lobby.status !== "waiting") {
+    return c.json({ error: LobbyErrorKeys.ALREADY_STARTED }, 409);
+  }
+
+  const player = await db
+    .prepare("SELECT * FROM lobby_players WHERE lobby_id = ? AND user_id = ?")
+    .bind(id, subject)
+    .first<LobbyPlayerRow>();
+
+  if (!player) {
+    return c.json({ error: LobbyErrorKeys.NOT_IN_LOBBY }, 404);
+  }
+
+  return c.json(await leaveLobby(db, lobby, subject));
 });
 
 // PUT /:id/settings — Update lobby settings (admin only)

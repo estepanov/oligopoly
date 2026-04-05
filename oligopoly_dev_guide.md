@@ -425,3 +425,15 @@ Fix shared contracts first, then downstream imports.
 
 - Compare technical plan registry tables with game rules appendix IDs.
 - Ensure config and persistence enums use canonical IDs.
+
+### `db:migrate:dev` fails with `duplicate column name`
+
+This means your local Wrangler D1 state already contains a legacy migration history in `d1_migrations`. In that state, the local table already has a column before the current hand-written migration chain reaches new migration.
+
+If you do not need to keep the current local D1 data, reset the local Miniflare database and re-apply the tracked migrations:
+
+```bash
+pnpm run db:reset:dev
+```
+
+This only removes local state under `packages/worker/.wrangler/state/v3/d1`. It does not affect any remote Cloudflare D1 database.
