@@ -33,10 +33,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "achievements_user_id_id_pk": {
-          "columns": [
-            "user_id",
-            "id"
-          ],
+          "columns": ["user_id", "id"],
           "name": "achievements_user_id_id_pk"
         }
       },
@@ -87,6 +84,92 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "turn_timeout": {
+          "name": "turn_timeout",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'5min'"
+        },
+        "auction_bid_window": {
+          "name": "auction_bid_window",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'1min'"
+        },
+        "auction_settle_delay": {
+          "name": "auction_settle_delay",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'30s'"
+        },
+        "auction_type": {
+          "name": "auction_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'sealed_bids'"
+        },
+        "voice_video_enabled": {
+          "name": "voice_video_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "spectator_mode": {
+          "name": "spectator_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'disabled'"
+        },
+        "market_event_deck_json": {
+          "name": "market_event_deck_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "optional_event_card_ids_json": {
+          "name": "optional_event_card_ids_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "currency_name": {
+          "name": "currency_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'Capital'"
+        },
+        "currency_symbol": {
+          "name": "currency_symbol",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'¤'"
+        },
+        "currency_multiplier": {
+          "name": "currency_multiplier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'1'"
         }
       },
       "indexes": {},
@@ -497,10 +580,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "lobby_players_lobby_id_user_id_pk": {
-          "columns": [
-            "lobby_id",
-            "user_id"
-          ],
+          "columns": ["lobby_id", "user_id"],
           "name": "lobby_players_lobby_id_user_id_pk"
         }
       },
@@ -918,16 +998,12 @@
       "indexes": {
         "users_username_unique": {
           "name": "users_username_unique",
-          "columns": [
-            "username"
-          ],
+          "columns": ["username"],
           "isUnique": true
         },
         "users_email_unique": {
           "name": "users_email_unique",
-          "columns": [
-            "email"
-          ],
+          "columns": ["email"],
           "isUnique": true
         }
       },

@@ -6,8 +6,9 @@ import { describe, expect, it } from "vitest";
  * Stores rows in plain arrays and executes simple SQL matching.
  */
 type Row = Record<string, unknown>;
+type D1Stub = D1Database & { _tables: Record<string, Row[]> };
 
-const createD1Stub = () => {
+const createD1Stub = (): D1Stub => {
   const tables: Record<string, Row[]> = {
     users: [
       { id: "user-1", username: "user-1", role: "user" },
@@ -322,7 +323,7 @@ const createD1Stub = () => {
     });
   };
 
-  return { prepare, batch } as unknown as D1Database;
+  return { prepare, batch, _tables: tables } as unknown as D1Stub;
 };
 
 const createKvStub = () => {
@@ -358,6 +359,14 @@ const requestWithEnv = (
     DB: db,
     KV: kv,
   });
+};
+
+const setLobbyStatus = (db: D1Stub, lobbyId: string, status: string) => {
+  const lobby = db._tables.lobbies.find((row) => row.id === lobbyId);
+  if (!lobby) {
+    throw new Error(`Lobby ${lobbyId} not found`);
+  }
+  lobby.status = status;
 };
 
 describe("POST /api/lobbies", () => {
@@ -433,6 +442,62 @@ describe("POST /api/lobbies", () => {
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.error).toContain("membership_limit_reached");
+  });
+
+  it("ignores starting lobbies when enforcing the waiting-lobby limit", async () => {
+    const db = createD1Stub();
+
+    const waitingLobbyRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Waiting Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    expect(waitingLobbyRes.status).toBe(201);
+
+    const startingLobbyRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-2" },
+      body: {
+        name: "Starting Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    expect(startingLobbyRes.status).toBe(201);
+    const startingLobby = await startingLobbyRes.json();
+
+    const joinRes = await requestWithEnv(
+      `/api/lobbies/${startingLobby.id}/join`,
+      {
+        method: "POST",
+        headers: { "x-subject": "user-1" },
+        db,
+      },
+    );
+    expect(joinRes.status).toBe(200);
+    setLobbyStatus(db, startingLobby.id, "starting");
+
+    const res = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Second Waiting Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+
+    expect(res.status).toBe(201);
   });
 });
 
@@ -515,6 +580,58 @@ describe("GET /api/lobbies/mine", () => {
         (p: { userId: string; isAdmin: boolean }) => p.userId === "user-1",
       ),
     ).toBe(true);
+  });
+
+  it("excludes starting lobbies from the current user's waiting lobby list", async () => {
+    const db = createD1Stub();
+
+    const waitingLobbyRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Waiting Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    expect(waitingLobbyRes.status).toBe(201);
+
+    const startingLobbyRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-2" },
+      body: {
+        name: "Starting Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    expect(startingLobbyRes.status).toBe(201);
+    const startingLobby = await startingLobbyRes.json();
+
+    const joinRes = await requestWithEnv(
+      `/api/lobbies/${startingLobby.id}/join`,
+      {
+        method: "POST",
+        headers: { "x-subject": "user-1" },
+        db,
+      },
+    );
+    expect(joinRes.status).toBe(200);
+    setLobbyStatus(db, startingLobby.id, "starting");
+
+    const res = await requestWithEnv("/api/lobbies/mine", {
+      headers: { "x-subject": "user-1" },
+      db,
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.lobbies).toHaveLength(1);
+    expect(body.lobbies[0].name).toBe("Waiting Lobby");
   });
 });
 

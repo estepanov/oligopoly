@@ -51,7 +51,7 @@ type LobbyPlayerRow = {
 };
 
 const generateId = () => crypto.randomUUID();
-const MAX_ACTIVE_LOBBIES_PER_USER = 2;
+const MAX_WAITING_LOBBIES_PER_USER = 2;
 
 const getSubject = (c: {
   get: (key: string) => string | undefined;
@@ -99,8 +99,7 @@ type LeaveLobbyResponse = {
   lobby?: ReturnType<typeof toLobbyResponse>;
 };
 
-const isActiveLobbyStatus = (status: string) =>
-  status === "waiting" || status === "starting";
+const isWaitingLobbyStatus = (status: string) => status === "waiting";
 
 const compareLobbyPlayers = (a: LobbyPlayerRow, b: LobbyPlayerRow) =>
   a.joined_at - b.joined_at || a.user_id.localeCompare(b.user_id);
@@ -155,9 +154,9 @@ const listUserLobbyMemberships = async (db: D1Database, userId: string) => {
     });
 };
 
-const countActiveLobbyMemberships = async (db: D1Database, userId: string) => {
+const countWaitingLobbyMemberships = async (db: D1Database, userId: string) => {
   const memberships = await listUserLobbyMemberships(db, userId);
-  return memberships.filter(({ lobby }) => isActiveLobbyStatus(lobby.status))
+  return memberships.filter(({ lobby }) => isWaitingLobbyStatus(lobby.status))
     .length;
 };
 
@@ -260,8 +259,11 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
     return c.json({ error: "Database not configured" }, 500);
   }
 
-  const activeMembershipCount = await countActiveLobbyMemberships(db, subject);
-  if (activeMembershipCount >= MAX_ACTIVE_LOBBIES_PER_USER) {
+  const waitingMembershipCount = await countWaitingLobbyMemberships(
+    db,
+    subject,
+  );
+  if (waitingMembershipCount >= MAX_WAITING_LOBBIES_PER_USER) {
     return c.json({ error: LobbyErrorKeys.MEMBERSHIP_LIMIT_REACHED }, 409);
   }
 
@@ -340,7 +342,7 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
   return c.json(toLobbyResponse(lobby, players), 201);
 });
 
-// GET /mine — List the current user's active waiting lobbies
+// GET /mine — List the current user's waiting lobbies
 lobbyRoutes.get("/mine", async (c) => {
   const subject = getSubject(c);
   if (!subject) {
@@ -355,7 +357,7 @@ lobbyRoutes.get("/mine", async (c) => {
   const memberships = await listUserLobbyMemberships(db, subject);
   const lobbies = await Promise.all(
     memberships
-      .filter(({ lobby }) => isActiveLobbyStatus(lobby.status))
+      .filter(({ lobby }) => isWaitingLobbyStatus(lobby.status))
       .map(async ({ lobby }) =>
         toLobbyResponse(lobby, await listLobbyPlayers(db, lobby.id)),
       ),
@@ -476,8 +478,11 @@ lobbyRoutes.post("/:id/join", async (c) => {
     return c.json({ error: LobbyErrorKeys.ALREADY_JOINED }, 409);
   }
 
-  const activeMembershipCount = await countActiveLobbyMemberships(db, subject);
-  if (activeMembershipCount >= MAX_ACTIVE_LOBBIES_PER_USER) {
+  const waitingMembershipCount = await countWaitingLobbyMemberships(
+    db,
+    subject,
+  );
+  if (waitingMembershipCount >= MAX_WAITING_LOBBIES_PER_USER) {
     return c.json({ error: LobbyErrorKeys.MEMBERSHIP_LIMIT_REACHED }, 409);
   }
 
@@ -550,8 +555,11 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
     return c.json({ error: LobbyErrorKeys.ALREADY_JOINED }, 409);
   }
 
-  const activeMembershipCount = await countActiveLobbyMemberships(db, subject);
-  if (activeMembershipCount >= MAX_ACTIVE_LOBBIES_PER_USER) {
+  const waitingMembershipCount = await countWaitingLobbyMemberships(
+    db,
+    subject,
+  );
+  if (waitingMembershipCount >= MAX_WAITING_LOBBIES_PER_USER) {
     return c.json({ error: LobbyErrorKeys.MEMBERSHIP_LIMIT_REACHED }, 409);
   }
 
