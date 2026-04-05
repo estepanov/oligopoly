@@ -395,9 +395,7 @@ export const CreateLobbyInputSchema = z.object({
   auctionBidWindow: z
     .enum(["30s", "1min", "5min", "10min", "30min"])
     .default("1min"),
-  auctionSettleDelay: z
-    .enum(["10s", "30s", "1min", "5min"])
-    .default("30s"),
+  auctionSettleDelay: z.enum(["10s", "30s", "1min", "5min"]).default("30s"),
   auctionType: AuctionTypeSchema.default("sealed_bids"),
   voiceVideoEnabled: z.boolean().default(false),
   spectatorMode: SpectatorModeSchema.default("disabled"),
@@ -418,9 +416,7 @@ export const UpdateLobbySettingsInputSchema = z.object({
   auctionBidWindow: z
     .enum(["30s", "1min", "5min", "10min", "30min"])
     .optional(),
-  auctionSettleDelay: z
-    .enum(["10s", "30s", "1min", "5min"])
-    .optional(),
+  auctionSettleDelay: z.enum(["10s", "30s", "1min", "5min"]).optional(),
   auctionType: AuctionTypeSchema.optional(),
   voiceVideoEnabled: z.boolean().optional(),
   spectatorMode: SpectatorModeSchema.optional(),
@@ -441,7 +437,10 @@ export type UpdateLobbySettingsInput = z.infer<
 export const GameActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("roll_dice"),
-    result: z.tuple([z.number().int().min(1).max(6), z.number().int().min(1).max(6)]),
+    result: z.tuple([
+      z.number().int().min(1).max(6),
+      z.number().int().min(1).max(6),
+    ]),
   }),
   z.object({
     type: z.literal("buy_tile"),

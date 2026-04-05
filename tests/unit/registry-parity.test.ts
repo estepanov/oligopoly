@@ -278,10 +278,30 @@ describe("rank thresholds integrity", () => {
   });
 
   it("matches canonical thresholds from game rules", () => {
-    expect(RANK_THRESHOLDS[0]).toEqual({ tier: 1, title: "Market Novice", pointsRequired: 0 });
-    expect(RANK_THRESHOLDS[1]).toEqual({ tier: 2, title: "Sector Investor", pointsRequired: 100 });
-    expect(RANK_THRESHOLDS[2]).toEqual({ tier: 3, title: "Capital Baron", pointsRequired: 500 });
-    expect(RANK_THRESHOLDS[3]).toEqual({ tier: 4, title: "Market Mogul", pointsRequired: 1500 });
-    expect(RANK_THRESHOLDS[4]).toEqual({ tier: 5, title: "Oligarch", pointsRequired: 5000 });
+    expect(RANK_THRESHOLDS[0]).toEqual({
+      tier: 1,
+      title: "Market Novice",
+      pointsRequired: 0,
+    });
+    expect(RANK_THRESHOLDS[1]).toEqual({
+      tier: 2,
+      title: "Sector Investor",
+      pointsRequired: 100,
+    });
+    expect(RANK_THRESHOLDS[2]).toEqual({
+      tier: 3,
+      title: "Capital Baron",
+      pointsRequired: 500,
+    });
+    expect(RANK_THRESHOLDS[3]).toEqual({
+      tier: 4,
+      title: "Market Mogul",
+      pointsRequired: 1500,
+    });
+    expect(RANK_THRESHOLDS[4]).toEqual({
+      tier: 5,
+      title: "Oligarch",
+      pointsRequired: 5000,
+    });
   });
 });

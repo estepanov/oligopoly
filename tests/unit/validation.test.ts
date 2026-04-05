@@ -500,7 +500,13 @@ describe("NegotiationThreadSchema", () => {
 
 describe("TileTypeSchema", () => {
   it("accepts valid tile types", () => {
-    for (const t of ["sector_tile", "corner", "special", "utility", "sector_hub"]) {
+    for (const t of [
+      "sector_tile",
+      "corner",
+      "special",
+      "utility",
+      "sector_hub",
+    ]) {
       expect(TileTypeSchema.safeParse(t).success).toBe(true);
     }
   });
@@ -512,8 +518,14 @@ describe("TileTypeSchema", () => {
 describe("SectorIdSchema", () => {
   it("accepts all 8 sector IDs", () => {
     const sectors = [
-      "emerging_tech", "big_tech", "finance", "healthcare",
-      "energy", "defense_media", "elite_tech", "fast_track",
+      "emerging_tech",
+      "big_tech",
+      "finance",
+      "healthcare",
+      "energy",
+      "defense_media",
+      "elite_tech",
+      "fast_track",
     ];
     for (const s of sectors) {
       expect(SectorIdSchema.safeParse(s).success).toBe(true);
@@ -575,7 +587,17 @@ describe("AuctionTypeSchema", () => {
 
 describe("TurnTimeoutSchema", () => {
   it("accepts all valid timeout values", () => {
-    const values = ["1min", "5min", "30min", "2h", "8h", "24h", "48h", "7d", "none"];
+    const values = [
+      "1min",
+      "5min",
+      "30min",
+      "2h",
+      "8h",
+      "24h",
+      "48h",
+      "7d",
+      "none",
+    ];
     for (const v of values) {
       expect(TurnTimeoutSchema.safeParse(v).success).toBe(true);
     }
@@ -726,7 +748,8 @@ describe("GameActionSchema", () => {
 
   it("accepts mortgage_tile action", () => {
     expect(
-      GameActionSchema.safeParse({ type: "mortgage_tile", tilePosition: 9 }).success,
+      GameActionSchema.safeParse({ type: "mortgage_tile", tilePosition: 9 })
+        .success,
     ).toBe(true);
   });
 
@@ -750,10 +773,12 @@ describe("GameActionSchema", () => {
 
   it("accepts path_choice action", () => {
     expect(
-      GameActionSchema.safeParse({ type: "path_choice", choice: "perimeter" }).success,
+      GameActionSchema.safeParse({ type: "path_choice", choice: "perimeter" })
+        .success,
     ).toBe(true);
     expect(
-      GameActionSchema.safeParse({ type: "path_choice", choice: "diagonal" }).success,
+      GameActionSchema.safeParse({ type: "path_choice", choice: "diagonal" })
+        .success,
     ).toBe(true);
   });
 

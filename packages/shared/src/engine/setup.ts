@@ -68,9 +68,17 @@ export function getStartingCapital(
   const base = STARTING_CAPITAL[playerCount];
   if (base === undefined) {
     // Fallback: clamp to valid range
-    if (playerCount <= 3) return speedMarketEnabled ? Math.floor(1500 * SPEED_MARKET_MULTIPLIER) : 1500;
-    if (playerCount <= 5) return speedMarketEnabled ? Math.floor(1200 * SPEED_MARKET_MULTIPLIER) : 1200;
-    return speedMarketEnabled ? Math.floor(1000 * SPEED_MARKET_MULTIPLIER) : 1000;
+    if (playerCount <= 3)
+      return speedMarketEnabled
+        ? Math.floor(1500 * SPEED_MARKET_MULTIPLIER)
+        : 1500;
+    if (playerCount <= 5)
+      return speedMarketEnabled
+        ? Math.floor(1200 * SPEED_MARKET_MULTIPLIER)
+        : 1200;
+    return speedMarketEnabled
+      ? Math.floor(1000 * SPEED_MARKET_MULTIPLIER)
+      : 1000;
   }
   if (speedMarketEnabled) {
     return Math.floor(base * SPEED_MARKET_MULTIPLIER);

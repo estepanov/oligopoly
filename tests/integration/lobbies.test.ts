@@ -45,9 +45,24 @@ const createD1Stub = () => {
         currency_symbol,
         currency_multiplier,
       ] = binds as [
-        string, string, string, number, number, string, number,
-        string, string, string, string, number, string,
-        string | null, string, string, string, string,
+        string,
+        string,
+        string,
+        number,
+        number,
+        string,
+        number,
+        string,
+        string,
+        string,
+        string,
+        number,
+        string,
+        string | null,
+        string,
+        string,
+        string,
+        string,
       ];
       tables.lobbies.push({
         id,
@@ -621,7 +636,9 @@ describe("Enhanced lobby settings", () => {
     expect(body.currencyName).toBe("Credits");
     expect(body.currencySymbol).toBe("$");
     expect(body.currencyMultiplier).toBe("1000");
-    expect(body.optionalMarketEventCardIds).toEqual(["optional_leveraged_buyout"]);
+    expect(body.optionalMarketEventCardIds).toEqual([
+      "optional_leveraged_buyout",
+    ]);
   });
 });
 
@@ -660,13 +677,10 @@ describe("Enhanced game start — proper initial state", () => {
     expect(startBody.gameId).toBeDefined();
 
     // Fetch the game record to validate the stored state
-    const gameRes = await requestWithEnv(
-      `/api/games/${startBody.gameId}`,
-      {
-        method: "GET",
-        db,
-      },
-    );
+    const gameRes = await requestWithEnv(`/api/games/${startBody.gameId}`, {
+      method: "GET",
+      db,
+    });
     expect(gameRes.status).toBe(200);
     const game = await gameRes.json();
     expect(game.status).toBe("active");

@@ -112,4 +112,6 @@ export const AFFINITY_CARDS: Record<string, AffinityCard> = {
 } as const;
 
 /** All 12 affinity card IDs */
-export const AFFINITY_CARD_IDS = Object.keys(AFFINITY_CARDS) as ReadonlyArray<string>;
+export const AFFINITY_CARD_IDS = Object.keys(
+  AFFINITY_CARDS,
+) as ReadonlyArray<string>;

@@ -1,4 +1,8 @@
-import type { BindingContract, BindingContractTerm, ContributionInput } from "@oligopoly/shared";
+import type {
+  BindingContract,
+  BindingContractTerm,
+  ContributionInput,
+} from "@oligopoly/shared";
 import {
   applyHandshakeBreach,
   applyHigherRankBonus,
@@ -29,18 +33,16 @@ import {
   getTrustworthinessRestrictions,
   HANDSHAKE_BREACH_PENALTY,
   isActionBlockedByContracts,
-  isDoubles,
   isDiagonalChoice,
+  isDoubles,
   isPerimeterChoice,
   isThreadExpired,
-  MAX_DEVELOPMENT_TOKENS,
   moveOnPerimeter,
   NEGOTIATION_THREAD_DURATION,
   PASS_START_BONUS,
-  RANK_POINT_RULES,
-  serializeProfileForAudience,
   SOLO_WIN_THRESHOLD,
   SYNDICATE_WIN_THRESHOLD,
+  serializeProfileForAudience,
   THREAD_EXPIRY_PENALTY,
   TOTAL_BOARD_MARKET_VALUE,
   TRUSTWORTHINESS_DEFAULT,
@@ -863,11 +865,15 @@ describe("calculateSectorTileRent", () => {
   });
 
   it("clamps rate card to minimum 0.5", () => {
-    expect(calculateSectorTileRent(100, 0, true, 0.1)).toBe(Math.floor(200 * 0.5));
+    expect(calculateSectorTileRent(100, 0, true, 0.1)).toBe(
+      Math.floor(200 * 0.5),
+    );
   });
 
   it("clamps rate card to maximum 2.0", () => {
-    expect(calculateSectorTileRent(100, 0, true, 3.0)).toBe(Math.floor(200 * 2.0));
+    expect(calculateSectorTileRent(100, 0, true, 3.0)).toBe(
+      Math.floor(200 * 2.0),
+    );
   });
 });
 
@@ -1056,7 +1062,12 @@ describe("calculateContributionScores", () => {
 
   it("returns 100% for single member", () => {
     const members: ContributionInput[] = [
-      { playerId: "p1", tileAcquisitionCostShare: 1, rentCollectedShare: 1, dealValueShare: 1 },
+      {
+        playerId: "p1",
+        tileAcquisitionCostShare: 1,
+        rentCollectedShare: 1,
+        dealValueShare: 1,
+      },
     ];
     const result = calculateContributionScores(members);
     expect(result).toHaveLength(1);
@@ -1065,9 +1076,24 @@ describe("calculateContributionScores", () => {
 
   it("matches the worked example from game rules (Alice/Bob/Carol)", () => {
     const members: ContributionInput[] = [
-      { playerId: "alice", tileAcquisitionCostShare: 0.45, rentCollectedShare: 0.50, dealValueShare: 0.60 },
-      { playerId: "bob", tileAcquisitionCostShare: 0.35, rentCollectedShare: 0.30, dealValueShare: 0.30 },
-      { playerId: "carol", tileAcquisitionCostShare: 0.20, rentCollectedShare: 0.20, dealValueShare: 0.10 },
+      {
+        playerId: "alice",
+        tileAcquisitionCostShare: 0.45,
+        rentCollectedShare: 0.5,
+        dealValueShare: 0.6,
+      },
+      {
+        playerId: "bob",
+        tileAcquisitionCostShare: 0.35,
+        rentCollectedShare: 0.3,
+        dealValueShare: 0.3,
+      },
+      {
+        playerId: "carol",
+        tileAcquisitionCostShare: 0.2,
+        rentCollectedShare: 0.2,
+        dealValueShare: 0.1,
+      },
     ];
     const result = calculateContributionScores(members);
 
@@ -1090,8 +1116,18 @@ describe("calculateContributionScores", () => {
 
   it("handles custom weights", () => {
     const members: ContributionInput[] = [
-      { playerId: "p1", tileAcquisitionCostShare: 1, rentCollectedShare: 0, dealValueShare: 0 },
-      { playerId: "p2", tileAcquisitionCostShare: 0, rentCollectedShare: 1, dealValueShare: 0 },
+      {
+        playerId: "p1",
+        tileAcquisitionCostShare: 1,
+        rentCollectedShare: 0,
+        dealValueShare: 0,
+      },
+      {
+        playerId: "p2",
+        tileAcquisitionCostShare: 0,
+        rentCollectedShare: 1,
+        dealValueShare: 0,
+      },
     ];
     const result = calculateContributionScores(members, {
       assetScorePct: 100,
@@ -1104,8 +1140,18 @@ describe("calculateContributionScores", () => {
 
   it("handles equal contributions", () => {
     const members: ContributionInput[] = [
-      { playerId: "p1", tileAcquisitionCostShare: 0.5, rentCollectedShare: 0.5, dealValueShare: 0.5 },
-      { playerId: "p2", tileAcquisitionCostShare: 0.5, rentCollectedShare: 0.5, dealValueShare: 0.5 },
+      {
+        playerId: "p1",
+        tileAcquisitionCostShare: 0.5,
+        rentCollectedShare: 0.5,
+        dealValueShare: 0.5,
+      },
+      {
+        playerId: "p2",
+        tileAcquisitionCostShare: 0.5,
+        rentCollectedShare: 0.5,
+        dealValueShare: 0.5,
+      },
     ];
     const result = calculateContributionScores(members);
     const total = result.reduce((s, r) => s + r.percentage, 0);
@@ -1194,13 +1240,13 @@ describe("getTileByPosition", () => {
   it("finds perimeter tiles by number", () => {
     const tile = getTileByPosition(0);
     expect(tile).toBeDefined();
-    expect(tile!.name).toBe("START");
+    expect(tile?.name).toBe("START");
   });
 
   it("finds diagonal tiles by string", () => {
     const tile = getTileByPosition("D1");
     expect(tile).toBeDefined();
-    expect(tile!.name).toBe("Offshore Capital Corp.");
+    expect(tile?.name).toBe("Offshore Capital Corp.");
   });
 
   it("returns undefined for invalid position", () => {
