@@ -491,19 +491,16 @@ authRoutes.get("/session", async (c) => {
   }
 
   const token = authHeader.slice(7);
+  const now = Date.now();
   const session = await db
     .prepare(
-      "SELECT s.user_id, s.expires_at, u.username FROM auth_sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?",
+      "SELECT s.user_id, s.expires_at, u.username FROM auth_sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ? AND s.expires_at > ?",
     )
-    .bind(token)
+    .bind(token, now)
     .first<{ user_id: string; expires_at: number; username: string }>();
 
   if (!session) {
     return c.json({ error: AuthErrorKeys.SESSION_NOT_FOUND }, 401);
-  }
-
-  if (session.expires_at < Date.now()) {
-    return c.json({ error: AuthErrorKeys.SESSION_EXPIRED }, 401);
   }
 
   return c.json({
