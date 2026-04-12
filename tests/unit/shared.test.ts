@@ -2,8 +2,11 @@ import type {
   BindingContract,
   BindingContractTerm,
   ContributionInput,
+  InternalGameState,
 } from "@oligopoly/shared";
 import {
+  ACTION_POINTS_PER_TURN,
+  applyAction,
   applyHandshakeBreach,
   applyHigherRankBonus,
   applyThreadExpiry,
@@ -32,6 +35,7 @@ import {
   getTilesBySector,
   getTrustworthinessRestrictions,
   HANDSHAKE_BREACH_PENALTY,
+  initTileStates,
   isActionBlockedByContracts,
   isDiagonalChoice,
   isDoubles,
@@ -1408,5 +1412,443 @@ describe("applyHigherRankBonus", () => {
   it("caps at 1.5× multiplier", () => {
     // 5 tier diff → 1 + 5×0.125 = 1.625 → capped at 1.5
     expect(applyHigherRankBonus(100, 6, 1)).toBe(150);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Game State Machine (applyAction)
+// ---------------------------------------------------------------------------
+
+function makeTestGameState(
+  overrides?: Partial<InternalGameState>,
+): InternalGameState {
+  return {
+    gameId: "test-game",
+    round: 1,
+    phase: "waiting_for_roll",
+    currentPlayerIndex: 0,
+    turnOrder: ["player-1", "player-2"],
+    freeMarketPool: 0,
+    affinityAssignments: {},
+    pendingBuyTilePosition: null,
+    lastDiceRoll: null,
+    winnerId: null,
+    eliminatedPlayerIds: [],
+    tiles: initTileStates(),
+    players: [
+      {
+        playerId: "player-1",
+        position: 0,
+        capital: 1500,
+        ownedTilePositions: [],
+        mortgagedTilePositions: [],
+        developmentTokens: {},
+        trustworthiness: 7,
+        actionPointsRemaining: ACTION_POINTS_PER_TURN,
+        inRegulation: false,
+        doublesCount: 0,
+        isOnDiagonal: false,
+      },
+      {
+        playerId: "player-2",
+        position: 0,
+        capital: 1500,
+        ownedTilePositions: [],
+        mortgagedTilePositions: [],
+        developmentTokens: {},
+        trustworthiness: 7,
+        actionPointsRemaining: 0,
+        inRegulation: false,
+        doublesCount: 0,
+        isOnDiagonal: false,
+      },
+    ],
+    settings: {},
+    ...overrides,
+  };
+}
+
+describe("applyAction — roll_dice", () => {
+  it("moves player to correct position on perimeter", () => {
+    const state = makeTestGameState();
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [2, 3],
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.position).toBe(5);
+    expect(result.state.lastDiceRoll).toEqual([2, 3]);
+  });
+
+  it("collects start bonus when passing position 0", () => {
+    const state = makeTestGameState();
+    state.players[0].position = 38;
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [2, 4],
+      pathChoiceDie: 1,
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.position).toBe(4);
+    expect(p.capital).toBe(1500 + PASS_START_BONUS - 75); // passed start + paid corporate tax I
+  });
+
+  it("throws when not player's turn", () => {
+    const state = makeTestGameState();
+    expect(() =>
+      applyAction(state, "player-2", { type: "roll_dice", result: [1, 1] }),
+    ).toThrow("game.not_your_turn");
+  });
+
+  it("throws when game is over", () => {
+    const state = makeTestGameState({ phase: "game_over" });
+    expect(() =>
+      applyAction(state, "player-1", { type: "roll_dice", result: [1, 1] }),
+    ).toThrow("game.completed");
+  });
+
+  it("sends to regulation on triple doubles", () => {
+    const state = makeTestGameState();
+    state.players[0].doublesCount = 2;
+    state.phase = "rolling_doubles";
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [3, 3],
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.position).toBe(10);
+    expect(p.inRegulation).toBe(true);
+    expect(p.doublesCount).toBe(0);
+  });
+
+  it("enters waiting_for_buy when landing on unowned purchasable tile", () => {
+    const state = makeTestGameState();
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [1, 2],
+    });
+    expect(result.state.phase).toBe("waiting_for_buy");
+    expect(result.state.pendingBuyTilePosition).toBe(3);
+  });
+
+  it("allows rolling again after doubles (non-triple)", () => {
+    const state = makeTestGameState();
+    // Roll doubles to pos 4 (Corporate Tax I — special, no buy)
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [2, 2],
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.doublesCount).toBe(1);
+    // Should be rolling_doubles phase since we can roll again
+    expect(result.state.phase).toBe("rolling_doubles");
+  });
+});
+
+describe("applyAction — buy_tile / decline_tile", () => {
+  it("buys a tile and deducts capital", () => {
+    const state = makeTestGameState({
+      phase: "waiting_for_buy",
+      pendingBuyTilePosition: 3,
+    });
+    state.players[0].position = 3;
+    const result = applyAction(state, "player-1", {
+      type: "buy_tile",
+      tilePosition: 3,
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.capital).toBe(1500 - 80);
+    expect(p.ownedTilePositions).toContain(3);
+    const tile = result.state.tiles.find((t) => t.position === 3);
+    expect(tile?.ownerId).toBe("player-1");
+  });
+
+  it("throws when insufficient capital", () => {
+    const state = makeTestGameState({
+      phase: "waiting_for_buy",
+      pendingBuyTilePosition: 3,
+    });
+    state.players[0].capital = 50;
+    expect(() =>
+      applyAction(state, "player-1", { type: "buy_tile", tilePosition: 3 }),
+    ).toThrow("game.insufficient_capital");
+  });
+
+  it("declines tile and enters action phase", () => {
+    const state = makeTestGameState({
+      phase: "waiting_for_buy",
+      pendingBuyTilePosition: 3,
+    });
+    const result = applyAction(state, "player-1", {
+      type: "decline_tile",
+      tilePosition: 3,
+    });
+    expect(result.state.phase).toBe("action");
+    expect(result.state.pendingBuyTilePosition).toBeNull();
+  });
+});
+
+describe("applyAction — end_turn", () => {
+  it("advances to next player", () => {
+    const state = makeTestGameState({ phase: "action" });
+    const result = applyAction(state, "player-1", { type: "end_turn" });
+    expect(result.state.currentPlayerIndex).toBe(1);
+    expect(result.state.phase).toBe("waiting_for_roll");
+  });
+
+  it("advances round when wrapping around", () => {
+    const state = makeTestGameState({ phase: "action", currentPlayerIndex: 1 });
+    state.turnOrder = ["player-1", "player-2"];
+    const result = applyAction(state, "player-2", { type: "end_turn" });
+    expect(result.state.currentPlayerIndex).toBe(0);
+    expect(result.state.round).toBe(2);
+  });
+});
+
+describe("applyAction — mortgage / redeem", () => {
+  it("mortgages an owned tile", () => {
+    const state = makeTestGameState({ phase: "action" });
+    state.players[0].ownedTilePositions = [3];
+    const tile = state.tiles.find((t) => t.position === 3)!;
+    tile.ownerId = "player-1";
+
+    const result = applyAction(state, "player-1", {
+      type: "mortgage_tile",
+      tilePosition: 3,
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.capital).toBe(1500 + 40);
+    expect(p.mortgagedTilePositions).toContain(3);
+    const ts = result.state.tiles.find((t) => t.position === 3)!;
+    expect(ts.mortgaged).toBe(true);
+  });
+
+  it("redeems a mortgaged tile", () => {
+    const state = makeTestGameState({ phase: "action" });
+    state.players[0].ownedTilePositions = [3];
+    state.players[0].mortgagedTilePositions = [3];
+    const tile = state.tiles.find((t) => t.position === 3)!;
+    tile.ownerId = "player-1";
+    tile.mortgaged = true;
+
+    const result = applyAction(state, "player-1", {
+      type: "redeem_tile",
+      tilePosition: 3,
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.capital).toBe(1500 - 44);
+    expect(p.mortgagedTilePositions).not.toContain(3);
+    const ts = result.state.tiles.find((t) => t.position === 3)!;
+    expect(ts.mortgaged).toBe(false);
+  });
+});
+
+describe("applyAction — rent payment", () => {
+  it("pays rent when landing on owned sector tile", () => {
+    const state = makeTestGameState();
+    state.players[1].ownedTilePositions = [3];
+    const tile = state.tiles.find((t) => t.position === 3)!;
+    tile.ownerId = "player-2";
+
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [1, 2],
+    });
+    const payer = result.state.players.find((p) => p.playerId === "player-1")!;
+    const owner = result.state.players.find((p) => p.playerId === "player-2")!;
+    expect(payer.capital).toBe(1500 - 4);
+    expect(owner.capital).toBe(1500 + 4);
+  });
+
+  it("pays hub rent based on number of hubs owned", () => {
+    const state = makeTestGameState();
+    state.players[1].ownedTilePositions = [5];
+    const hub = state.tiles.find((t) => t.position === 5)!;
+    hub.ownerId = "player-2";
+
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [2, 3],
+    });
+    const payer = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(payer.capital).toBe(1500 - 25);
+  });
+});
+
+describe("applyAction — diagonal overflow", () => {
+  it("pays Free Market pool only once when rolling off diagonal", () => {
+    const state = makeTestGameState();
+    state.players[0].isOnDiagonal = true;
+    state.players[0].position = "D5";
+    state.freeMarketPool = 200;
+
+    // D5 is index 4. Roll [1,1]=2 -> newDiagIndex=6, overflow by 1 step
+    // Lands on position 21 (Biotech Research Corp.)
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [1, 1],
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.isOnDiagonal).toBe(false);
+    expect(p.capital).toBe(1500 + 200);
+    expect(result.state.freeMarketPool).toBe(0);
+    const fmLogs = result.logEntries.filter(
+      (e) => e.actionType === "collected_free_market",
+    );
+    expect(fmLogs).toHaveLength(1);
+  });
+
+  it("continues remaining movement on perimeter after reaching FREE MARKET", () => {
+    const state = makeTestGameState();
+    state.players[0].isOnDiagonal = true;
+    state.players[0].position = "D5";
+    state.freeMarketPool = 50;
+
+    // D5 is index 4, roll [3,4]=7 -> newDiagIndex=11, remaining=6 steps from pos 20
+    // Lands on position 26 (MARKET EVENT)
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [3, 4],
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.position).toBe(26);
+    expect(p.isOnDiagonal).toBe(false);
+    expect(p.capital).toBe(1500 + 100); // pool was 50 but minimum is 100
+  });
+
+  it("lands exactly on FREE MARKET when overflow is zero", () => {
+    const state = makeTestGameState();
+    state.players[0].isOnDiagonal = true;
+    state.players[0].position = "D4";
+    state.freeMarketPool = 300;
+
+    // D4 is index 3, roll [1,1]=2 -> newDiagIndex=5 = DIAGONAL_TILES.length
+    // remainingSteps = 0, lands on FREE MARKET
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [1, 1],
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.position).toBe(20);
+    expect(p.capital).toBe(1500 + 300);
+  });
+});
+
+describe("applyAction — end_turn rejects waiting_for_roll", () => {
+  it("throws when trying to end turn before rolling", () => {
+    const state = makeTestGameState({ phase: "waiting_for_roll" });
+    expect(() => applyAction(state, "player-1", { type: "end_turn" })).toThrow(
+      "game.cannot_end_turn",
+    );
+  });
+});
+
+describe("applyAction — landing on START triggers path choice", () => {
+  it("enters waiting_for_path_choice when landing exactly on START", () => {
+    const state = makeTestGameState();
+    state.players[0].position = 36;
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [1, 3],
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.position).toBe(0);
+    expect(result.state.phase).toBe("waiting_for_path_choice");
+    expect(p.capital).toBe(1500 + PASS_START_BONUS);
+  });
+
+  it("accepts path_choice action after landing on START", () => {
+    const state = makeTestGameState({
+      phase: "waiting_for_path_choice",
+    });
+    state.players[0].position = 0;
+    const result = applyAction(state, "player-1", {
+      type: "path_choice",
+      choice: "diagonal",
+    });
+    expect(result.state.players[0].isOnDiagonal).toBe(true);
+    expect(result.state.players[0].position).toBe("D1");
+    expect(result.state.phase).toBe("action");
+  });
+});
+
+describe("applyAction — regulation penalty persists through next turn", () => {
+  it("does not clear regulation at end of the turn player was sent there", () => {
+    const state = makeTestGameState({ phase: "action" });
+    state.players[0].inRegulation = true;
+    state.lastDiceRoll = null;
+
+    const result = applyAction(state, "player-1", { type: "end_turn" });
+    const p1 = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p1.inRegulation).toBe(true);
+  });
+
+  it("grants 0 AP to a regulated player on their next turn", () => {
+    const state = makeTestGameState({ phase: "action", currentPlayerIndex: 1 });
+    state.turnOrder = ["player-1", "player-2"];
+    state.players[0].inRegulation = true;
+
+    const result = applyAction(state, "player-2", { type: "end_turn" });
+    const p1 = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p1.actionPointsRemaining).toBe(0);
+    expect(result.state.phase).toBe("waiting_for_roll");
+  });
+
+  it("clears regulation after the regulated player completes their penalty turn", () => {
+    const state = makeTestGameState({ phase: "action" });
+    state.players[0].inRegulation = true;
+    state.lastDiceRoll = [3, 4];
+
+    const result = applyAction(state, "player-1", { type: "end_turn" });
+    const p1 = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p1.inRegulation).toBe(false);
+    const servedLogs = result.logEntries.filter(
+      (e) => e.actionType === "regulation_served",
+    );
+    expect(servedLogs).toHaveLength(1);
+  });
+});
+
+describe("applyAction — path-choice auto-roll when passing through START", () => {
+  it("routes to perimeter with odd path-choice die", () => {
+    const state = makeTestGameState();
+    state.players[0].position = 38;
+
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [2, 4],
+      pathChoiceDie: 3,
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.position).toBe(4);
+    expect(p.isOnDiagonal).toBe(false);
+    const pathLog = result.logEntries.find(
+      (e) => e.actionType === "path_choice_auto",
+    );
+    expect(pathLog).toBeDefined();
+    expect((pathLog!.payload as Record<string, unknown>).choice).toBe(
+      "perimeter",
+    );
+  });
+
+  it("routes to diagonal with even path-choice die", () => {
+    const state = makeTestGameState();
+    state.players[0].position = 38;
+
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [2, 4],
+      pathChoiceDie: 4,
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.isOnDiagonal).toBe(true);
+    expect(p.position).toBe("D4");
+    const pathLog = result.logEntries.find(
+      (e) => e.actionType === "path_choice_auto",
+    );
+    expect(pathLog).toBeDefined();
+    expect((pathLog!.payload as Record<string, unknown>).choice).toBe(
+      "diagonal",
+    );
   });
 });

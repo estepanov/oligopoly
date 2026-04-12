@@ -136,6 +136,22 @@ export {
   rollPathChoiceDie,
   TRIPLE_DOUBLES_LIMIT,
 } from "./engine/dice.js";
+// ---------------------------------------------------------------------------
+// Game State Machine
+// ---------------------------------------------------------------------------
+export type {
+  ApplyActionResult,
+  GameActionInput,
+  InternalGameState,
+  InternalPlayerState,
+  InternalTileState,
+  LogEntry,
+} from "./engine/gameStateMachine.js";
+export {
+  applyAction,
+  initTileStates,
+  normalizeGameState,
+} from "./engine/gameStateMachine.js";
 export {
   calculateAbsorptionPrice,
   calculateMortgageValue,
