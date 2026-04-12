@@ -20,6 +20,7 @@ const createD1Stub = (): D1Stub => {
     lobby_players: [],
     games: [],
     game_log: [],
+    user_ranks: [] as Row[],
   };
 
   const execSql = (sql: string, binds: unknown[]) => {
@@ -283,6 +284,14 @@ const createD1Stub = (): D1Stub => {
     // SELECT id, role FROM users WHERE id = ? (authSubjectMiddleware)
     if (trimmed.startsWith("SELECT id, role FROM users WHERE id = ?")) {
       const row = tables.users.find((r) => r.id === binds[0]) ?? null;
+      return { results: row ? [row] : [], first: row };
+    }
+
+    // SELECT rank_tier FROM user_ranks WHERE user_id = ?
+    if (
+      trimmed.startsWith("SELECT rank_tier FROM user_ranks WHERE user_id = ?")
+    ) {
+      const row = tables.user_ranks.find((r) => r.user_id === binds[0]) ?? null;
       return { results: row ? [row] : [], first: row };
     }
 
@@ -1072,5 +1081,138 @@ describe("Enhanced game start — proper initial state", () => {
     const startBody = await startRes.json();
     expect(startBody.gameId).toBeDefined();
     expect(startBody.status).toBe("in_game");
+  });
+});
+
+describe("rank-gate enforcement", () => {
+  it("returns 403 when creating a lobby with a tier-3 optional rule and no rank row", async () => {
+    const db = createD1Stub();
+    const res = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Gated Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: ["hostile_takeover"],
+      },
+      db,
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain("rank_too_low");
+  });
+
+  it("allows lobby creation when host meets the required rank tier", async () => {
+    const db = createD1Stub();
+    db._tables.user_ranks.push({ user_id: "user-1", rank_tier: 3 });
+    const res = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Gated Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: ["hostile_takeover"],
+      },
+      db,
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("allows lobby creation with tier-1 rules without a rank row", async () => {
+    const db = createD1Stub();
+    const res = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Basic Rules Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: ["speed_market", "no_regulation"],
+      },
+      db,
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("returns 403 when creating a lobby with a tier-2 optional market event card and no rank row", async () => {
+    const db = createD1Stub();
+    const res = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Card Gated Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+        optionalMarketEventCardIds: ["optional_dark_pool_transfer"],
+      },
+      db,
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain("rank_too_low");
+  });
+
+  it("returns 403 when updating lobby settings with a rank-gated rule", async () => {
+    const db = createD1Stub();
+    // Create lobby with no gated rules
+    const createRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Upgradable Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    expect(createRes.status).toBe(201);
+    const lobby = await createRes.json();
+
+    // Try to update settings with a tier-3 rule — host has no rank row (tier 1)
+    const updateRes = await requestWithEnv(
+      `/api/lobbies/${lobby.id}/settings`,
+      {
+        method: "PUT",
+        headers: { "x-subject": "user-1" },
+        body: { optionalRuleIds: ["hostile_takeover"] },
+        db,
+      },
+    );
+    expect(updateRes.status).toBe(403);
+    const updateBody = await updateRes.json();
+    expect(updateBody.error).toContain("rank_too_low");
+  });
+
+  it("allows updating lobby settings when host meets required rank tier", async () => {
+    const db = createD1Stub();
+    db._tables.user_ranks.push({ user_id: "user-1", rank_tier: 3 });
+    const createRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Upgradable Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    expect(createRes.status).toBe(201);
+    const lobby = await createRes.json();
+
+    const updateRes = await requestWithEnv(
+      `/api/lobbies/${lobby.id}/settings`,
+      {
+        method: "PUT",
+        headers: { "x-subject": "user-1" },
+        body: { optionalRuleIds: ["hostile_takeover"] },
+        db,
+      },
+    );
+    expect(updateRes.status).toBe(200);
   });
 });
