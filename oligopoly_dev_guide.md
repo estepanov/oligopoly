@@ -86,9 +86,17 @@ VITE_APP_DOMAIN=oligopoly.online
 
 ### Run
 
+After `pnpm install`, build the workspace libraries that ship compiled `dist/` entrypoints (`@oligopoly/validation`, `@oligopoly/shared`). The root `pnpm run dev` script runs this automatically via `predev`.
+
 ```bash
 pnpm run db:migrate:dev
 pnpm run dev
+```
+
+If you start packages individually (`pnpm run dev:worker` / `pnpm run dev:web`) without running `predev` first, run:
+
+```bash
+pnpm run --filter @oligopoly/validation build && pnpm run --filter @oligopoly/shared build
 ```
 
 ### Validate

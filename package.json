@@ -7,6 +7,7 @@
     "pnpm": ">=9"
   },
   "scripts": {
+    "predev": "pnpm run --filter @oligopoly/validation build && pnpm run --filter @oligopoly/shared build",
     "dev": "pnpm run --filter @oligopoly/worker dev & pnpm run --filter @oligopoly/web dev & wait",
     "dev:worker": "pnpm run --filter @oligopoly/worker dev",
     "dev:web": "pnpm run --filter @oligopoly/web dev",
