@@ -1,3 +1,4 @@
+import { GameEngineErrorKeys } from "@oligopoly/validation";
 import app from "@oligopoly/worker";
 import { describe, expect, it } from "vitest";
 
@@ -21,16 +22,75 @@ function makeDb(tables: Record<string, Row[]>) {
       const filtered = applyWhere(rows, query, boundParams);
       return { results: filtered as T[] };
     },
+    async run(): Promise<{ success: boolean }> {
+      applyMutation(query, boundParams, tables);
+      return { success: true };
+    },
   });
 
   return {
     prepare: (query: string) => makeStmt(query, []),
+    batch: async (stmts: Array<{ run: () => Promise<unknown> }>) => {
+      const out: unknown[] = [];
+      for (const s of stmts) {
+        out.push(await s.run());
+      }
+      return out;
+    },
   };
 }
 
 function inferTable(query: string): string {
-  const match = query.match(/FROM\s+(\w+)/i);
-  return match?.[1] ?? "";
+  const from = query.match(/FROM\s+(\w+)/i);
+  if (from) {
+    return from[1];
+  }
+  const upd = query.match(/UPDATE\s+(\w+)/i);
+  if (upd) {
+    return upd[1];
+  }
+  const ins = query.match(/INTO\s+(\w+)/i);
+  if (ins) {
+    return ins[1];
+  }
+  return "";
+}
+
+function applyMutation(
+  query: string,
+  params: unknown[],
+  tables: Record<string, Row[]>,
+) {
+  if (/UPDATE\s+games/i.test(query) && /state_json/i.test(query)) {
+    const stateJson = params[0];
+    const id = params[1];
+    const row = tables.games?.find((r) => r.id === id);
+    if (row) {
+      row.state_json = stateJson;
+    }
+    return;
+  }
+
+  if (/INSERT\s+INTO\s+game_log/i.test(query)) {
+    const [
+      id,
+      game_id,
+      round,
+      player_id,
+      action_type,
+      payload_json,
+      created_at,
+    ] = params;
+    tables.game_log.push({
+      id,
+      game_id,
+      round,
+      player_id,
+      action_type,
+      payload_json,
+      created_at,
+    });
+  }
 }
 
 function applyWhere(rows: Row[], query: string, params: unknown[]): Row[] {
@@ -44,6 +104,11 @@ function applyWhere(rows: Row[], query: string, params: unknown[]): Row[] {
   const statusMatch = query.match(/WHERE\s+status\s*=\s*\?/i);
   if (statusMatch && params.length > 0) {
     return rows.filter((r) => r.status === params[0]);
+  }
+
+  const gameIdMatch = query.match(/WHERE\s+game_id\s*=\s*\?/i);
+  if (gameIdMatch && params.length > 0) {
+    return rows.filter((r) => r.game_id === params[0]);
   }
 
   return rows;
@@ -74,6 +139,57 @@ const completedGame: Row = {
   winner_id: PLAYER_A,
   state_json: null,
 };
+
+const playableGameTemplate: Row = {
+  id: "game-playable",
+  status: "active",
+  player_ids_json: JSON.stringify([PLAYER_A, PLAYER_B]),
+  started_at: 2000,
+  ended_at: null,
+  winner_id: null,
+  state_json: JSON.stringify({
+    gameId: "game-playable",
+    round: 1,
+    phase: "market_event",
+    currentPlayerIndex: 0,
+    turnOrder: [PLAYER_A, PLAYER_B],
+    freeMarketPool: 0,
+    affinityAssignments: { [PLAYER_A]: "aff-a", [PLAYER_B]: "aff-b" },
+    players: [
+      {
+        playerId: PLAYER_A,
+        position: 0,
+        capital: 1500,
+        ownedTilePositions: [],
+        mortgagedTilePositions: [],
+        developmentTokens: {},
+        trustworthiness: 7,
+        actionPointsRemaining: 0,
+        inRegulation: false,
+        doublesCount: 0,
+        isOnDiagonal: false,
+      },
+      {
+        playerId: PLAYER_B,
+        position: 0,
+        capital: 1500,
+        ownedTilePositions: [],
+        mortgagedTilePositions: [],
+        developmentTokens: {},
+        trustworthiness: 7,
+        actionPointsRemaining: 0,
+        inRegulation: false,
+        doublesCount: 0,
+        isOnDiagonal: false,
+      },
+    ],
+    settings: { spectatorMode: "disabled" },
+  }),
+};
+
+function cloneRow<T extends Row>(r: T): T {
+  return JSON.parse(JSON.stringify(r)) as T;
+}
 
 const logEntry: Row = {
   id: "log-1",
@@ -116,9 +232,13 @@ const outsiderUser: Row = {
 function makeEnv(extraTables: Record<string, Row[]> = {}) {
   return {
     DB: makeDb({
-      users: [userA, userB, outsiderUser],
-      games: [activeGame, completedGame],
-      game_log: [logEntry, logEntryCompleted],
+      users: [cloneRow(userA), cloneRow(userB), cloneRow(outsiderUser)],
+      games: [
+        cloneRow(activeGame),
+        cloneRow(completedGame),
+        cloneRow(playableGameTemplate),
+      ],
+      game_log: [cloneRow(logEntry), cloneRow(logEntryCompleted)],
       ...extraTables,
     }),
   };
@@ -264,6 +384,100 @@ describe("GET /api/games/:id/replay", () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ replay: unknown[] }>();
     expect(Array.isArray(body.replay)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/games/:id/actions
+// ---------------------------------------------------------------------------
+describe("POST /api/games/:id/actions", () => {
+  it("returns 401 without auth", async () => {
+    const res = await app.request(
+      "/api/games/game-playable/actions",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "roll_dice" }),
+      },
+      makeEnv(),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for non-participant", async () => {
+    const res = await app.request(
+      "/api/games/game-playable/actions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-subject": "outsider",
+        },
+        body: JSON.stringify({ type: "roll_dice" }),
+      },
+      makeEnv(),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 400 for unimplemented actions", async () => {
+    const res = await app.request(
+      "/api/games/game-playable/actions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-subject": PLAYER_A,
+        },
+        body: JSON.stringify({ type: "buy_tile", tilePosition: 1 }),
+      },
+      makeEnv(),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe(GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED);
+  });
+
+  it("applies roll_dice, persists state, and redacts affinity in the response", async () => {
+    const env = makeEnv();
+    const res = await app.request(
+      "/api/games/game-playable/actions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-subject": PLAYER_A,
+        },
+        body: JSON.stringify({ type: "roll_dice" }),
+      },
+      env,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      state: {
+        phase: string;
+        myAffinityCardId?: string | null;
+        affinityAssignments?: Record<string, string>;
+        players?: { position: number }[];
+      };
+    }>();
+    expect(body.state.phase).toBe("action");
+    expect(body.state.myAffinityCardId).toBe("aff-a");
+    expect(body.state.affinityAssignments).toBeUndefined();
+    expect(body.state.players?.[0]?.position).not.toBe(0);
+
+    const logRes = await app.request(
+      "/api/games/game-playable/log",
+      { headers: { "x-subject": PLAYER_A } },
+      env,
+    );
+    expect(logRes.status).toBe(200);
+    const logJson = await logRes.json<{
+      log: { actionType: string; playerId: string | null }[];
+    }>();
+    const last = logJson.log.at(-1);
+    expect(last?.actionType).toBe("roll_dice");
+    expect(last?.playerId).toBe(PLAYER_A);
   });
 });
 

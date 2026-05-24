@@ -712,6 +712,11 @@ describe("GameActionSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts roll_dice without result (server fills authoritative dice)", () => {
+    const result = GameActionSchema.safeParse({ type: "roll_dice" });
+    expect(result.success).toBe(true);
+  });
+
   it("accepts buy_tile action with number position", () => {
     const result = GameActionSchema.safeParse({
       type: "buy_tile",

@@ -136,6 +136,14 @@ export {
   rollPathChoiceDie,
   TRIPLE_DOUBLES_LIMIT,
 } from "./engine/dice.js";
+export type {
+  ApplyGameActionContext,
+  ApplyGameActionFailure,
+  ApplyGameActionResult,
+  ApplyGameActionSuccess,
+  EngineGameState,
+} from "./engine/gameReducer.js";
+export { applyGameAction } from "./engine/gameReducer.js";
 export {
   calculateAbsorptionPrice,
   calculateMortgageValue,

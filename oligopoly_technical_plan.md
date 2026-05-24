@@ -161,6 +161,7 @@ GET    /api/lobbies/:id/ws
 # Games
 GET    /api/games
 GET    /api/games/:id
+POST   /api/games/:id/actions   # authoritative game action: validates GameAction, applies @oligopoly/shared engine, persists state + log atomically (D1 batch)
 GET    /api/games/:id/state
 GET    /api/games/:id/log
 GET    /api/games/:id/replay
@@ -556,6 +557,12 @@ webauthn:challenge:login:{challenge}
 ```
 
 No deployment-specific delivery or session keys are defined in this plan.
+
+### Game engine and `games.state_json`
+
+- Persisted state is a superset of the public `GameState` contract: it may include **`affinityAssignments`** (server-only map). Per-player responses replace that map with **`myAffinityCardId`** (see `GET /api/games/:id/state`).
+- **`applyGameAction`** in `@oligopoly/shared` is the canonical deterministic transition `(state, action, actorCtx) → result`. Error keys live in **`GameEngineErrorKeys`** in `@oligopoly/validation`.
+- **`roll_dice`** payloads may omit **`result`** on the wire; the worker must attach an authoritative dice tuple (from secure RNG) before calling the reducer. Narrow tests may pass `result` when `rollDice` is omitted on the context.
 
 ---
 

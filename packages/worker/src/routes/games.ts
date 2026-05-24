@@ -1,10 +1,12 @@
-import type {
-  GameLogEntry,
-  GameState,
-  GameSummary,
-} from "@oligopoly/validation";
-import { GameStatusSchema } from "@oligopoly/validation";
+import { zValidator } from "@hono/zod-validator";
+import { applyGameAction, type EngineGameState } from "@oligopoly/shared";
+import type { GameLogEntry, GameSummary } from "@oligopoly/validation";
+import { GameActionSchema, GameStatusSchema } from "@oligopoly/validation";
 import { Hono } from "hono";
+import {
+  type PersistedGameState,
+  toClientGameState,
+} from "../gameStateView.js";
 
 type Bindings = {
   ALLOWED_ORIGINS?: string;
@@ -133,6 +135,99 @@ gameRoutes.get("/:id", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/games/:id/actions
+// Authoritative game transition: validate GameAction, apply engine, persist.
+// ---------------------------------------------------------------------------
+gameRoutes.post(
+  "/:id/actions",
+  zValidator("json", GameActionSchema),
+  async (c) => {
+    const id = c.req.param("id");
+    const subject = c.get("userId");
+
+    if (!subject) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const db = c.env?.DB;
+    if (!db) {
+      return c.json({ error: "Not found" }, 404);
+    }
+
+    const row = await db
+      .prepare(
+        "SELECT id, status, player_ids_json, state_json FROM games WHERE id = ?",
+      )
+      .bind(id)
+      .first<{
+        id: string;
+        status: string;
+        player_ids_json: string;
+        state_json: string | null;
+      }>();
+
+    if (!row) {
+      return c.json({ error: "Not found" }, 404);
+    }
+
+    if (row.status !== "active") {
+      return c.json({ error: "Game is not active" }, 409);
+    }
+
+    const playerIds = JSON.parse(row.player_ids_json) as string[];
+    if (!playerIds.includes(subject)) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+
+    const persisted: EngineGameState = row.state_json
+      ? (JSON.parse(row.state_json) as EngineGameState)
+      : { gameId: id, round: 0 };
+
+    const action = c.req.valid("json");
+    const outcome = applyGameAction(persisted, action, {
+      actorId: subject,
+      rollDice: rollSecureDice,
+    });
+
+    if (!outcome.ok) {
+      return c.json({ error: outcome.errorKey }, 400);
+    }
+
+    const logId = crypto.randomUUID();
+    const now = Date.now();
+    const round = outcome.state.round ?? 1;
+
+    await db.batch([
+      db
+        .prepare("UPDATE games SET state_json = ? WHERE id = ?")
+        .bind(JSON.stringify(outcome.state), id),
+      db
+        .prepare(
+          `INSERT INTO game_log (id, game_id, round, player_id, action_type, payload_json, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          logId,
+          id,
+          round,
+          subject,
+          outcome.logActionType,
+          JSON.stringify(outcome.logPayload),
+          now,
+        ),
+    ]);
+
+    const clientState = toClientGameState(
+      outcome.state as PersistedGameState,
+      "player",
+      subject,
+    );
+
+    return c.json({ state: clientState });
+  },
+);
+
+// ---------------------------------------------------------------------------
 // GET /api/games/:id/state
 // Returns the current game state snapshot.
 // Auth required (user must be a player or spectator).
@@ -164,18 +259,13 @@ gameRoutes.get("/:id/state", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  type StateWithAffinity = GameState & {
-    affinityAssignments?: Record<string, string>;
-    settings?: { spectatorMode?: string; [key: string]: unknown };
-  };
-
   const playerIds = JSON.parse(row.player_ids_json) as string[];
   const isPlayer = playerIds.includes(subject);
 
   // If not a player, check whether spectator mode is enabled
   if (!isPlayer) {
-    const state: StateWithAffinity = row.state_json
-      ? (JSON.parse(row.state_json) as StateWithAffinity)
+    const state: PersistedGameState = row.state_json
+      ? (JSON.parse(row.state_json) as PersistedGameState)
       : { gameId: id, round: 0 };
 
     const spectatorEnabled = state.settings?.spectatorMode === "enabled";
@@ -183,25 +273,14 @@ gameRoutes.get("/:id/state", async (c) => {
       return c.json({ error: "Forbidden" }, 403);
     }
 
-    // Spectators see board state but never see affinity assignments
-    const { affinityAssignments: _hidden, ...spectatorState } = state;
-    return c.json(spectatorState);
+    return c.json(toClientGameState(state, "spectator", subject));
   }
 
-  const state: StateWithAffinity = row.state_json
-    ? (JSON.parse(row.state_json) as StateWithAffinity)
+  const state: PersistedGameState = row.state_json
+    ? (JSON.parse(row.state_json) as PersistedGameState)
     : { gameId: id, round: 0 };
 
-  // Redact hidden information: each player may only see their own affinity card.
-  // Replace the full affinityAssignments map with only the requesting player's card.
-  if (state.affinityAssignments) {
-    const myAffinity = state.affinityAssignments[subject] ?? null;
-    // Remove the full map and expose only the requester's card
-    const { affinityAssignments: _all, ...rest } = state;
-    return c.json({ ...rest, myAffinityCardId: myAffinity });
-  }
-
-  return c.json(state);
+  return c.json(toClientGameState(state, "player", subject));
 });
 
 // ---------------------------------------------------------------------------
@@ -345,3 +424,9 @@ gameRoutes.get("/:id/ws", (c) => {
 gameRoutes.get("/:id/spectate", (c) => {
   return c.json({ error: "WebSocket support not yet implemented" }, 501);
 });
+
+function rollSecureDice(): [number, number] {
+  const u = new Uint8Array(2);
+  crypto.getRandomValues(u);
+  return [(u[0] % 6) + 1, (u[1] % 6) + 1];
+}
