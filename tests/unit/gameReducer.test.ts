@@ -100,10 +100,10 @@ describe("applyGameAction", () => {
   });
 
   it("advances turn on end_turn and increments round after a full cycle", () => {
-    const state = minimalTwoPlayerState("action");
+    const state = minimalTwoPlayerState("market_event");
     const rolled = applyGameAction(
       state,
-      { type: "roll_dice", result: [1, 1] },
+      { type: "roll_dice", result: [2, 3] },
       { actorId: "alice" },
     );
     expect(rolled.ok).toBe(true);
@@ -127,7 +127,7 @@ describe("applyGameAction", () => {
 
     const bobRoll = applyGameAction(
       e1.state,
-      { type: "roll_dice", result: [2, 2] },
+      { type: "roll_dice", result: [1, 2] },
       { actorId: "bob" },
     );
     expect(bobRoll.ok).toBe(true);
@@ -148,6 +148,46 @@ describe("applyGameAction", () => {
     }
     expect(e2.state.currentPlayerIndex).toBe(0);
     expect(e2.state.round).toBe(2);
+  });
+
+  it("rejects end_turn before rolling", () => {
+    const state = minimalTwoPlayerState("market_event");
+    const r = applyGameAction(
+      state,
+      { type: "end_turn" },
+      { actorId: "alice" },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.errorKey).toBe(GameEngineErrorKeys.CANNOT_END_TURN);
+    }
+  });
+
+  it("allows a second roll_dice after doubles", () => {
+    const state = minimalTwoPlayerState("market_event");
+    const first = applyGameAction(
+      state,
+      { type: "roll_dice", result: [4, 4] },
+      { actorId: "alice" },
+    );
+    expect(first.ok).toBe(true);
+    if (!first.ok) {
+      return;
+    }
+    expect(first.state.phase).toBe("rolling_doubles");
+    expect(first.state.players?.[0]?.doublesCount).toBe(1);
+
+    const second = applyGameAction(
+      first.state,
+      { type: "roll_dice", result: [2, 3] },
+      { actorId: "alice" },
+    );
+    expect(second.ok).toBe(true);
+    if (!second.ok) {
+      return;
+    }
+    expect(second.state.players?.[0]?.doublesCount).toBe(0);
+    expect(second.state.phase).toBe("action");
   });
 
   it("returns ACTION_NOT_IMPLEMENTED for buy_tile", () => {

@@ -133,6 +133,8 @@ export {
   isPerimeterChoice,
   moveOnPerimeter,
   rollDice,
+  rollFairD6,
+  rollFairDice,
   rollPathChoiceDie,
   TRIPLE_DOUBLES_LIMIT,
 } from "./engine/dice.js";

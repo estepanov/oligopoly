@@ -50,6 +50,7 @@ export const GameEngineErrorKeys = {
   DICE_RESULT_REQUIRED: "game.dice_result_required",
   INVALID_PLAYER_STATE: "game.invalid_player_state",
   ACTION_NOT_IMPLEMENTED: "game.action_not_implemented",
+  CANNOT_END_TURN: "game.cannot_end_turn",
 } as const;
 
 export const HealthResponseSchema = z.object({

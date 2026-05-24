@@ -22,6 +22,19 @@ export const BOARD_SIZE = 40;
  * Note: Uses Math.random for local development.
  * Production server should replace with a seeded/deterministic RNG.
  */
+/** Uniform 1–6 via rejection sampling (256 is not divisible by 6). */
+export function rollFairD6(): number {
+  const bytes = new Uint8Array(1);
+  do {
+    crypto.getRandomValues(bytes);
+  } while (bytes[0] >= 252);
+  return (bytes[0] % 6) + 1;
+}
+
+export function rollFairDice(): [number, number] {
+  return [rollFairD6(), rollFairD6()];
+}
+
 export function rollDice(): [number, number] {
   const die1 = Math.floor(Math.random() * 6) + 1;
   const die2 = Math.floor(Math.random() * 6) + 1;

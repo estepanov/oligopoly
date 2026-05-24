@@ -16,6 +16,8 @@ import { ACTION_POINTS_PER_TURN, PASS_START_BONUS } from "./setup.js";
 /** Full row shape stored in `games.state_json` (superset of public `GameState`). */
 export type EngineGameState = GameState & {
   affinityAssignments?: Record<string, string>;
+  /** Set after a roll this turn; cleared on end_turn (mirrors gameStateMachine). */
+  lastDiceRoll?: [number, number] | null;
 };
 
 export type ApplyGameActionContext = {
@@ -91,7 +93,11 @@ function applyRollDice(
   }
 
   const phase = state.phase ?? "action";
-  if (phase !== "action" && phase !== "market_event") {
+  if (
+    phase !== "action" &&
+    phase !== "market_event" &&
+    phase !== "rolling_doubles"
+  ) {
     return { ok: false, errorKey: GameEngineErrorKeys.INVALID_PHASE };
   }
 
@@ -100,7 +106,14 @@ function applyRollDice(
     return { ok: false, errorKey: GameEngineErrorKeys.INVALID_PLAYER_STATE };
   }
 
-  if (me.actionPointsRemaining !== 0) {
+  const mayRerollDoubles =
+    state.lastDiceRoll !== undefined &&
+    state.lastDiceRoll !== null &&
+    isDoubles(state.lastDiceRoll) &&
+    me.doublesCount > 0 &&
+    me.doublesCount < TRIPLE_DOUBLES_LIMIT;
+
+  if (me.actionPointsRemaining !== 0 && !mayRerollDoubles) {
     return { ok: false, errorKey: GameEngineErrorKeys.DICE_ALREADY_ROLLED };
   }
 
@@ -116,7 +129,6 @@ function applyRollDice(
   const startPosition = me.position;
 
   const next = cloneState(state);
-  next.phase = "action";
 
   const players = next.players;
   if (!players) {
@@ -151,6 +163,17 @@ function applyRollDice(
 
   players[idx] = p;
   next.players = players;
+  next.lastDiceRoll = roll;
+
+  if (
+    isDoubles(roll) &&
+    doublesCount > 0 &&
+    doublesCount < TRIPLE_DOUBLES_LIMIT
+  ) {
+    next.phase = "rolling_doubles";
+  } else {
+    next.phase = "action";
+  }
 
   return {
     ok: true,
@@ -181,11 +204,20 @@ function applyEndTurn(
     return { ok: false, errorKey: GameEngineErrorKeys.INVALID_PLAYER_STATE };
   }
 
+  const phase = state.phase ?? "action";
+  if (phase !== "action" || !state.lastDiceRoll) {
+    return { ok: false, errorKey: GameEngineErrorKeys.CANNOT_END_TURN };
+  }
+
   const next = cloneState(state);
   const players = next.players?.map((pl) =>
-    pl.playerId === ctx.actorId ? { ...pl, actionPointsRemaining: 0 } : pl,
+    pl.playerId === ctx.actorId
+      ? { ...pl, actionPointsRemaining: 0, doublesCount: 0 }
+      : pl,
   );
   next.players = players;
+  next.lastDiceRoll = null;
+  next.phase = "market_event";
 
   const followingIndex = (curIdx + 1) % order.length;
   next.currentPlayerIndex = followingIndex;
