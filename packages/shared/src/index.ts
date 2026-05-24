@@ -133,11 +133,21 @@ export {
   isPerimeterChoice,
   moveOnPerimeter,
   rollDice,
+  rollFairD6,
+  rollFairDice,
   rollPathChoiceDie,
   TRIPLE_DOUBLES_LIMIT,
 } from "./engine/dice.js";
+export type {
+  ApplyGameActionContext,
+  ApplyGameActionFailure,
+  ApplyGameActionResult,
+  ApplyGameActionSuccess,
+  EngineGameState,
+} from "./engine/gameReducer.js";
+export { applyGameAction } from "./engine/gameReducer.js";
 // ---------------------------------------------------------------------------
-// Game State Machine
+// Game State Machine (authoritative for POST /api/games/:id/action)
 // ---------------------------------------------------------------------------
 export type {
   ApplyActionResult,

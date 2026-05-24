@@ -42,6 +42,17 @@ export const NegotiationErrorKeys = {
     "negotiation.syndicate_dissolution_requires_unanimous_vote",
 } as const;
 
+/** Stable keys returned by `applyGameAction` in `@oligopoly/shared` */
+export const GameEngineErrorKeys = {
+  NOT_YOUR_TURN: "game.not_your_turn",
+  INVALID_PHASE: "game.invalid_phase",
+  DICE_ALREADY_ROLLED: "game.dice_already_rolled",
+  DICE_RESULT_REQUIRED: "game.dice_result_required",
+  INVALID_PLAYER_STATE: "game.invalid_player_state",
+  ACTION_NOT_IMPLEMENTED: "game.action_not_implemented",
+  CANNOT_END_TURN: "game.cannot_end_turn",
+} as const;
+
 export const HealthResponseSchema = z.object({
   status: z.literal("ok"),
   timestamp: z.number(),
@@ -464,10 +475,10 @@ export type UpdateLobbySettingsInput = z.infer<
 export const GameActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("roll_dice"),
-    result: z.tuple([
-      z.number().int().min(1).max(6),
-      z.number().int().min(1).max(6),
-    ]),
+    /** Omitted on client requests; server fills from authoritative RNG before persistence. */
+    result: z
+      .tuple([z.number().int().min(1).max(6), z.number().int().min(1).max(6)])
+      .optional(),
   }),
   z.object({
     type: z.literal("buy_tile"),

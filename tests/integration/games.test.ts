@@ -21,16 +21,75 @@ function makeDb(tables: Record<string, Row[]>) {
       const filtered = applyWhere(rows, query, boundParams);
       return { results: filtered as T[] };
     },
+    async run(): Promise<{ success: boolean }> {
+      applyMutation(query, boundParams, tables);
+      return { success: true };
+    },
   });
 
   return {
     prepare: (query: string) => makeStmt(query, []),
+    batch: async (stmts: Array<{ run: () => Promise<unknown> }>) => {
+      const out: unknown[] = [];
+      for (const s of stmts) {
+        out.push(await s.run());
+      }
+      return out;
+    },
   };
 }
 
 function inferTable(query: string): string {
-  const match = query.match(/FROM\s+(\w+)/i);
-  return match?.[1] ?? "";
+  const from = query.match(/FROM\s+(\w+)/i);
+  if (from) {
+    return from[1];
+  }
+  const upd = query.match(/UPDATE\s+(\w+)/i);
+  if (upd) {
+    return upd[1];
+  }
+  const ins = query.match(/INTO\s+(\w+)/i);
+  if (ins) {
+    return ins[1];
+  }
+  return "";
+}
+
+function applyMutation(
+  query: string,
+  params: unknown[],
+  tables: Record<string, Row[]>,
+) {
+  if (/UPDATE\s+games/i.test(query) && /state_json/i.test(query)) {
+    const stateJson = params[0];
+    const id = params[1];
+    const row = tables.games?.find((r) => r.id === id);
+    if (row) {
+      row.state_json = stateJson;
+    }
+    return;
+  }
+
+  if (/INSERT\s+INTO\s+game_log/i.test(query)) {
+    const [
+      id,
+      game_id,
+      round,
+      player_id,
+      action_type,
+      payload_json,
+      created_at,
+    ] = params;
+    tables.game_log.push({
+      id,
+      game_id,
+      round,
+      player_id,
+      action_type,
+      payload_json,
+      created_at,
+    });
+  }
 }
 
 function applyWhere(rows: Row[], query: string, params: unknown[]): Row[] {
@@ -44,6 +103,11 @@ function applyWhere(rows: Row[], query: string, params: unknown[]): Row[] {
   const statusMatch = query.match(/WHERE\s+status\s*=\s*\?/i);
   if (statusMatch && params.length > 0) {
     return rows.filter((r) => r.status === params[0]);
+  }
+
+  const gameIdMatch = query.match(/WHERE\s+game_id\s*=\s*\?/i);
+  if (gameIdMatch && params.length > 0) {
+    return rows.filter((r) => r.game_id === params[0]);
   }
 
   return rows;
@@ -74,6 +138,10 @@ const completedGame: Row = {
   winner_id: PLAYER_A,
   state_json: null,
 };
+
+function cloneRow<T extends Row>(r: T): T {
+  return JSON.parse(JSON.stringify(r)) as T;
+}
 
 const logEntry: Row = {
   id: "log-1",
@@ -116,9 +184,9 @@ const outsiderUser: Row = {
 function makeEnv(extraTables: Record<string, Row[]> = {}) {
   return {
     DB: makeDb({
-      users: [userA, userB, outsiderUser],
-      games: [activeGame, completedGame],
-      game_log: [logEntry, logEntryCompleted],
+      users: [cloneRow(userA), cloneRow(userB), cloneRow(outsiderUser)],
+      games: [cloneRow(activeGame), cloneRow(completedGame)],
+      game_log: [cloneRow(logEntry), cloneRow(logEntryCompleted)],
       ...extraTables,
     }),
   };
