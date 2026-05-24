@@ -144,6 +144,22 @@ export type {
   EngineGameState,
 } from "./engine/gameReducer.js";
 export { applyGameAction } from "./engine/gameReducer.js";
+// ---------------------------------------------------------------------------
+// Game State Machine (authoritative for POST /api/games/:id/action)
+// ---------------------------------------------------------------------------
+export type {
+  ApplyActionResult,
+  GameActionInput,
+  InternalGameState,
+  InternalPlayerState,
+  InternalTileState,
+  LogEntry,
+} from "./engine/gameStateMachine.js";
+export {
+  applyAction,
+  initTileStates,
+  normalizeGameState,
+} from "./engine/gameStateMachine.js";
 export {
   calculateAbsorptionPrice,
   calculateMortgageValue,

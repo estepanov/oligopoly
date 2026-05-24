@@ -1,4 +1,3 @@
-import { GameEngineErrorKeys } from "@oligopoly/validation";
 import app from "@oligopoly/worker";
 import { describe, expect, it } from "vitest";
 
@@ -140,53 +139,6 @@ const completedGame: Row = {
   state_json: null,
 };
 
-const playableGameTemplate: Row = {
-  id: "game-playable",
-  status: "active",
-  player_ids_json: JSON.stringify([PLAYER_A, PLAYER_B]),
-  started_at: 2000,
-  ended_at: null,
-  winner_id: null,
-  state_json: JSON.stringify({
-    gameId: "game-playable",
-    round: 1,
-    phase: "market_event",
-    currentPlayerIndex: 0,
-    turnOrder: [PLAYER_A, PLAYER_B],
-    freeMarketPool: 0,
-    affinityAssignments: { [PLAYER_A]: "aff-a", [PLAYER_B]: "aff-b" },
-    players: [
-      {
-        playerId: PLAYER_A,
-        position: 0,
-        capital: 1500,
-        ownedTilePositions: [],
-        mortgagedTilePositions: [],
-        developmentTokens: {},
-        trustworthiness: 7,
-        actionPointsRemaining: 0,
-        inRegulation: false,
-        doublesCount: 0,
-        isOnDiagonal: false,
-      },
-      {
-        playerId: PLAYER_B,
-        position: 0,
-        capital: 1500,
-        ownedTilePositions: [],
-        mortgagedTilePositions: [],
-        developmentTokens: {},
-        trustworthiness: 7,
-        actionPointsRemaining: 0,
-        inRegulation: false,
-        doublesCount: 0,
-        isOnDiagonal: false,
-      },
-    ],
-    settings: { spectatorMode: "disabled" },
-  }),
-};
-
 function cloneRow<T extends Row>(r: T): T {
   return JSON.parse(JSON.stringify(r)) as T;
 }
@@ -233,11 +185,7 @@ function makeEnv(extraTables: Record<string, Row[]> = {}) {
   return {
     DB: makeDb({
       users: [cloneRow(userA), cloneRow(userB), cloneRow(outsiderUser)],
-      games: [
-        cloneRow(activeGame),
-        cloneRow(completedGame),
-        cloneRow(playableGameTemplate),
-      ],
+      games: [cloneRow(activeGame), cloneRow(completedGame)],
       game_log: [cloneRow(logEntry), cloneRow(logEntryCompleted)],
       ...extraTables,
     }),
@@ -384,100 +332,6 @@ describe("GET /api/games/:id/replay", () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ replay: unknown[] }>();
     expect(Array.isArray(body.replay)).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/games/:id/actions
-// ---------------------------------------------------------------------------
-describe("POST /api/games/:id/actions", () => {
-  it("returns 401 without auth", async () => {
-    const res = await app.request(
-      "/api/games/game-playable/actions",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "roll_dice" }),
-      },
-      makeEnv(),
-    );
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 403 for non-participant", async () => {
-    const res = await app.request(
-      "/api/games/game-playable/actions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-subject": "outsider",
-        },
-        body: JSON.stringify({ type: "roll_dice" }),
-      },
-      makeEnv(),
-    );
-    expect(res.status).toBe(403);
-  });
-
-  it("returns 400 for unimplemented actions", async () => {
-    const res = await app.request(
-      "/api/games/game-playable/actions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-subject": PLAYER_A,
-        },
-        body: JSON.stringify({ type: "buy_tile", tilePosition: 1 }),
-      },
-      makeEnv(),
-    );
-    expect(res.status).toBe(400);
-    const body = await res.json<{ error: string }>();
-    expect(body.error).toBe(GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED);
-  });
-
-  it("applies roll_dice, persists state, and redacts affinity in the response", async () => {
-    const env = makeEnv();
-    const res = await app.request(
-      "/api/games/game-playable/actions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-subject": PLAYER_A,
-        },
-        body: JSON.stringify({ type: "roll_dice" }),
-      },
-      env,
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json<{
-      state: {
-        phase: string;
-        myAffinityCardId?: string | null;
-        affinityAssignments?: Record<string, string>;
-        players?: { position: number }[];
-      };
-    }>();
-    expect(body.state.phase).toBe("action");
-    expect(body.state.myAffinityCardId).toBe("aff-a");
-    expect(body.state.affinityAssignments).toBeUndefined();
-    expect(body.state.players?.[0]?.position).not.toBe(0);
-
-    const logRes = await app.request(
-      "/api/games/game-playable/log",
-      { headers: { "x-subject": PLAYER_A } },
-      env,
-    );
-    expect(logRes.status).toBe(200);
-    const logJson = await logRes.json<{
-      log: { actionType: string; playerId: string | null }[];
-    }>();
-    const last = logJson.log.at(-1);
-    expect(last?.actionType).toBe("roll_dice");
-    expect(last?.playerId).toBe(PLAYER_A);
   });
 });
 

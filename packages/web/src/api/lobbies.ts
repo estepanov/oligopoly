@@ -1,6 +1,7 @@
 import type { LobbyStatus } from "@oligopoly/validation";
 import { z } from "zod";
 import { env } from "../env";
+import { getStoredToken } from "./auth";
 import { ApiError, requestJson } from "./http";
 
 const LobbyPlayerSchema = z.object({
@@ -43,18 +44,36 @@ const InviteResponseSchema = z.object({
   expiresInSeconds: z.number(),
 });
 
+const LeaveLobbyResponseSchema = z.object({
+  lobbyId: z.string(),
+  deleted: z.boolean(),
+  lobby: LobbySchema.optional(),
+});
+
 export type Lobby = z.infer<typeof LobbySchema> & { status: LobbyStatus };
 export type CreateLobbyInput = z.infer<typeof CreateLobbyInputSchema>;
 export type StartLobbyResponse = z.infer<typeof StartLobbyResponseSchema>;
 export type LobbiesListResponse = z.infer<typeof LobbiesListResponseSchema>;
+export type LeaveLobbyResponse = z.infer<typeof LeaveLobbyResponseSchema>;
 export { ApiError };
 
-const subjectHeaders = (subject: string) => ({
-  "x-subject": subject,
-});
+const authHeaders = (): HeadersInit => {
+  const token = getStoredToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 export function listPublicLobbies() {
   return requestJson(`${env.apiUrl}/api/lobbies`, LobbiesListResponseSchema);
+}
+
+export function listMyLobbies() {
+  return requestJson(
+    `${env.apiUrl}/api/lobbies/mine`,
+    LobbiesListResponseSchema,
+    {
+      headers: authHeaders(),
+    },
+  );
 }
 
 export function fetchLobby(lobbyId: string) {
@@ -64,62 +83,69 @@ export function fetchLobby(lobbyId: string) {
   );
 }
 
-export function createLobby(input: CreateLobbyInput, subject: string) {
+export function createLobby(input: CreateLobbyInput) {
   const payload = CreateLobbyInputSchema.parse(input);
   return requestJson(`${env.apiUrl}/api/lobbies`, LobbySchema, {
     method: "POST",
     headers: {
-      ...subjectHeaders(subject),
+      ...authHeaders(),
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
   });
 }
 
-export function joinLobby(lobbyId: string, subject: string) {
+export function joinLobby(lobbyId: string) {
   return requestJson(
     `${env.apiUrl}/api/lobbies/${encodeURIComponent(lobbyId)}/join`,
     LobbySchema,
     {
       method: "POST",
-      headers: subjectHeaders(subject),
+      headers: authHeaders(),
     },
   );
 }
 
-export function joinLobbyWithToken(
-  lobbyId: string,
-  token: string,
-  subject: string,
-) {
+export function joinLobbyWithToken(lobbyId: string, token: string) {
   return requestJson(
     `${env.apiUrl}/api/lobbies/${encodeURIComponent(lobbyId)}/join/${encodeURIComponent(token)}`,
     LobbySchema,
     {
       method: "POST",
-      headers: subjectHeaders(subject),
+      headers: authHeaders(),
     },
   );
 }
 
-export function createInviteToken(lobbyId: string, subject: string) {
+export function createInviteToken(lobbyId: string) {
   return requestJson(
     `${env.apiUrl}/api/lobbies/${encodeURIComponent(lobbyId)}/invite`,
     InviteResponseSchema,
     {
       method: "POST",
-      headers: subjectHeaders(subject),
+      headers: authHeaders(),
     },
   );
 }
 
-export function startLobby(lobbyId: string, subject: string) {
+export function leaveLobby(lobbyId: string) {
+  return requestJson(
+    `${env.apiUrl}/api/lobbies/${encodeURIComponent(lobbyId)}/leave`,
+    LeaveLobbyResponseSchema,
+    {
+      method: "DELETE",
+      headers: authHeaders(),
+    },
+  );
+}
+
+export function startLobby(lobbyId: string) {
   return requestJson(
     `${env.apiUrl}/api/lobbies/${encodeURIComponent(lobbyId)}/start`,
     StartLobbyResponseSchema,
     {
       method: "POST",
-      headers: subjectHeaders(subject),
+      headers: authHeaders(),
     },
   );
 }

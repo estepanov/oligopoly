@@ -1,7 +1,14 @@
-import { zValidator } from "@hono/zod-validator";
-import { applyGameAction, type EngineGameState } from "@oligopoly/shared";
+import {
+  applyAction,
+  normalizeGameState,
+  rollPathChoiceDie,
+} from "@oligopoly/shared";
 import type { GameLogEntry, GameSummary } from "@oligopoly/validation";
-import { GameActionSchema, GameStatusSchema } from "@oligopoly/validation";
+import {
+  GameActionSchema,
+  GameErrorKeys,
+  GameStatusSchema,
+} from "@oligopoly/validation";
 import { Hono } from "hono";
 import {
   type PersistedGameState,
@@ -133,99 +140,6 @@ gameRoutes.get("/:id", async (c) => {
 
   return c.json(summary);
 });
-
-// ---------------------------------------------------------------------------
-// POST /api/games/:id/actions
-// Authoritative game transition: validate GameAction, apply engine, persist.
-// ---------------------------------------------------------------------------
-gameRoutes.post(
-  "/:id/actions",
-  zValidator("json", GameActionSchema),
-  async (c) => {
-    const id = c.req.param("id");
-    const subject = c.get("userId");
-
-    if (!subject) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-
-    const db = c.env?.DB;
-    if (!db) {
-      return c.json({ error: "Not found" }, 404);
-    }
-
-    const row = await db
-      .prepare(
-        "SELECT id, status, player_ids_json, state_json FROM games WHERE id = ?",
-      )
-      .bind(id)
-      .first<{
-        id: string;
-        status: string;
-        player_ids_json: string;
-        state_json: string | null;
-      }>();
-
-    if (!row) {
-      return c.json({ error: "Not found" }, 404);
-    }
-
-    if (row.status !== "active") {
-      return c.json({ error: "Game is not active" }, 409);
-    }
-
-    const playerIds = JSON.parse(row.player_ids_json) as string[];
-    if (!playerIds.includes(subject)) {
-      return c.json({ error: "Forbidden" }, 403);
-    }
-
-    const persisted: EngineGameState = row.state_json
-      ? (JSON.parse(row.state_json) as EngineGameState)
-      : { gameId: id, round: 0 };
-
-    const action = c.req.valid("json");
-    const outcome = applyGameAction(persisted, action, {
-      actorId: subject,
-      rollDice: rollSecureDice,
-    });
-
-    if (!outcome.ok) {
-      return c.json({ error: outcome.errorKey }, 400);
-    }
-
-    const logId = crypto.randomUUID();
-    const now = Date.now();
-    const round = outcome.state.round ?? 1;
-
-    await db.batch([
-      db
-        .prepare("UPDATE games SET state_json = ? WHERE id = ?")
-        .bind(JSON.stringify(outcome.state), id),
-      db
-        .prepare(
-          `INSERT INTO game_log (id, game_id, round, player_id, action_type, payload_json, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .bind(
-          logId,
-          id,
-          round,
-          subject,
-          outcome.logActionType,
-          JSON.stringify(outcome.logPayload),
-          now,
-        ),
-    ]);
-
-    const clientState = toClientGameState(
-      outcome.state as PersistedGameState,
-      "player",
-      subject,
-    );
-
-    return c.json({ state: clientState });
-  },
-);
 
 // ---------------------------------------------------------------------------
 // GET /api/games/:id/state
@@ -408,6 +322,157 @@ gameRoutes.get("/:id/replay", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/games/:id/action
+// Submit a game action (roll_dice, buy_tile, decline_tile, end_turn, etc.)
+// Auth required; must be the current player's turn.
+// ---------------------------------------------------------------------------
+gameRoutes.post("/:id/action", async (c) => {
+  const id = c.req.param("id");
+  const subject = c.get("userId");
+
+  if (!subject) {
+    return c.json({ error: GameErrorKeys.AUTH_REQUIRED }, 401);
+  }
+
+  const db = c.env?.DB;
+  if (!db) {
+    return c.json({ error: GameErrorKeys.DB_NOT_CONFIGURED }, 500);
+  }
+
+  const row = await db
+    .prepare(
+      "SELECT id, status, player_ids_json, state_json FROM games WHERE id = ?",
+    )
+    .bind(id)
+    .first<{
+      id: string;
+      status: string;
+      player_ids_json: string;
+      state_json: string | null;
+    }>();
+
+  if (!row) {
+    return c.json({ error: GameErrorKeys.NOT_FOUND }, 404);
+  }
+
+  if (row.status !== "active") {
+    return c.json({ error: GameErrorKeys.GAME_COMPLETED }, 409);
+  }
+
+  const playerIds = JSON.parse(row.player_ids_json) as string[];
+  if (!playerIds.includes(subject)) {
+    return c.json({ error: GameErrorKeys.NOT_PLAYER }, 403);
+  }
+
+  const rawState = row.state_json
+    ? (JSON.parse(row.state_json) as Record<string, unknown>)
+    : { gameId: id, round: 0 };
+
+  const gameState = normalizeGameState(rawState);
+
+  let rawBody: unknown;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return c.json({ error: GameErrorKeys.INVALID_ACTION }, 400);
+  }
+
+  const parsed = GameActionSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return c.json(
+      { error: GameErrorKeys.INVALID_ACTION, detail: parsed.error.issues },
+      400,
+    );
+  }
+  const actionBody = parsed.data;
+
+  // Server generates the path-choice die for rolls that may pass through START
+  const engineInput = {
+    ...actionBody,
+    ...(actionBody.type === "roll_dice"
+      ? { pathChoiceDie: rollPathChoiceDie() }
+      : {}),
+  };
+
+  try {
+    const result = applyAction(gameState, subject, engineInput);
+
+    const now = Date.now();
+    const stateJson = JSON.stringify(result.state);
+
+    const statements = [
+      db
+        .prepare("UPDATE games SET state_json = ? WHERE id = ?")
+        .bind(stateJson, id),
+    ];
+
+    // If game is over, update the games row
+    if (result.state.phase === "game_over" && result.state.winnerId) {
+      statements.push(
+        db
+          .prepare(
+            "UPDATE games SET status = 'completed', winner_id = ?, ended_at = ? WHERE id = ?",
+          )
+          .bind(result.state.winnerId, now, id),
+      );
+
+      // Update lobby to finished
+      const lobbyRow = await db
+        .prepare("SELECT lobby_id FROM games WHERE id = ?")
+        .bind(id)
+        .first<{ lobby_id: string }>();
+      if (lobbyRow) {
+        statements.push(
+          db
+            .prepare("UPDATE lobbies SET status = 'finished' WHERE id = ?")
+            .bind(lobbyRow.lobby_id),
+        );
+      }
+    }
+
+    // Insert log entries
+    for (const entry of result.logEntries) {
+      const logId = crypto.randomUUID();
+      statements.push(
+        db
+          .prepare(
+            "INSERT INTO game_log (id, game_id, round, player_id, action_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          )
+          .bind(
+            logId,
+            id,
+            result.state.round,
+            entry.playerId,
+            entry.actionType,
+            entry.payload ? JSON.stringify(entry.payload) : null,
+            now,
+          ),
+      );
+    }
+
+    await db.batch(statements);
+
+    // Return sanitized state (strip affinity assignments for privacy)
+    const { affinityAssignments, ...publicState } = result.state;
+    const myAffinity = affinityAssignments?.[subject] ?? null;
+
+    return c.json({
+      ...publicState,
+      myAffinityCardId: myAffinity,
+      logEntries: result.logEntries,
+    });
+  } catch (err) {
+    if (typeof err === "string") {
+      return c.json({ error: err }, 400);
+    }
+    return c.json(
+      { error: GameErrorKeys.INVALID_ACTION, detail: String(err) },
+      400,
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/games/:id/ws
 // WebSocket upgrade for real-time game events.
 // Returns 501 — Durable Object implementation is a separate issue.
@@ -424,9 +489,3 @@ gameRoutes.get("/:id/ws", (c) => {
 gameRoutes.get("/:id/spectate", (c) => {
   return c.json({ error: "WebSocket support not yet implemented" }, 501);
 });
-
-function rollSecureDice(): [number, number] {
-  const u = new Uint8Array(2);
-  crypto.getRandomValues(u);
-  return [(u[0] % 6) + 1, (u[1] % 6) + 1];
-}

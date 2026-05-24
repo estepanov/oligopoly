@@ -183,6 +183,29 @@ describe("registry parity with oligopoly_game_rules.md canonical appendix", () =
   });
 });
 
+describe("registry description fields", () => {
+  it("every achievement has a non-empty description string", () => {
+    for (const entry of Object.values(ACHIEVEMENTS_REGISTRY)) {
+      expect(typeof entry.description).toBe("string");
+      expect(entry.description.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("every optional rule has a non-empty description string", () => {
+    for (const entry of Object.values(OPTIONAL_RULES_REGISTRY)) {
+      expect(typeof entry.description).toBe("string");
+      expect(entry.description.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("every optional market event card has a non-empty description string", () => {
+    for (const entry of Object.values(OPTIONAL_MARKET_EVENT_CARDS_REGISTRY)) {
+      expect(typeof entry.description).toBe("string");
+      expect(entry.description.length).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe("board registry integrity", () => {
   it("has exactly 40 perimeter tiles", () => {
     expect(PERIMETER_TILES).toHaveLength(40);

@@ -142,12 +142,29 @@ a:hover {
   color: var(--color-muted);
 }
 
+.fieldLabel {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--color-muted);
+  font-size: 0.92rem;
+}
+
 .ok {
   color: var(--color-success);
 }
 
 .errorText {
   color: var(--color-error);
+}
+
+.detailsGrid {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) minmax(0, 1fr);
+  gap: 0.4rem 0.75rem;
+}
+
+.detailsGrid dd {
+  min-width: 0;
 }
 
 code.inline {
@@ -212,6 +229,35 @@ code.inline {
   gap: 0.5rem;
   align-items: center;
   color: var(--color-text);
+  margin-top: 1rem;
+}
+
+.subheading {
+  margin: 1.25rem 0 0.75rem;
+  font-size: 1rem;
+}
+
+.plainList {
+  list-style: none;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.inviteSharePanel {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.inviteFieldRow {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.inviteFieldRow .textInput {
+  flex: 1 1 320px;
 }
 
 .buttonRow {

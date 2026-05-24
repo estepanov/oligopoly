@@ -6,18 +6,21 @@ import { describe, expect, it } from "vitest";
  * Stores rows in plain arrays and executes simple SQL matching.
  */
 type Row = Record<string, unknown>;
+type D1Stub = D1Database & { _tables: Record<string, Row[]> };
 
-const createD1Stub = () => {
+const createD1Stub = (): D1Stub => {
   const tables: Record<string, Row[]> = {
     users: [
       { id: "user-1", username: "user-1", role: "user" },
       { id: "user-2", username: "user-2", role: "user" },
       { id: "user-3", username: "user-3", role: "user" },
+      { id: "user-4", username: "user-4", role: "user" },
     ],
     lobbies: [],
     lobby_players: [],
     games: [],
     game_log: [],
+    user_ranks: [] as Row[],
   };
 
   const execSql = (sql: string, binds: unknown[]) => {
@@ -176,6 +179,12 @@ const createD1Stub = () => {
       return { results: rows };
     }
 
+    // SELECT * FROM lobby_players WHERE user_id = ?
+    if (trimmed.startsWith("SELECT * FROM lobby_players WHERE user_id = ?")) {
+      const rows = tables.lobby_players.filter((r) => r.user_id === binds[0]);
+      return { results: rows };
+    }
+
     // INSERT INTO games
     if (trimmed.startsWith("INSERT INTO games")) {
       const [id, lobby_id, started_at, player_ids_json, state_json] = binds as [
@@ -266,9 +275,23 @@ const createD1Stub = () => {
       return { results: [], success: true };
     }
 
+    // DELETE FROM lobbies WHERE id = ?
+    if (trimmed.startsWith("DELETE FROM lobbies WHERE id = ?")) {
+      tables.lobbies = tables.lobbies.filter((r) => r.id !== binds[0]);
+      return { results: [], success: true };
+    }
+
     // SELECT id, role FROM users WHERE id = ? (authSubjectMiddleware)
     if (trimmed.startsWith("SELECT id, role FROM users WHERE id = ?")) {
       const row = tables.users.find((r) => r.id === binds[0]) ?? null;
+      return { results: row ? [row] : [], first: row };
+    }
+
+    // SELECT rank_tier FROM user_ranks WHERE user_id = ?
+    if (
+      trimmed.startsWith("SELECT rank_tier FROM user_ranks WHERE user_id = ?")
+    ) {
+      const row = tables.user_ranks.find((r) => r.user_id === binds[0]) ?? null;
       return { results: row ? [row] : [], first: row };
     }
 
@@ -309,7 +332,7 @@ const createD1Stub = () => {
     });
   };
 
-  return { prepare, batch } as unknown as D1Database;
+  return { prepare, batch, _tables: tables } as unknown as D1Stub;
 };
 
 const createKvStub = () => {
@@ -345,6 +368,14 @@ const requestWithEnv = (
     DB: db,
     KV: kv,
   });
+};
+
+const setLobbyStatus = (db: D1Stub, lobbyId: string, status: string) => {
+  const lobby = db._tables.lobbies.find((row) => row.id === lobbyId);
+  if (!lobby) {
+    throw new Error(`Lobby ${lobbyId} not found`);
+  }
+  lobby.status = status;
 };
 
 describe("POST /api/lobbies", () => {
@@ -386,6 +417,97 @@ describe("POST /api/lobbies", () => {
     });
     expect(res.status).toBe(401);
   });
+
+  it("returns 409 when the user is already in 2 waiting lobbies", async () => {
+    const db = createD1Stub();
+
+    for (const name of ["Lobby One", "Lobby Two"]) {
+      const res = await requestWithEnv("/api/lobbies", {
+        method: "POST",
+        headers: { "x-subject": "user-1" },
+        body: {
+          name,
+          maxPlayers: 4,
+          isPrivate: false,
+          optionalRuleIds: [],
+        },
+        db,
+      });
+      expect(res.status).toBe(201);
+    }
+
+    const res = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Lobby Three",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toContain("membership_limit_reached");
+  });
+
+  it("ignores starting lobbies when enforcing the waiting-lobby limit", async () => {
+    const db = createD1Stub();
+
+    const waitingLobbyRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Waiting Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    expect(waitingLobbyRes.status).toBe(201);
+
+    const startingLobbyRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-2" },
+      body: {
+        name: "Starting Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    expect(startingLobbyRes.status).toBe(201);
+    const startingLobby = await startingLobbyRes.json();
+
+    const joinRes = await requestWithEnv(
+      `/api/lobbies/${startingLobby.id}/join`,
+      {
+        method: "POST",
+        headers: { "x-subject": "user-1" },
+        db,
+      },
+    );
+    expect(joinRes.status).toBe(200);
+    setLobbyStatus(db, startingLobby.id, "starting");
+
+    const res = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Second Waiting Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+
+    expect(res.status).toBe(201);
+  });
 });
 
 describe("GET /api/lobbies", () => {
@@ -409,6 +531,116 @@ describe("GET /api/lobbies", () => {
     expect(body.lobbies).toBeInstanceOf(Array);
     expect(body.lobbies.length).toBe(1);
     expect(body.lobbies[0].name).toBe("Public Lobby");
+  });
+});
+
+describe("GET /api/lobbies/mine", () => {
+  it("returns the waiting lobbies the current user is in", async () => {
+    const db = createD1Stub();
+
+    const hostLobbyRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Owned Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    expect(hostLobbyRes.status).toBe(201);
+
+    const joinedLobbyRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-2" },
+      body: {
+        name: "Joined Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    const joinedLobby = await joinedLobbyRes.json();
+
+    await requestWithEnv(`/api/lobbies/${joinedLobby.id}/join`, {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      db,
+    });
+
+    const res = await requestWithEnv("/api/lobbies/mine", {
+      headers: { "x-subject": "user-1" },
+      db,
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.lobbies).toHaveLength(2);
+    expect(
+      body.lobbies[0].players.some(
+        (p: { userId: string; isAdmin: boolean }) =>
+          p.userId === "user-1" && p.isAdmin,
+      ),
+    ).toBe(true);
+    expect(
+      body.lobbies[1].players.some(
+        (p: { userId: string; isAdmin: boolean }) => p.userId === "user-1",
+      ),
+    ).toBe(true);
+  });
+
+  it("excludes starting lobbies from the current user's waiting lobby list", async () => {
+    const db = createD1Stub();
+
+    const waitingLobbyRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Waiting Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    expect(waitingLobbyRes.status).toBe(201);
+
+    const startingLobbyRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-2" },
+      body: {
+        name: "Starting Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    expect(startingLobbyRes.status).toBe(201);
+    const startingLobby = await startingLobbyRes.json();
+
+    const joinRes = await requestWithEnv(
+      `/api/lobbies/${startingLobby.id}/join`,
+      {
+        method: "POST",
+        headers: { "x-subject": "user-1" },
+        db,
+      },
+    );
+    expect(joinRes.status).toBe(200);
+    setLobbyStatus(db, startingLobby.id, "starting");
+
+    const res = await requestWithEnv("/api/lobbies/mine", {
+      headers: { "x-subject": "user-1" },
+      db,
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.lobbies).toHaveLength(1);
+    expect(body.lobbies[0].name).toBe("Waiting Lobby");
   });
 });
 
@@ -445,6 +677,135 @@ describe("POST /api/lobbies/:id/join", () => {
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.error).toContain("full");
+  });
+
+  it("returns 409 when joining a third waiting lobby", async () => {
+    const db = createD1Stub();
+
+    const lobbyARes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Lobby A",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    const lobbyA = await lobbyARes.json();
+
+    const lobbyBRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-3" },
+      body: {
+        name: "Lobby B",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    const lobbyB = await lobbyBRes.json();
+
+    const lobbyCRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-4" },
+      body: {
+        name: "Lobby C",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    const lobbyC = await lobbyCRes.json();
+
+    for (const lobbyId of [lobbyA.id, lobbyB.id]) {
+      const joinRes = await requestWithEnv(`/api/lobbies/${lobbyId}/join`, {
+        method: "POST",
+        headers: { "x-subject": "user-2" },
+        db,
+      });
+      expect(joinRes.status).toBe(200);
+    }
+
+    const res = await requestWithEnv(`/api/lobbies/${lobbyC.id}/join`, {
+      method: "POST",
+      headers: { "x-subject": "user-2" },
+      db,
+    });
+
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toContain("membership_limit_reached");
+  });
+});
+
+describe("DELETE /api/lobbies/:id/leave", () => {
+  it("deletes the lobby when the last player leaves", async () => {
+    const db = createD1Stub();
+    const createRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Solo Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    const lobby = await createRes.json();
+
+    const leaveRes = await requestWithEnv(`/api/lobbies/${lobby.id}/leave`, {
+      method: "DELETE",
+      headers: { "x-subject": "user-1" },
+      db,
+    });
+
+    expect(leaveRes.status).toBe(200);
+    const leaveBody = await leaveRes.json();
+    expect(leaveBody.deleted).toBe(true);
+
+    const fetchRes = await requestWithEnv(`/api/lobbies/${lobby.id}`, { db });
+    expect(fetchRes.status).toBe(404);
+  });
+
+  it("transfers host/admin when the host leaves a non-empty lobby", async () => {
+    const db = createD1Stub();
+    const createRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Shared Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    const lobby = await createRes.json();
+
+    await requestWithEnv(`/api/lobbies/${lobby.id}/join`, {
+      method: "POST",
+      headers: { "x-subject": "user-2" },
+      db,
+    });
+
+    const leaveRes = await requestWithEnv(`/api/lobbies/${lobby.id}/leave`, {
+      method: "DELETE",
+      headers: { "x-subject": "user-1" },
+      db,
+    });
+
+    expect(leaveRes.status).toBe(200);
+    const leaveBody = await leaveRes.json();
+    expect(leaveBody.deleted).toBe(false);
+    expect(leaveBody.lobby.hostId).toBe("user-2");
+    expect(leaveBody.lobby.players).toHaveLength(1);
+    expect(leaveBody.lobby.players[0].userId).toBe("user-2");
+    expect(leaveBody.lobby.players[0].isAdmin).toBe(true);
   });
 });
 
@@ -720,5 +1081,138 @@ describe("Enhanced game start — proper initial state", () => {
     const startBody = await startRes.json();
     expect(startBody.gameId).toBeDefined();
     expect(startBody.status).toBe("in_game");
+  });
+});
+
+describe("rank-gate enforcement", () => {
+  it("returns 403 when creating a lobby with a tier-3 optional rule and no rank row", async () => {
+    const db = createD1Stub();
+    const res = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Gated Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: ["hostile_takeover"],
+      },
+      db,
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain("rank_too_low");
+  });
+
+  it("allows lobby creation when host meets the required rank tier", async () => {
+    const db = createD1Stub();
+    db._tables.user_ranks.push({ user_id: "user-1", rank_tier: 3 });
+    const res = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Gated Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: ["hostile_takeover"],
+      },
+      db,
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("allows lobby creation with tier-1 rules without a rank row", async () => {
+    const db = createD1Stub();
+    const res = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Basic Rules Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: ["speed_market", "no_regulation"],
+      },
+      db,
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("returns 403 when creating a lobby with a tier-2 optional market event card and no rank row", async () => {
+    const db = createD1Stub();
+    const res = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Card Gated Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+        optionalMarketEventCardIds: ["optional_dark_pool_transfer"],
+      },
+      db,
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain("rank_too_low");
+  });
+
+  it("returns 403 when updating lobby settings with a rank-gated rule", async () => {
+    const db = createD1Stub();
+    // Create lobby with no gated rules
+    const createRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Upgradable Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    expect(createRes.status).toBe(201);
+    const lobby = await createRes.json();
+
+    // Try to update settings with a tier-3 rule — host has no rank row (tier 1)
+    const updateRes = await requestWithEnv(
+      `/api/lobbies/${lobby.id}/settings`,
+      {
+        method: "PUT",
+        headers: { "x-subject": "user-1" },
+        body: { optionalRuleIds: ["hostile_takeover"] },
+        db,
+      },
+    );
+    expect(updateRes.status).toBe(403);
+    const updateBody = await updateRes.json();
+    expect(updateBody.error).toContain("rank_too_low");
+  });
+
+  it("allows updating lobby settings when host meets required rank tier", async () => {
+    const db = createD1Stub();
+    db._tables.user_ranks.push({ user_id: "user-1", rank_tier: 3 });
+    const createRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Upgradable Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    expect(createRes.status).toBe(201);
+    const lobby = await createRes.json();
+
+    const updateRes = await requestWithEnv(
+      `/api/lobbies/${lobby.id}/settings`,
+      {
+        method: "PUT",
+        headers: { "x-subject": "user-1" },
+        body: { optionalRuleIds: ["hostile_takeover"] },
+        db,
+      },
+    );
+    expect(updateRes.status).toBe(200);
   });
 });

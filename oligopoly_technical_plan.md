@@ -148,7 +148,9 @@ GET    /api/game-config               # game config
 # Lobbies
 POST   /api/lobbies
 GET    /api/lobbies
+GET    /api/lobbies/mine
 GET    /api/lobbies/:id
+DELETE /api/lobbies/:id/leave
 POST   /api/lobbies/:id/join
 POST   /api/lobbies/:id/join/:token
 POST   /api/lobbies/:id/invite
@@ -161,7 +163,7 @@ GET    /api/lobbies/:id/ws
 # Games
 GET    /api/games
 GET    /api/games/:id
-POST   /api/games/:id/actions   # authoritative game action: validates GameAction, applies @oligopoly/shared engine, persists state + log atomically (D1 batch)
+POST   /api/games/:id/action    # authoritative game action (GameAction JSON); uses `applyAction` / `normalizeGameState` in `@oligopoly/shared`
 GET    /api/games/:id/state
 GET    /api/games/:id/log
 GET    /api/games/:id/replay
@@ -205,6 +207,12 @@ GET    /api/admin/analytics
 GET    /api/admin/analytics/costs
 GET    /api/admin/audit-log
 ```
+
+Lobby lifecycle invariants:
+
+- The server enforces a maximum of 2 concurrent waiting-lobby memberships per authenticated user.
+- Leaving the final player deletes the lobby immediately.
+- If the host leaves a non-empty waiting lobby, host ownership transfers deterministically to the longest-tenured remaining admin; if none remain, the longest-tenured remaining player is promoted and becomes host.
 
 Auth consistency rule:
 
@@ -561,8 +569,9 @@ No deployment-specific delivery or session keys are defined in this plan.
 ### Game engine and `games.state_json`
 
 - Persisted state is a superset of the public `GameState` contract: it may include **`affinityAssignments`** (server-only map). Per-player responses replace that map with **`myAffinityCardId`** (see `GET /api/games/:id/state`).
-- **`applyGameAction`** in `@oligopoly/shared` is the canonical deterministic transition `(state, action, actorCtx) → result`. Error keys live in **`GameEngineErrorKeys`** in `@oligopoly/validation`.
-- **`roll_dice`** payloads may omit **`result`** on the wire; the worker must attach an authoritative dice tuple (from secure RNG) before calling the reducer. Narrow tests may pass `result` when `rollDice` is omitted on the context.
+- **`applyAction`** in `@oligopoly/shared` (`gameStateMachine`) is the primary transition for **`POST /api/games/:id/action`**. Typed game errors use **`GameErrorKeys`** in `@oligopoly/validation`.
+- A slimmer **`applyGameAction`** helper (`gameReducer`) remains exported for incremental roll/end-turn style transitions and tests; HTTP routes use **`applyAction`** unless otherwise noted.
+- **`roll_dice`** may omit **`result`** on the wire; the worker injects **`pathChoiceDie`** where required by the state machine before applying the action.
 
 ---
 

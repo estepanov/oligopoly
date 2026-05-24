@@ -1,49 +1,131 @@
-import type { LobbyStatus } from "@oligopoly/validation";
+import { LobbyErrorKeys, type LobbyStatus } from "@oligopoly/validation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import {
   ApiError,
+  createInviteToken,
   createLobby,
   fetchLobby,
   joinLobby,
   joinLobbyWithToken,
+  leaveLobby,
+  listMyLobbies,
   listPublicLobbies,
   startLobby,
 } from "../api/lobbies";
+import { useAuth } from "../components/AuthContext";
 
 const DEFAULT_MAX_PLAYERS = 4;
+const MAX_ACTIVE_LOBBIES_PER_USER = 2;
 
 type Message = { kind: "ok" | "error"; text: string } | null;
+type InviteShare = {
+  lobbyId: string;
+  token: string;
+  url: string;
+  expiresInSeconds: number;
+};
 
 const canStartLobby = (status: LobbyStatus, playerCount: number) =>
   status === "waiting" && playerCount >= 2;
 
+const resolveLobbyJoinInput = (rawLobbyId: string, rawToken: string) => {
+  const lobbyId = rawLobbyId.trim();
+  const token = rawToken.trim();
+
+  if (!lobbyId) {
+    return { lobbyId: "", token };
+  }
+
+  try {
+    const origin =
+      typeof window === "undefined"
+        ? "http://localhost"
+        : window.location.origin;
+    const parsed = new URL(lobbyId, origin);
+    const sharedLobbyId = parsed.searchParams.get("id")?.trim() ?? "";
+
+    if (parsed.pathname === "/lobbies" && sharedLobbyId) {
+      return {
+        lobbyId: sharedLobbyId,
+        token: parsed.searchParams.get("token")?.trim() ?? token,
+      };
+    }
+  } catch {
+    // Treat the input as a raw lobby id when it is not a valid URL.
+  }
+
+  return { lobbyId, token };
+};
+
+const buildInviteUrl = (lobbyId: string, token: string) => {
+  const origin =
+    typeof window === "undefined" ? "http://localhost" : window.location.origin;
+  return new URL(
+    `/lobbies?id=${encodeURIComponent(lobbyId)}&token=${encodeURIComponent(token)}`,
+    origin,
+  ).toString();
+};
+
+const formatInviteExpiry = (expiresInSeconds: number) => {
+  const expiresInMinutes = Math.max(1, Math.round(expiresInSeconds / 60));
+  return `${expiresInMinutes} minute${expiresInMinutes === 1 ? "" : "s"}`;
+};
+
+const describeLobbyError = (fallback: string, error: unknown) => {
+  if (!(error instanceof ApiError)) {
+    return fallback;
+  }
+
+  switch (error.message) {
+    case LobbyErrorKeys.MEMBERSHIP_LIMIT_REACHED:
+      return `You can only be in ${MAX_ACTIVE_LOBBIES_PER_USER} waiting lobbies at once. Leave one before creating or joining another.`;
+    case LobbyErrorKeys.NOT_IN_LOBBY:
+      return "You are no longer in that lobby.";
+    default:
+      return `${fallback}: ${error.message}`;
+  }
+};
+
 export function LobbiesPage() {
+  const { user, loading } = useAuth();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const initialLobbyId = searchParams.get("id")?.trim() ?? "";
+  const initialJoinToken = searchParams.get("token")?.trim() ?? "";
 
-  const [subject, setSubject] = useState("user-1");
   const [createName, setCreateName] = useState("New Lobby");
   const [createMaxPlayers, setCreateMaxPlayers] = useState(DEFAULT_MAX_PLAYERS);
   const [createIsPrivate, setCreateIsPrivate] = useState(false);
 
   const [joinLobbyId, setJoinLobbyId] = useState(initialLobbyId);
-  const [joinToken, setJoinToken] = useState("");
+  const [joinToken, setJoinToken] = useState(initialJoinToken);
 
   const [loadingPublicLobbies, setLoadingPublicLobbies] = useState(true);
   const [publicLobbies, setPublicLobbies] = useState<
     Awaited<ReturnType<typeof listPublicLobbies>>["lobbies"]
   >([]);
+  const [loadingMyLobbies, setLoadingMyLobbies] = useState(false);
+  const [myLobbies, setMyLobbies] = useState<
+    Awaited<ReturnType<typeof listMyLobbies>>["lobbies"]
+  >([]);
   const [selectedLobby, setSelectedLobby] = useState<Awaited<
     ReturnType<typeof fetchLobby>
   > | null>(null);
+  const [inviteShare, setInviteShare] = useState<InviteShare | null>(null);
 
   const [busyCreate, setBusyCreate] = useState(false);
   const [busyJoin, setBusyJoin] = useState(false);
+  const [busyInvite, setBusyInvite] = useState(false);
+  const [busyLeave, setBusyLeave] = useState(false);
   const [busyStart, setBusyStart] = useState(false);
   const [message, setMessage] = useState<Message>(null);
 
   const selectedLobbyId = selectedLobby?.id ?? joinLobbyId;
+  const resolvedJoinInput = useMemo(
+    () => resolveLobbyJoinInput(joinLobbyId, joinToken),
+    [joinLobbyId, joinToken],
+  );
 
   const refreshPublicLobbies = useCallback(async () => {
     setLoadingPublicLobbies(true);
@@ -62,6 +144,28 @@ export function LobbiesPage() {
       setLoadingPublicLobbies(false);
     }
   }, []);
+
+  const refreshMyLobbies = useCallback(async () => {
+    if (!user) {
+      setMyLobbies([]);
+      setLoadingMyLobbies(false);
+      return;
+    }
+
+    setLoadingMyLobbies(true);
+    try {
+      const data = await listMyLobbies();
+      setMyLobbies(data.lobbies);
+    } catch (error) {
+      setMyLobbies([]);
+      setMessage({
+        kind: "error",
+        text: describeLobbyError("Failed to load your lobbies", error),
+      });
+    } finally {
+      setLoadingMyLobbies(false);
+    }
+  }, [user]);
 
   const refreshSelectedLobby = useCallback(async (id: string) => {
     if (!id) {
@@ -94,41 +198,217 @@ export function LobbiesPage() {
 
   useEffect(() => {
     if (initialLobbyId) {
+      setJoinLobbyId(initialLobbyId);
       void refreshSelectedLobby(initialLobbyId);
     }
   }, [initialLobbyId, refreshSelectedLobby]);
 
-  const isCurrentSubjectAdmin = useMemo(() => {
-    if (!selectedLobby) return false;
-    return selectedLobby.players.some(
-      (player) => player.userId === subject && player.isAdmin,
+  useEffect(() => {
+    if (initialJoinToken) {
+      setJoinToken(initialJoinToken);
+    }
+  }, [initialJoinToken]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    if (!user) {
+      setMyLobbies([]);
+      setLoadingMyLobbies(false);
+      return;
+    }
+
+    void refreshMyLobbies();
+  }, [loading, refreshMyLobbies, user]);
+
+  const selectedLobbyMembership = useMemo(() => {
+    if (!selectedLobby || !user) return null;
+    return (
+      selectedLobby.players.find((player) => player.userId === user.userId) ??
+      null
     );
-  }, [selectedLobby, subject]);
+  }, [selectedLobby, user]);
+  const isCurrentSubjectAdmin = Boolean(selectedLobbyMembership?.isAdmin);
+  const isAtLobbyLimit = myLobbies.length >= MAX_ACTIVE_LOBBIES_PER_USER;
+
+  const signInHref = useMemo(() => {
+    const returnTo = `${location.pathname}${location.search}`;
+    return `/login?returnTo=${encodeURIComponent(returnTo)}`;
+  }, [location.pathname, location.search]);
+
+  const selectedLobbyMembershipText = useMemo(() => {
+    if (!selectedLobby) {
+      return user
+        ? "No lobby loaded yet."
+        : "No lobby loaded yet. Sign in and load a lobby to check membership.";
+    }
+
+    if (!user) {
+      return "Signed out. Loading a lobby does not add you to it.";
+    }
+
+    if (selectedLobbyMembership?.isAdmin) {
+      return "You are in this lobby as an admin.";
+    }
+
+    if (selectedLobbyMembership) {
+      return "You are in this lobby as a player.";
+    }
+
+    return "You are signed in, but not in this lobby.";
+  }, [selectedLobby, selectedLobbyMembership, user]);
+
+  const selectedLobbyActionText = useMemo(() => {
+    if (!selectedLobby) {
+      return "Load a lobby above to see whether your account is in its player list.";
+    }
+
+    if (!user) {
+      return "You can inspect this lobby, but joining it requires a signed-in session.";
+    }
+
+    if (selectedLobbyMembership?.isAdmin) {
+      if (selectedLobby.status !== "waiting") {
+        return "You are already in this lobby as an admin, but it is no longer in the waiting state.";
+      }
+      if (selectedLobby.players.length < 2) {
+        return "You are already in this lobby as an admin. You can manage invites, but starting still requires at least two players.";
+      }
+      return "You are already in this lobby as an admin. You can manage invites and start the game when ready.";
+    }
+
+    if (selectedLobbyMembership) {
+      return selectedLobby.status === "waiting"
+        ? "You are already in this lobby. An admin must start the game."
+        : "You are already in this lobby, but the game has already moved past the waiting lobby.";
+    }
+
+    if (selectedLobby.status !== "waiting") {
+      return "This lobby has already started, so you cannot join it from here.";
+    }
+
+    if (selectedLobby.players.length >= selectedLobby.maxPlayers) {
+      return "This lobby is full.";
+    }
+
+    if (isAtLobbyLimit) {
+      return `You are already in ${MAX_ACTIVE_LOBBIES_PER_USER} waiting lobbies. Leave one before joining this lobby.`;
+    }
+
+    if (selectedLobby.isPrivate) {
+      return resolvedJoinInput.token
+        ? "This private lobby is joinable with the invite token currently in the form."
+        : "This private lobby requires a valid invite token before you can join.";
+    }
+
+    return "This public lobby is joinable with your signed-in session.";
+  }, [
+    isAtLobbyLimit,
+    resolvedJoinInput.token,
+    selectedLobby,
+    selectedLobbyMembership,
+    user,
+  ]);
+
+  const startLobbyHelpText = useMemo(() => {
+    if (!selectedLobby) {
+      return null;
+    }
+
+    if (!user) {
+      return "Start requires a signed-in session and admin membership in this lobby.";
+    }
+
+    if (!selectedLobbyMembership) {
+      return "Start is only available after you join this lobby and have admin access.";
+    }
+
+    if (!selectedLobbyMembership.isAdmin) {
+      return "You are in this lobby, but only admins can start the game.";
+    }
+
+    if (selectedLobby.status !== "waiting") {
+      return "This lobby is no longer waiting, so start is unavailable.";
+    }
+
+    if (selectedLobby.players.length < 2) {
+      return "Start unlocks for admins once at least two players are in the lobby.";
+    }
+
+    return "You are an admin in this lobby and can start the game.";
+  }, [selectedLobby, selectedLobbyMembership, user]);
+
+  const createLobbyInvite = useCallback(async (lobbyId: string) => {
+    const invite = await createInviteToken(lobbyId);
+    const share = {
+      lobbyId,
+      token: invite.token,
+      url: buildInviteUrl(lobbyId, invite.token),
+      expiresInSeconds: invite.expiresInSeconds,
+    };
+
+    setInviteShare(share);
+    return share;
+  }, []);
+
+  const normalizeJoinInputs = useCallback(() => {
+    setJoinLobbyId(resolvedJoinInput.lobbyId);
+    setJoinToken(resolvedJoinInput.token);
+    return resolvedJoinInput;
+  }, [resolvedJoinInput]);
+
+  const copyInviteValue = useCallback(async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setMessage({ kind: "ok", text: `${label} copied.` });
+    } catch {
+      setMessage({
+        kind: "error",
+        text: `Couldn't copy ${label.toLowerCase()}.`,
+      });
+    }
+  }, []);
 
   const onCreateLobby = async () => {
     setBusyCreate(true);
     setMessage(null);
+    setInviteShare(null);
     try {
-      const lobby = await createLobby(
-        {
-          name: createName.trim(),
-          maxPlayers: createMaxPlayers,
-          isPrivate: createIsPrivate,
-          optionalRuleIds: [],
-        },
-        subject,
-      );
+      const lobby = await createLobby({
+        name: createName.trim(),
+        maxPlayers: createMaxPlayers,
+        isPrivate: createIsPrivate,
+        optionalRuleIds: [],
+      });
       setSelectedLobby(lobby);
       setJoinLobbyId(lobby.id);
-      setMessage({ kind: "ok", text: `Created lobby ${lobby.id}` });
+      if (lobby.isPrivate) {
+        try {
+          await createLobbyInvite(lobby.id);
+          setMessage({
+            kind: "ok",
+            text: `Created private lobby ${lobby.id}. Invite link ready.`,
+          });
+        } catch (error) {
+          setMessage({
+            kind: "error",
+            text:
+              error instanceof ApiError
+                ? `Lobby created, but invite generation failed: ${error.message}`
+                : "Lobby created, but invite generation failed",
+          });
+        }
+      } else {
+        setMessage({ kind: "ok", text: `Created lobby ${lobby.id}` });
+      }
+      await refreshMyLobbies();
       await refreshPublicLobbies();
     } catch (error) {
       setMessage({
         kind: "error",
-        text:
-          error instanceof ApiError
-            ? `Create failed: ${error.message}`
-            : "Create failed",
+        text: describeLobbyError("Create failed", error),
       });
     } finally {
       setBusyCreate(false);
@@ -137,36 +417,64 @@ export function LobbiesPage() {
 
   const onLoadLobby = async () => {
     setMessage(null);
-    await refreshSelectedLobby(joinLobbyId.trim());
+    setInviteShare(null);
+
+    const resolved = normalizeJoinInputs();
+    if (!resolved.lobbyId) {
+      setMessage({ kind: "error", text: "Lobby ID is required." });
+      return;
+    }
+
+    await refreshSelectedLobby(resolved.lobbyId);
   };
 
   const onJoinLobby = async () => {
-    const targetLobbyId = joinLobbyId.trim();
-    if (!targetLobbyId) {
+    const resolved = normalizeJoinInputs();
+    if (!resolved.lobbyId) {
       setMessage({ kind: "error", text: "Lobby ID is required." });
       return;
     }
 
     setBusyJoin(true);
     setMessage(null);
+    setInviteShare(null);
     try {
-      const lobby = joinToken.trim()
-        ? await joinLobbyWithToken(targetLobbyId, joinToken.trim(), subject)
-        : await joinLobby(targetLobbyId, subject);
+      const lobby = resolved.token
+        ? await joinLobbyWithToken(resolved.lobbyId, resolved.token)
+        : await joinLobby(resolved.lobbyId);
       setSelectedLobby(lobby);
       setJoinLobbyId(lobby.id);
       setMessage({ kind: "ok", text: `Joined lobby ${lobby.id}` });
+      await refreshMyLobbies();
       await refreshPublicLobbies();
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: describeLobbyError("Join failed", error),
+      });
+    } finally {
+      setBusyJoin(false);
+    }
+  };
+
+  const onGenerateInvite = async () => {
+    if (!selectedLobby?.isPrivate) return;
+
+    setBusyInvite(true);
+    setMessage(null);
+    try {
+      await createLobbyInvite(selectedLobby.id);
+      setMessage({ kind: "ok", text: "Invite link ready to share." });
     } catch (error) {
       setMessage({
         kind: "error",
         text:
           error instanceof ApiError
-            ? `Join failed: ${error.message}`
-            : "Join failed",
+            ? `Invite generation failed: ${error.message}`
+            : "Invite generation failed",
       });
     } finally {
-      setBusyJoin(false);
+      setBusyInvite(false);
     }
   };
 
@@ -175,8 +483,9 @@ export function LobbiesPage() {
     setBusyStart(true);
     setMessage(null);
     try {
-      const response = await startLobby(selectedLobbyId, subject);
+      const response = await startLobby(selectedLobbyId);
       await refreshSelectedLobby(selectedLobbyId);
+      await refreshMyLobbies();
       await refreshPublicLobbies();
       if (response.gameId) {
         setMessage({
@@ -199,6 +508,47 @@ export function LobbiesPage() {
     }
   };
 
+  const onLeaveLobby = async (lobbyId: string) => {
+    setBusyLeave(true);
+    setMessage(null);
+    if (inviteShare?.lobbyId === lobbyId) {
+      setInviteShare(null);
+    }
+
+    try {
+      const response = await leaveLobby(lobbyId);
+
+      if (selectedLobby?.id === lobbyId) {
+        if (response.deleted || !response.lobby) {
+          setSelectedLobby(null);
+        } else {
+          setSelectedLobby(response.lobby);
+        }
+      }
+
+      if (joinLobbyId === lobbyId && response.deleted) {
+        setJoinLobbyId("");
+        setJoinToken("");
+      }
+
+      setMessage({
+        kind: "ok",
+        text: response.deleted
+          ? `Left lobby ${response.lobbyId}. It was deleted because it became empty.`
+          : `Left lobby ${response.lobbyId}`,
+      });
+      await refreshMyLobbies();
+      await refreshPublicLobbies();
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text: describeLobbyError("Leave failed", error),
+      });
+    } finally {
+      setBusyLeave(false);
+    }
+  };
+
   return (
     <div>
       <h1 className="pageTitle">Lobbies</h1>
@@ -207,20 +557,56 @@ export function LobbiesPage() {
       </p>
 
       <div className="card">
-        <h2>Session</h2>
-        <label className="fieldLabel" htmlFor="subject">
-          Acting user (x-subject)
-        </label>
-        <input
-          id="subject"
-          className="textInput"
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-        />
+        <h2>Your access</h2>
+        {loading && <p className="muted">Loading session…</p>}
+        {!loading && (
+          <dl className="detailsGrid">
+            <dt className="muted">Session</dt>
+            <dd>
+              {user ? (
+                <>
+                  Signed in as <strong>{user.username}</strong>
+                </>
+              ) : (
+                "Signed out"
+              )}
+            </dd>
+            <dt className="muted">Without signing in</dt>
+            <dd>
+              Browse public lobbies and load a lobby by ID or invite link.
+              Loading only shows details; it does not join you.
+            </dd>
+            <dt className="muted">After signing in</dt>
+            <dd>
+              Create lobbies, join public lobbies, join private lobbies with a
+              valid invite token, generate private invites when you are an
+              admin, and start a lobby when you are an admin with at least two
+              players.
+            </dd>
+            <dt className="muted">Selected lobby status</dt>
+            <dd>{selectedLobbyMembershipText}</dd>
+          </dl>
+        )}
+        {!loading && !user && (
+          <p className="muted">
+            Join and create actions stay disabled until you{" "}
+            <Link to={signInHref}>sign in</Link>.
+          </p>
+        )}
       </div>
 
       <div className="card">
         <h2>Create lobby</h2>
+        <p className="muted">
+          Requires a signed-in session. Creating a lobby adds your account as
+          the first player and admin.
+        </p>
+        {user && (
+          <p className="muted">
+            Waiting lobby slots used: {myLobbies.length}/
+            {MAX_ACTIVE_LOBBIES_PER_USER}.
+          </p>
+        )}
         <div className="formGrid">
           <div>
             <label className="fieldLabel" htmlFor="create-name">
@@ -262,31 +648,62 @@ export function LobbiesPage() {
         <button
           type="button"
           className="button"
-          disabled={busyCreate || !subject.trim() || !createName.trim()}
+          disabled={
+            busyCreate ||
+            loading ||
+            !user ||
+            isAtLobbyLimit ||
+            !createName.trim()
+          }
           onClick={onCreateLobby}
         >
           {busyCreate ? "Creating…" : "Create lobby"}
         </button>
+        {user && isAtLobbyLimit && (
+          <p className="muted">
+            Leave one of your waiting lobbies before creating another.
+          </p>
+        )}
       </div>
 
       <div className="card">
         <h2>Join or load lobby</h2>
+        <p className="muted">
+          Load lobby fetches details only. Join lobby adds your signed-in
+          account to that lobby.
+        </p>
+        <p className="muted">
+          {user ? (
+            "Public lobbies can be joined directly. Private lobbies require a valid invite token."
+          ) : (
+            <>
+              You are signed out. Loading is available, but joining is disabled
+              until you <Link to={signInHref}>sign in</Link>.
+            </>
+          )}
+        </p>
+        {user && (
+          <p className="muted">
+            Waiting lobby slots used: {myLobbies.length}/
+            {MAX_ACTIVE_LOBBIES_PER_USER}.
+          </p>
+        )}
         <div className="formGrid">
           <div>
             <label className="fieldLabel" htmlFor="join-id">
-              Lobby ID
+              Lobby ID or invite link
             </label>
             <input
               id="join-id"
               className="textInput"
               value={joinLobbyId}
               onChange={(e) => setJoinLobbyId(e.target.value)}
-              placeholder="Paste lobby id"
+              placeholder="Paste lobby id or invite link"
             />
           </div>
           <div>
             <label className="fieldLabel" htmlFor="join-token">
-              Invite token (private lobbies)
+              Invite token (optional)
             </label>
             <input
               id="join-token"
@@ -310,15 +727,114 @@ export function LobbiesPage() {
             type="button"
             className="button"
             onClick={onJoinLobby}
-            disabled={busyJoin || !subject.trim() || !joinLobbyId.trim()}
+            disabled={
+              busyJoin ||
+              loading ||
+              !user ||
+              isAtLobbyLimit ||
+              !joinLobbyId.trim()
+            }
           >
             {busyJoin ? "Joining…" : "Join lobby"}
           </button>
         </div>
+        {user && isAtLobbyLimit && (
+          <p className="muted">
+            Leave one of your waiting lobbies before joining another.
+          </p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Your lobbies</h2>
+        {loading && <p className="muted">Loading session…</p>}
+        {!loading && !user && (
+          <p className="muted">
+            Sign in to see the waiting lobbies your account is currently in.
+          </p>
+        )}
+        {!loading && user && (
+          <>
+            <p className="muted">
+              You can be in at most {MAX_ACTIVE_LOBBIES_PER_USER} waiting
+              lobbies at once. Admin roles are marked so you can switch between
+              them quickly.
+            </p>
+            <p className="muted">
+              Waiting lobby slots used: {myLobbies.length}/
+              {MAX_ACTIVE_LOBBIES_PER_USER}.
+            </p>
+            {loadingMyLobbies && <p className="muted">Loading your lobbies…</p>}
+            {!loadingMyLobbies && myLobbies.length === 0 && (
+              <p className="emptyState">
+                You are not currently in any waiting lobbies.
+              </p>
+            )}
+            {!loadingMyLobbies && myLobbies.length > 0 && (
+              <table className="gamesTable">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>Players</th>
+                    <th>Visibility</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {myLobbies.map((lobby) => {
+                    const membership =
+                      user &&
+                      lobby.players.find(
+                        (player) => player.userId === user.userId,
+                      );
+
+                    return (
+                      <tr key={lobby.id}>
+                        <td>{lobby.name}</td>
+                        <td>{membership?.isAdmin ? "Admin" : "Player"}</td>
+                        <td>
+                          {lobby.players.length}/{lobby.maxPlayers}
+                        </td>
+                        <td>{lobby.isPrivate ? "Private" : "Public"}</td>
+                        <td>
+                          <div className="buttonRow">
+                            <button
+                              type="button"
+                              className="button buttonSecondary"
+                              onClick={() => {
+                                setJoinLobbyId(lobby.id);
+                                void refreshSelectedLobby(lobby.id);
+                              }}
+                            >
+                              Open
+                            </button>
+                            <button
+                              type="button"
+                              className="button buttonSecondary"
+                              disabled={busyLeave}
+                              onClick={() => void onLeaveLobby(lobby.id)}
+                            >
+                              {busyLeave ? "Leaving…" : "Leave"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
       </div>
 
       <div className="card">
         <h2>Public lobbies</h2>
+        <p className="muted">
+          Anyone can browse this list. Select loads details below and does not
+          join your account to the lobby.
+        </p>
         {loadingPublicLobbies && <p className="muted">Loading…</p>}
         {!loadingPublicLobbies && publicLobbies.length === 0 && (
           <p className="emptyState">No public lobbies available.</p>
@@ -384,25 +900,146 @@ export function LobbiesPage() {
               <dd>
                 {selectedLobby.players.length}/{selectedLobby.maxPlayers}
               </dd>
+              <dt className="muted">Your membership</dt>
+              <dd>{selectedLobbyMembershipText}</dd>
+              <dt className="muted">What you can do</dt>
+              <dd>{selectedLobbyActionText}</dd>
             </dl>
+
+            {selectedLobby.isPrivate && isCurrentSubjectAdmin && (
+              <>
+                <h3 className="subheading">Private invite</h3>
+                {!inviteShare || inviteShare.lobbyId !== selectedLobby.id ? (
+                  <>
+                    <p className="muted">
+                      Generate a shareable invite link for this private lobby.
+                    </p>
+                    <div className="buttonRow">
+                      <button
+                        type="button"
+                        className="button buttonSecondary"
+                        onClick={onGenerateInvite}
+                        disabled={busyInvite || loading || !user}
+                      >
+                        {busyInvite ? "Generating…" : "Generate invite link"}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="inviteSharePanel">
+                    <label
+                      className="fieldLabel"
+                      htmlFor="selected-invite-link"
+                    >
+                      Share link
+                    </label>
+                    <div className="inviteFieldRow">
+                      <input
+                        id="selected-invite-link"
+                        className="textInput"
+                        value={inviteShare.url}
+                        readOnly
+                      />
+                      <button
+                        type="button"
+                        className="button buttonSecondary"
+                        onClick={() =>
+                          void copyInviteValue(inviteShare.url, "Invite link")
+                        }
+                      >
+                        Copy link
+                      </button>
+                    </div>
+
+                    <label
+                      className="fieldLabel"
+                      htmlFor="selected-invite-token"
+                    >
+                      Invite token
+                    </label>
+                    <div className="inviteFieldRow">
+                      <input
+                        id="selected-invite-token"
+                        className="textInput"
+                        value={inviteShare.token}
+                        readOnly
+                      />
+                      <button
+                        type="button"
+                        className="button buttonSecondary"
+                        onClick={() =>
+                          void copyInviteValue(
+                            inviteShare.token,
+                            "Invite token",
+                          )
+                        }
+                      >
+                        Copy token
+                      </button>
+                    </div>
+
+                    <div className="buttonRow">
+                      <button
+                        type="button"
+                        className="button buttonSecondary"
+                        onClick={onGenerateInvite}
+                        disabled={busyInvite || loading || !user}
+                      >
+                        {busyInvite ? "Refreshing…" : "Generate new invite"}
+                      </button>
+                    </div>
+                    <p className="muted">
+                      Invite links open this lobby with the token prefilled and
+                      currently expire after about{" "}
+                      {formatInviteExpiry(inviteShare.expiresInSeconds)}.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+            {selectedLobby.isPrivate && !isCurrentSubjectAdmin && (
+              <p className="muted">
+                Private invite links can only be generated by admins who are
+                already in this lobby.
+              </p>
+            )}
 
             <h3 className="subheading">Players</h3>
             <ul className="plainList">
               {selectedLobby.players.map((player) => (
                 <li key={player.userId}>
                   <code className="inline">{player.userId}</code>
-                  {player.isAdmin ? " (admin)" : ""}
+                  {(() => {
+                    const labels = [
+                      player.userId === user?.userId ? "you" : null,
+                      player.isAdmin ? "admin" : null,
+                    ].filter(Boolean);
+                    return labels.length > 0 ? ` (${labels.join(", ")})` : "";
+                  })()}
                 </li>
               ))}
             </ul>
 
             <div className="buttonRow">
+              {selectedLobbyMembership &&
+                selectedLobby.status === "waiting" && (
+                  <button
+                    type="button"
+                    className="button buttonSecondary"
+                    onClick={() => void onLeaveLobby(selectedLobby.id)}
+                    disabled={busyLeave}
+                  >
+                    {busyLeave ? "Leaving…" : "Leave lobby"}
+                  </button>
+                )}
               <button
                 type="button"
                 className="button"
                 onClick={onStartLobby}
                 disabled={
                   busyStart ||
+                  loading ||
+                  !user ||
                   !isCurrentSubjectAdmin ||
                   !canStartLobby(
                     selectedLobby.status,
@@ -420,10 +1057,9 @@ export function LobbiesPage() {
                 Refresh lobby
               </button>
             </div>
-            <p className="muted">
-              Start is enabled for admins when the lobby is waiting and has at
-              least two players.
-            </p>
+            {startLobbyHelpText && (
+              <p className="muted">{startLobbyHelpText}</p>
+            )}
           </>
         )}
       </div>
