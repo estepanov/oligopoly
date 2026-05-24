@@ -75,6 +75,12 @@ Players join via direct invite (username or email), a shareable invite link, or 
 
 Once the game starts, settings are permanent.
 
+### Solo vs AI and AI-filled lobbies
+
+Solo vs AI is a standard lobby configuration, not a separate rule set. The lobby contains exactly one human player and one or more AI player slots, and the total seat count still follows the 2-6 player table. A one-human lobby may start only when AI slots bring the total seat count to at least 2.
+
+Mixed games may include any combination of human and AI seats up to the lobby maximum. AI seats are configured before start and become server-controlled players for the entire game unless they are temporary timeout takeovers for a disconnected human.
+
 ---
 
 ## Capital Currency
@@ -678,6 +684,16 @@ After the winning Syndicate is confirmed, it may **absorb tiles** from eliminate
 ---
 
 ## AI Players
+
+AI players are server-controlled participants. They obey the same turn order, action legality, auction rules, win conditions, and syndicate commitments as human players.
+
+Available AI personalities:
+
+- **Loyalist:** favors cooperation, honors handshake agreements, and prefers syndicate outcomes.
+- **Opportunist:** balances solo and coalition incentives, buying and bidding aggressively when expected value is favorable.
+- **Disruptor:** pursues solo-win pressure, blocks rivals in auctions, and avoids permanent commitments unless strongly beneficial.
+
+If a human times out, an AI may take the required legal actions for that turn. If a human is kicked mid-game, an AI replacement controls that seat for the remainder of the game and the kicked player's history shows `kicked`.
 
 Three personalities: **Loyalist** (honors all agreements), **Opportunist** (cooperative until the math favours defection), **Disruptor** (solo win path, destabilises dominant Syndicates, bids aggressively at auction).
 

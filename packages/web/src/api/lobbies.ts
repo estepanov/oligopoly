@@ -1,4 +1,4 @@
-import type { LobbyStatus } from "@oligopoly/validation";
+import { AiPersonalitySchema, type LobbyStatus } from "@oligopoly/validation";
 import { z } from "zod";
 import { env } from "../env";
 import { getStoredToken } from "./auth";
@@ -8,6 +8,12 @@ const LobbyPlayerSchema = z.object({
   userId: z.string(),
   isAdmin: z.boolean(),
   joinedAt: z.number(),
+});
+
+const LobbyAiSlotSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  personality: AiPersonalitySchema,
 });
 
 const LobbySchema = z.object({
@@ -20,6 +26,7 @@ const LobbySchema = z.object({
   optionalRuleIds: z.array(z.string()),
   createdAt: z.number(),
   players: z.array(LobbyPlayerSchema),
+  aiSlots: z.array(LobbyAiSlotSchema).default([]),
   gameId: z.string().optional(),
 });
 
@@ -33,6 +40,7 @@ const CreateLobbyInputSchema = z.object({
   maxPlayers: z.number().int().min(2).max(6),
   isPrivate: z.boolean(),
   optionalRuleIds: z.array(z.string()),
+  aiSlots: z.array(LobbyAiSlotSchema).default([]),
 });
 
 const StartLobbyResponseSchema = LobbySchema.extend({

@@ -236,6 +236,24 @@ function applyEndTurn(
   };
 }
 
+function applyLoggedAction(
+  state: EngineGameState,
+  action: GameAction,
+  ctx: ApplyGameActionContext,
+): ApplyGameActionResult {
+  const expected = currentPlayerId(state);
+  if (!expected || expected !== ctx.actorId) {
+    return { ok: false, errorKey: GameEngineErrorKeys.NOT_YOUR_TURN };
+  }
+
+  return {
+    ok: true,
+    state: cloneState(state),
+    logActionType: action.type,
+    logPayload: { action },
+  };
+}
+
 /**
  * Pure transition used by the worker after authZ. Mutates nothing; returns a
  * deep-cloned next state on success.
@@ -263,10 +281,7 @@ export function applyGameAction(
     case "form_syndicate":
     case "call_vote":
     case "path_choice":
-      return {
-        ok: false,
-        errorKey: GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED,
-      };
+      return applyLoggedAction(state, action, ctx);
     default: {
       const _exhaustive: never = action;
       return _exhaustive;

@@ -218,6 +218,7 @@ export const lobbies = sqliteTable("lobbies", {
   currencyName: text("currency_name").notNull().default("Capital"),
   currencySymbol: text("currency_symbol").notNull().default("¤"),
   currencyMultiplier: text("currency_multiplier").notNull().default("1"),
+  aiSlotsJson: text("ai_slots_json").notNull().default("[]"),
 });
 
 // -----------------------------------------------------------------------------

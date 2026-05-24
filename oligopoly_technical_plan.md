@@ -213,6 +213,24 @@ Lobby lifecycle invariants:
 - The server enforces a maximum of 2 concurrent waiting-lobby memberships per authenticated user.
 - Leaving the final player deletes the lobby immediately.
 - If the host leaves a non-empty waiting lobby, host ownership transfers deterministically to the longest-tenured remaining admin; if none remain, the longest-tenured remaining player is promoted and becomes host.
+- A lobby may include AI slots in addition to human members. Total human members plus AI slots must stay between 2 and 6 before start.
+- A solo-vs-AI game is a normal lobby with exactly one human member and at least one AI slot; the server rejects one-human starts with no AI seats.
+
+Realtime room contracts:
+
+- `GET /api/lobbies/:id/ws` upgrades into the lobby Durable Object and emits `lobby.snapshot`, `lobby.updated`, and `lobby.presence` events.
+- `GET /api/games/:id/ws` upgrades into the game Durable Object and emits `game.snapshot`, `game.action_applied`, `game.presence`, `game.timer`, and `game.ai_action` events.
+- `GET /api/games/:id/spectate` uses the same game room with spectator-safe snapshots when spectator mode is enabled.
+- HTTP routes remain canonical for snapshots and mutations; Durable Objects coordinate fan-out, timers, reconnects, and AI turn automation.
+- All realtime events are schema-backed in `@oligopoly/validation`.
+
+AI player protocol:
+
+- AI seats are represented by server-owned player IDs prefixed with `ai:` and are stored in lobby settings, game state, and `games.player_ids_json`.
+- Supported personalities are `loyalist`, `opportunist`, and `disruptor`.
+- Deterministic rules-based AI is the baseline and must always return a legal action. LLM-assisted decisions are optional, gated by `ANTHROPIC_API_KEY`, daily/monthly budget checks, and deterministic fallback.
+- Timeout takeover temporarily maps a human player to an AI runtime entry; kick replacement permanently replaces the human actor for the rest of the game.
+- AI cost tracking uses KV keys shaped as `ai_cost:daily:{date}` and feeds admin analytics.
 
 Auth consistency rule:
 

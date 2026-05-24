@@ -410,6 +410,31 @@ export type TurnTimeout = z.infer<typeof TurnTimeoutSchema>;
 export const SpectatorModeSchema = z.enum(["enabled", "disabled"]);
 export type SpectatorMode = z.infer<typeof SpectatorModeSchema>;
 
+export const AiPersonalitySchema = z.enum([
+  "loyalist",
+  "opportunist",
+  "disruptor",
+]);
+export type AiPersonality = z.infer<typeof AiPersonalitySchema>;
+
+export const LobbyAiSlotSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(32),
+  personality: AiPersonalitySchema,
+});
+export type LobbyAiSlot = z.infer<typeof LobbyAiSlotSchema>;
+
+export const GamePlayerKindSchema = z.enum(["human", "ai"]);
+export type GamePlayerKind = z.infer<typeof GamePlayerKindSchema>;
+
+export const AiPlayerRuntimeSchema = z.object({
+  playerId: z.string(),
+  name: z.string(),
+  personality: AiPersonalitySchema,
+  takeoverForPlayerId: z.string().nullable().optional(),
+});
+export type AiPlayerRuntime = z.infer<typeof AiPlayerRuntimeSchema>;
+
 export const CurrencyMultiplierSchema = z.enum([
   "1",
   "10",
@@ -429,6 +454,7 @@ export const CreateLobbyInputSchema = z.object({
   maxPlayers: z.number().int().min(2).max(6),
   isPrivate: z.boolean(),
   optionalRuleIds: z.array(z.string()).default([]),
+  aiSlots: z.array(LobbyAiSlotSchema).max(5).default([]),
   turnTimeout: TurnTimeoutSchema.default("5min"),
   auctionBidWindow: z
     .enum(["30s", "1min", "5min", "10min", "30min"])
@@ -450,6 +476,7 @@ export const UpdateLobbySettingsInputSchema = z.object({
   maxPlayers: z.number().int().min(2).max(6).optional(),
   isPrivate: z.boolean().optional(),
   optionalRuleIds: z.array(z.string()).optional(),
+  aiSlots: z.array(LobbyAiSlotSchema).max(5).optional(),
   turnTimeout: TurnTimeoutSchema.optional(),
   auctionBidWindow: z
     .enum(["30s", "1min", "5min", "10min", "30min"])
@@ -558,6 +585,9 @@ export type GamePhase = z.infer<typeof GamePhaseSchema>;
 
 export const PlayerStateSchema = z.object({
   playerId: z.string(),
+  kind: GamePlayerKindSchema.default("human").optional(),
+  displayName: z.string().optional(),
+  aiPersonality: AiPersonalitySchema.optional(),
   position: z.union([z.number().int(), z.string()]),
   capital: z.number(),
   ownedTilePositions: z.array(z.union([z.number().int(), z.string()])),
@@ -598,6 +628,7 @@ export const GameStateSchema = z.object({
   activeContracts: z.array(BindingContractSchema).optional(),
   rateCards: z.array(RateCardSchema).optional(),
   turnOrder: z.array(z.string()).optional(),
+  aiPlayers: z.array(AiPlayerRuntimeSchema).optional(),
   /** The requesting player's own affinity card (hidden from other players) */
   myAffinityCardId: z.string().nullable().optional(),
   /** Position of tile awaiting purchase decision */
@@ -631,6 +662,80 @@ export const GameStateSchema = z.object({
     .optional(),
 });
 export type GameState = z.infer<typeof GameStateSchema>;
+
+// ---------------------------------------------------------------------------
+// Real-time lobby/game WebSocket schemas
+// ---------------------------------------------------------------------------
+
+export const RealtimeEnvelopeSchema = z.object({
+  type: z.string(),
+  sentAt: z.number(),
+});
+export type RealtimeEnvelope = z.infer<typeof RealtimeEnvelopeSchema>;
+
+export const LobbyRealtimeEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("lobby.snapshot"),
+    sentAt: z.number(),
+    lobbyId: z.string(),
+    payload: z.unknown(),
+  }),
+  z.object({
+    type: z.literal("lobby.presence"),
+    sentAt: z.number(),
+    lobbyId: z.string(),
+    userId: z.string(),
+    status: z.enum(["online", "offline"]),
+  }),
+  z.object({
+    type: z.literal("lobby.updated"),
+    sentAt: z.number(),
+    lobbyId: z.string(),
+    payload: z.unknown(),
+  }),
+]);
+export type LobbyRealtimeEvent = z.infer<typeof LobbyRealtimeEventSchema>;
+
+export const GameRealtimeEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("game.snapshot"),
+    sentAt: z.number(),
+    gameId: z.string(),
+    payload: GameStateSchema,
+  }),
+  z.object({
+    type: z.literal("game.action_applied"),
+    sentAt: z.number(),
+    gameId: z.string(),
+    actorId: z.string(),
+    action: GameActionSchema,
+    logEntries: z.array(GameLogEntrySchema).optional(),
+    state: GameStateSchema,
+  }),
+  z.object({
+    type: z.literal("game.presence"),
+    sentAt: z.number(),
+    gameId: z.string(),
+    userId: z.string(),
+    status: z.enum(["online", "offline"]),
+  }),
+  z.object({
+    type: z.literal("game.timer"),
+    sentAt: z.number(),
+    gameId: z.string(),
+    currentPlayerId: z.string(),
+    deadlineAt: z.number().nullable(),
+  }),
+  z.object({
+    type: z.literal("game.ai_action"),
+    sentAt: z.number(),
+    gameId: z.string(),
+    aiPlayerId: z.string(),
+    personality: AiPersonalitySchema,
+    action: GameActionSchema,
+  }),
+]);
+export type GameRealtimeEvent = z.infer<typeof GameRealtimeEventSchema>;
 
 // ---------------------------------------------------------------------------
 // Passkey / WebAuthn auth schemas

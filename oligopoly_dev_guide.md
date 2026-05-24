@@ -91,6 +91,16 @@ pnpm run db:migrate:dev
 pnpm run dev
 ```
 
+### Local multiplayer workflow
+
+Local multiplayer uses the same Worker, D1/KV, Durable Object, and Vite runtime as online play:
+
+1. Start the stack with `pnpm run dev`.
+2. Open separate browser profiles or private windows for each human player.
+3. Register or seed distinct users, then create a lobby at `http://localhost:5173`.
+4. For solo vs AI, create one human lobby and add at least one AI slot before starting.
+5. For mixed local play, add other local users and optional AI slots, then start the game and keep each browser connected to the game WebSocket.
+
 ### Validate
 
 ```bash

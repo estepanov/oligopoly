@@ -1,5 +1,6 @@
 import {
   applyAction,
+  chooseAiAction,
   normalizeGameState,
   rollPathChoiceDie,
 } from "@oligopoly/shared";
@@ -9,6 +10,7 @@ import {
   GameErrorKeys,
   GameStatusSchema,
 } from "@oligopoly/validation";
+import type { Context } from "hono";
 import { Hono } from "hono";
 import {
   type PersistedGameState,
@@ -19,6 +21,7 @@ type Bindings = {
   ALLOWED_ORIGINS?: string;
   KV?: KVNamespace;
   DB?: D1Database;
+  GAME_ROOM?: DurableObjectNamespace;
 };
 
 type Variables = {
@@ -473,19 +476,121 @@ gameRoutes.post("/:id/action", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/games/:id/ws
-// WebSocket upgrade for real-time game events.
-// Returns 501 — Durable Object implementation is a separate issue.
+// POST /api/games/:id/ai/step
+// Advance exactly one server-owned AI action when the current actor is AI.
 // ---------------------------------------------------------------------------
-gameRoutes.get("/:id/ws", (c) => {
-  return c.json({ error: "WebSocket support not yet implemented" }, 501);
+gameRoutes.post("/:id/ai/step", async (c) => {
+  const id = c.req.param("id");
+  const db = c.env?.DB;
+  if (!db) {
+    return c.json({ error: GameErrorKeys.DB_NOT_CONFIGURED }, 500);
+  }
+
+  const row = await db
+    .prepare(
+      "SELECT id, status, player_ids_json, state_json FROM games WHERE id = ?",
+    )
+    .bind(id)
+    .first<{
+      id: string;
+      status: string;
+      player_ids_json: string;
+      state_json: string | null;
+    }>();
+
+  if (!row) {
+    return c.json({ error: GameErrorKeys.NOT_FOUND }, 404);
+  }
+  if (row.status !== "active") {
+    return c.json({ error: GameErrorKeys.GAME_COMPLETED }, 409);
+  }
+
+  const rawState = row.state_json
+    ? (JSON.parse(row.state_json) as Record<string, unknown>)
+    : { gameId: id, round: 0 };
+  const gameState = normalizeGameState(rawState);
+  const decision = chooseAiAction(gameState);
+  if (!decision) {
+    return c.json({ error: GameErrorKeys.NOT_YOUR_TURN }, 409);
+  }
+
+  const result = applyAction(gameState, decision.actorId, {
+    ...decision.action,
+    ...(decision.action.type === "roll_dice"
+      ? { pathChoiceDie: rollPathChoiceDie() }
+      : {}),
+  });
+  const now = Date.now();
+  const stateJson = JSON.stringify(result.state);
+  const statements = [
+    db
+      .prepare("UPDATE games SET state_json = ? WHERE id = ?")
+      .bind(stateJson, id),
+  ];
+
+  for (const entry of result.logEntries) {
+    statements.push(
+      db
+        .prepare(
+          "INSERT INTO game_log (id, game_id, round, player_id, action_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(
+          crypto.randomUUID(),
+          id,
+          result.state.round,
+          entry.playerId,
+          entry.actionType,
+          entry.payload ? JSON.stringify(entry.payload) : null,
+          now,
+        ),
+    );
+  }
+
+  await db.batch(statements);
+  const { affinityAssignments, ...publicState } = result.state;
+  return c.json({
+    ...publicState,
+    aiAction: decision.action,
+    aiPlayerId: decision.actorId,
+    aiPersonality: decision.personality,
+    logEntries: result.logEntries,
+  });
 });
 
-// ---------------------------------------------------------------------------
-// GET /api/games/:id/spectate
-// Alias for /ws with spectator flag.
-// Returns 501 — Durable Object implementation is a separate issue.
-// ---------------------------------------------------------------------------
-gameRoutes.get("/:id/spectate", (c) => {
-  return c.json({ error: "WebSocket support not yet implemented" }, 501);
-});
+async function upgradeGameWebSocket(c: Context<AppEnv>, spectator: boolean) {
+  const id = c.req.param("id");
+  if (c.req.header("Upgrade") !== "websocket") {
+    return c.json({ error: "Expected WebSocket upgrade" }, 426);
+  }
+
+  const room = c.env.GAME_ROOM;
+  if (!room) {
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    server.accept();
+    server.send(
+      JSON.stringify({
+        type: "game.snapshot",
+        sentAt: Date.now(),
+        gameId: id,
+        payload: { gameId: id, spectator, connected: true },
+      }),
+    );
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  const objectId = room.idFromName(id);
+  const stub = room.get(objectId);
+  const url = new URL(c.req.url);
+  url.searchParams.set("gameId", id);
+  if (spectator) {
+    url.searchParams.set("spectator", "1");
+  }
+  return stub.fetch(url, c.req.raw);
+}
+
+// GET /api/games/:id/ws — WebSocket upgrade for real-time game events.
+gameRoutes.get("/:id/ws", (c) => upgradeGameWebSocket(c, false));
+
+// GET /api/games/:id/spectate — WebSocket upgrade with spectator-safe marker.
+gameRoutes.get("/:id/spectate", (c) => upgradeGameWebSocket(c, true));

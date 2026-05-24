@@ -1,5 +1,7 @@
 import {
   AuctionTypeSchema,
+  AiPersonalitySchema,
+  GameRealtimeEventSchema,
   BindingContractSchema,
   BindingContractTermSchema,
   BoardTileSchema,
@@ -10,6 +12,7 @@ import {
   GameStateSchema,
   HandshakeAgreementSchema,
   HealthResponseSchema,
+  LobbyRealtimeEventSchema,
   NegotiationErrorKeys,
   NegotiationMessageSchema,
   NegotiationThreadSchema,
@@ -69,6 +72,47 @@ describe("UpdateUserSettingsInputSchema", () => {
       username: "ab",
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("AI and realtime schemas", () => {
+  it("accepts lobby AI slots on create inputs", () => {
+    const result = CreateLobbyInputSchema.safeParse({
+      name: "Solo vs AI",
+      maxPlayers: 2,
+      isPrivate: false,
+      optionalRuleIds: [],
+      aiSlots: [{ id: "ai-1", name: "Bot", personality: "opportunist" }],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("validates AI personalities", () => {
+    expect(AiPersonalitySchema.safeParse("loyalist").success).toBe(true);
+    expect(AiPersonalitySchema.safeParse("chaotic").success).toBe(false);
+  });
+
+  it("validates lobby and game realtime events", () => {
+    expect(
+      LobbyRealtimeEventSchema.safeParse({
+        type: "lobby.presence",
+        sentAt: 1,
+        lobbyId: "lobby-1",
+        userId: "user-1",
+        status: "online",
+      }).success,
+    ).toBe(true);
+
+    expect(
+      GameRealtimeEventSchema.safeParse({
+        type: "game.timer",
+        sentAt: 1,
+        gameId: "game-1",
+        currentPlayerId: "ai:1",
+        deadlineAt: null,
+      }).success,
+    ).toBe(true);
   });
 });
 

@@ -1,14 +1,24 @@
-import type { GameSummary } from "@oligopoly/validation";
+import type { GameState, GameSummary } from "@oligopoly/validation";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { fetchGameSummary } from "../api/games";
+import {
+  fetchGameState,
+  fetchGameSummary,
+  gameWebSocketUrl,
+  stepAiTurn,
+  submitGameAction,
+} from "../api/games";
 import { ApiError } from "../api/http";
 
 export function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [game, setGame] = useState<GameSummary | null>(null);
+  const [state, setState] = useState<GameState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [busyAction, setBusyAction] = useState(false);
+  const [wsStatus, setWsStatus] = useState("disconnected");
+  const [lastAction, setLastAction] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -23,13 +33,18 @@ export function GameDetailPage() {
       setLoading(true);
       setError(null);
       try {
-        const summary = await fetchGameSummary(id);
+        const [summary, gameState] = await Promise.all([
+          fetchGameSummary(id),
+          fetchGameState(id),
+        ]);
         if (!cancelled) {
           setGame(summary);
+          setState(gameState);
         }
       } catch (e) {
         if (!cancelled) {
           setGame(null);
+          setState(null);
           if (e instanceof ApiError && e.status === 404) {
             setError("Game not found.");
           } else {
@@ -46,6 +61,73 @@ export function GameDetailPage() {
       cancelled = true;
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    setWsStatus("connecting");
+    const socket = new WebSocket(gameWebSocketUrl(id));
+    socket.onopen = () => setWsStatus("connected");
+    socket.onclose = () => setWsStatus("disconnected");
+    socket.onerror = () => setWsStatus("error");
+    socket.onmessage = (event) => {
+      setLastAction(`Realtime event: ${event.data}`);
+    };
+    return () => socket.close();
+  }, [id]);
+
+  const refreshState = async () => {
+    if (!id) return;
+    setState(await fetchGameState(id));
+  };
+
+  const runAction = async (
+    label: string,
+    action:
+      | { type: "roll_dice" }
+      | { type: "buy_tile"; tilePosition: number | string }
+      | { type: "decline_tile"; tilePosition: number | string }
+      | { type: "end_turn" },
+  ) => {
+    if (!id) return;
+    setBusyAction(true);
+    setError(null);
+    try {
+      const next = await submitGameAction(id, action);
+      setState(next);
+      setLastAction(label);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Action failed");
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const runAiStep = async () => {
+    if (!id) return;
+    setBusyAction(true);
+    setError(null);
+    try {
+      const next = await stepAiTurn(id);
+      setState(next);
+      setLastAction(
+        next.aiAction
+          ? `AI ${next.aiPlayerId} chose ${next.aiAction.type}`
+          : "AI step complete",
+      );
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "AI step failed");
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const currentPlayerId =
+    state?.turnOrder?.[state.currentPlayerIndex ?? -1] ?? null;
+  const currentPlayer = state?.players?.find(
+    (player) => player.playerId === currentPlayerId,
+  );
+  const pendingTile = state?.pendingBuyTilePosition ?? null;
 
   if (!id) {
     return (
@@ -95,6 +177,132 @@ export function GameDetailPage() {
           </dl>
         )}
       </div>
+
+      <div className="card">
+        <h2>Play</h2>
+        {state ? (
+          <>
+            <dl className="detailsGrid">
+              <dt className="muted">Realtime</dt>
+              <dd>{wsStatus}</dd>
+              <dt className="muted">Round</dt>
+              <dd>{state.round}</dd>
+              <dt className="muted">Phase</dt>
+              <dd>{state.phase ?? "unknown"}</dd>
+              <dt className="muted">Current turn</dt>
+              <dd>
+                <code className="inline">{currentPlayerId ?? "—"}</code>
+                {currentPlayer?.kind === "ai" ? " (AI)" : ""}
+              </dd>
+              <dt className="muted">Pending tile</dt>
+              <dd>{pendingTile ?? "—"}</dd>
+            </dl>
+
+            <div className="buttonRow">
+              <button
+                type="button"
+                className="button"
+                disabled={
+                  busyAction ||
+                  !["waiting_for_roll", "rolling_doubles"].includes(
+                    state.phase ?? "",
+                  )
+                }
+                onClick={() =>
+                  void runAction("Rolled dice", { type: "roll_dice" })
+                }
+              >
+                Roll dice
+              </button>
+              <button
+                type="button"
+                className="button buttonSecondary"
+                disabled={busyAction || pendingTile === null}
+                onClick={() =>
+                  pendingTile !== null &&
+                  void runAction("Bought tile", {
+                    type: "buy_tile",
+                    tilePosition: pendingTile,
+                  })
+                }
+              >
+                Buy tile
+              </button>
+              <button
+                type="button"
+                className="button buttonSecondary"
+                disabled={busyAction || pendingTile === null}
+                onClick={() =>
+                  pendingTile !== null &&
+                  void runAction("Declined tile", {
+                    type: "decline_tile",
+                    tilePosition: pendingTile,
+                  })
+                }
+              >
+                Decline tile
+              </button>
+              <button
+                type="button"
+                className="button buttonSecondary"
+                disabled={busyAction || state.phase !== "action"}
+                onClick={() =>
+                  void runAction("Ended turn", { type: "end_turn" })
+                }
+              >
+                End turn
+              </button>
+              <button
+                type="button"
+                className="button buttonSecondary"
+                disabled={busyAction || currentPlayer?.kind !== "ai"}
+                onClick={() => void runAiStep()}
+              >
+                Step AI
+              </button>
+              <button
+                type="button"
+                className="button buttonSecondary"
+                disabled={busyAction}
+                onClick={() => void refreshState()}
+              >
+                Refresh
+              </button>
+            </div>
+            {lastAction && <p className="muted">{lastAction}</p>}
+          </>
+        ) : (
+          <p className="muted">Sign in as a game participant to load state.</p>
+        )}
+      </div>
+
+      {state?.players && (
+        <div className="card">
+          <h2>Players</h2>
+          <table className="gamesTable">
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th>Kind</th>
+                <th>Position</th>
+                <th>Capital</th>
+                <th>Tiles</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.players.map((player) => (
+                <tr key={player.playerId}>
+                  <td>{player.displayName ?? player.playerId}</td>
+                  <td>{player.kind ?? "human"}</td>
+                  <td>{player.position}</td>
+                  <td>{player.capital}</td>
+                  <td>{player.ownedTilePositions.length}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

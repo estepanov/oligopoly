@@ -45,6 +45,7 @@ const createD1Stub = () => {
         currency_name,
         currency_symbol,
         currency_multiplier,
+        ai_slots_json,
       ] = binds as [
         string,
         string,
@@ -60,6 +61,7 @@ const createD1Stub = () => {
         number,
         string,
         string | null,
+        string,
         string,
         string,
         string,
@@ -85,6 +87,7 @@ const createD1Stub = () => {
         currency_name: currency_name ?? "Capital",
         currency_symbol: currency_symbol ?? "¤",
         currency_multiplier: currency_multiplier ?? "1",
+        ai_slots_json: ai_slots_json ?? "[]",
       });
       return { results: [], success: true };
     }
