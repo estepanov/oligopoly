@@ -5,6 +5,7 @@ import {
 } from "@oligopoly/shared";
 import {
   applyAuctionBidWindowExpiry,
+  applyAuctionSettleExpiry,
   applyTimeoutTakeoverAndStep,
   runAiTurnLoop,
 } from "../services/gameAi.js";
@@ -186,6 +187,8 @@ export class GameRoom extends RealtimeRoom {
           gameId,
           this.env.GAME_ROOM,
         );
+      } else if (timerKind === "auction_settle") {
+        await applyAuctionSettleExpiry(this.env.DB, gameId, this.env.GAME_ROOM);
       } else {
         const actorId = await this.state.storage.get<string>("turnActorId");
         if (!actorId) return;
@@ -272,6 +275,12 @@ export class GameRoom extends RealtimeRoom {
         await this.runAiLoop(gameId);
         return;
       }
+    }
+
+    if (
+      state.phase === "waiting_for_auction_bids" ||
+      state.phase === "waiting_for_auction_settle"
+    ) {
       await syncGameRoomTimer(this.state.storage, gameId, state, (message) =>
         this.broadcast(message),
       );

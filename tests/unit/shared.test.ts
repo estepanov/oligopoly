@@ -31,6 +31,7 @@ import {
   FLASH_CRASH_LOSS_PCT,
   FLASH_CRASH_WINDFALL_PCT,
   type FullUserProfile,
+  finalizeAuctionSettleIfReady,
   getRankForPoints,
   getStartingCapital,
   getTileByPosition,
@@ -1694,10 +1695,16 @@ describe("applyAction — auction_bid / auction_pass", () => {
       tilePosition: 3,
       amount: 50,
     });
-    expect(settled.state.phase).toBe("action");
-    expect(settled.state.pendingAuction).toBeUndefined();
+    expect(settled.state.phase).toBe("waiting_for_auction_settle");
 
-    const winner = settled.state.players.find(
+    const finalized = finalizeAuctionSettleIfReady(
+      settled.state,
+      settled.state.pendingAuction!.settleDeadlineAt! + 1,
+    );
+    expect(finalized?.state.phase).toBe("action");
+    expect(finalized?.state.pendingAuction).toBeUndefined();
+
+    const winner = finalized!.state.players.find(
       (p) => p.playerId === "player-1",
     )!;
     expect(winner.capital).toBe(1500 - 90);
@@ -1714,9 +1721,14 @@ describe("applyAction — auction_bid / auction_pass", () => {
       type: "auction_pass",
       tilePosition: 3,
     });
-    expect(settled.state.phase).toBe("action");
-    expect(settled.state.pendingAuction).toBeUndefined();
-    const tile = settled.state.tiles.find((entry) => entry.position === 3);
+    expect(settled.state.phase).toBe("waiting_for_auction_settle");
+    const finalized = finalizeAuctionSettleIfReady(
+      settled.state,
+      settled.state.pendingAuction!.settleDeadlineAt! + 1,
+    );
+    expect(finalized?.state.phase).toBe("action");
+    expect(finalized?.state.pendingAuction).toBeUndefined();
+    const tile = finalized!.state.tiles.find((entry) => entry.position === 3);
     expect(tile?.ownerId).toBeNull();
   });
 
@@ -1727,19 +1739,24 @@ describe("applyAction — auction_bid / auction_pass", () => {
       tilePosition: 3,
       amount: 75,
     });
-    const tieBreak = applyAction(afterFirst.state, "player-2", {
+    const settling = applyAction(afterFirst.state, "player-2", {
       type: "auction_bid",
       tilePosition: 3,
       amount: 75,
     });
-    expect(tieBreak.state.phase).toBe("waiting_for_auction_bids");
-    expect(tieBreak.state.pendingAuction?.tieBreakRound).toBe(1);
-    expect(tieBreak.state.pendingAuction?.tieBreakMinBid).toBe(75);
-    expect(tieBreak.state.pendingAuction?.eligiblePlayerIds).toEqual([
+    expect(settling.state.phase).toBe("waiting_for_auction_settle");
+    const tieBreak = finalizeAuctionSettleIfReady(
+      settling.state,
+      settling.state.pendingAuction!.settleDeadlineAt! + 1,
+    );
+    expect(tieBreak?.state.phase).toBe("waiting_for_auction_bids");
+    expect(tieBreak?.state.pendingAuction?.tieBreakRound).toBe(1);
+    expect(tieBreak?.state.pendingAuction?.tieBreakMinBid).toBe(75);
+    expect(tieBreak?.state.pendingAuction?.eligiblePlayerIds).toEqual([
       "player-1",
       "player-2",
     ]);
-    expect(tieBreak.state.pendingAuction?.submissions).toEqual({});
+    expect(tieBreak?.state.pendingAuction?.submissions).toEqual({});
   });
 
   it("rejects bids below the tie-break minimum", () => {
@@ -1799,11 +1816,16 @@ describe("applyAction — auction_bid / auction_pass", () => {
       tilePosition: 3,
       amount: 50,
     });
+    expect(settled.state.phase).toBe("waiting_for_auction_settle");
     expect(
       settled.logEntries.some((entry) => entry.actionType === "auction_bid"),
     ).toBe(true);
+    const finalized = finalizeAuctionSettleIfReady(
+      settled.state,
+      settled.state.pendingAuction!.settleDeadlineAt! + 1,
+    );
     expect(
-      settled.logEntries.some(
+      finalized!.logEntries.some(
         (entry) => entry.actionType === "auction_settled",
       ),
     ).toBe(true);
@@ -1823,11 +1845,39 @@ describe("applyAction — auction_bid / auction_pass", () => {
       },
     });
     const closed = closeAuctionBidWindowIfReady(state, Date.now());
-    expect(closed?.state.phase).toBe("action");
-    const winner = closed?.state.players.find(
+    expect(closed?.state.phase).toBe("waiting_for_auction_settle");
+    const finalized = finalizeAuctionSettleIfReady(
+      closed!.state,
+      closed!.state.pendingAuction!.settleDeadlineAt! + 1,
+    );
+    expect(finalized?.state.phase).toBe("action");
+    const winner = finalized?.state.players.find(
       (player) => player.playerId === "player-1",
     );
     expect(winner?.ownedTilePositions).toContain(3);
+    expect(
+      closed!.logEntries.filter(
+        (entry) => entry.actionType === "auction_bids_closed",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("waits for settle delay before revealing bids", () => {
+    const state = makeAuctionState({
+      phase: "waiting_for_auction_settle",
+      pendingAuction: {
+        tilePosition: 3,
+        trigger: "decline",
+        auctionType: "sealed_bids",
+        submissions: { "player-1": 80, "player-2": 50 },
+        eligiblePlayerIds: ["player-1", "player-2"],
+        tieBreakRound: 0,
+        resumePhase: "action",
+        bidDeadlineAt: Date.now() - 1,
+        settleDeadlineAt: Date.now() + 60_000,
+      },
+    });
+    expect(finalizeAuctionSettleIfReady(state, Date.now())).toBeNull();
   });
 
   it("rejects bids after the bid window closes", () => {

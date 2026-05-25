@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  advanceAuctionSettle,
   createAndStartGame,
   createD1Stub,
   requestWithEnv,
@@ -243,14 +244,15 @@ describe("POST /api/games/:id/action — buy_tile / decline_tile", () => {
     });
     expect(settleRes.status).toBe(200);
     const settleBody = (await settleRes.json()) as Record<string, unknown>;
-    expect(settleBody.phase).toBe("action");
-    expect(settleBody.pendingAuction).toBeUndefined();
+    expect(settleBody.phase).toBe("waiting_for_auction_settle");
 
-    const players = settleBody.players as Array<{
-      playerId: string;
-      ownedTilePositions: number[];
-    }>;
-    const winner = players.find((player) => player.playerId === currentPlayer)!;
+    const finalized = advanceAuctionSettle(db, gameId);
+    expect(finalized.state.phase).toBe("action");
+    expect(finalized.state.pendingAuction).toBeUndefined();
+
+    const winner = finalized.state.players.find(
+      (player) => player.playerId === currentPlayer,
+    )!;
     expect(winner.ownedTilePositions).toContain(3);
   });
 });
@@ -417,6 +419,8 @@ describe("POST /api/games/:id/action — doubles", () => {
         },
         db,
       });
+
+      advanceAuctionSettle(db, gameId);
     }
 
     // Should be in rolling_doubles phase -> can roll again

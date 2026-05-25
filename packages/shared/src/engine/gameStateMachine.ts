@@ -17,7 +17,10 @@ import {
   recordAuctionSubmission,
   startDeclineAuction,
 } from "./auction.js";
-import { computeAuctionBidDeadline } from "./auctionTiming.js";
+import {
+  computeAuctionBidDeadline,
+  computeAuctionSettleDeadline,
+} from "./auctionTiming.js";
 import {
   isDiagonalChoice,
   isDoubles,
@@ -283,6 +286,14 @@ export function normalizeGameState(
     state.pendingAuction.bidDeadlineAt === undefined
   ) {
     state.pendingAuction.bidDeadlineAt = computeAuctionBidDeadline(
+      Date.now(),
+      state.settings,
+    );
+  } else if (
+    state.phase === "waiting_for_auction_settle" &&
+    state.pendingAuction.settleDeadlineAt === undefined
+  ) {
+    state.pendingAuction.settleDeadlineAt = computeAuctionSettleDeadline(
       Date.now(),
       state.settings,
     );

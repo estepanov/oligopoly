@@ -1,7 +1,10 @@
 import {
   auctionBidWindowToMs,
+  auctionSettleDelayToMs,
   computeAuctionBidDeadline,
+  computeAuctionSettleDeadline,
   isAuctionBidWindowOpen,
+  isAuctionSettleDelayActive,
 } from "@oligopoly/shared";
 import { describe, expect, it } from "vitest";
 
@@ -12,14 +15,24 @@ describe("auctionTiming", () => {
     expect(auctionBidWindowToMs("5min")).toBe(300_000);
   });
 
-  it("computes bid deadlines from game settings", () => {
+  it("maps lobby settle delays to milliseconds", () => {
+    expect(auctionSettleDelayToMs("10s")).toBe(10_000);
+    expect(auctionSettleDelayToMs("30s")).toBe(30_000);
+    expect(auctionSettleDelayToMs("1min")).toBe(60_000);
+  });
+
+  it("computes bid and settle deadlines from game settings", () => {
     const now = 1_700_000_000_000;
     expect(computeAuctionBidDeadline(now, { auctionBidWindow: "30s" })).toBe(
       now + 30_000,
     );
+    expect(
+      computeAuctionSettleDeadline(now, { auctionSettleDelay: "10s" }),
+    ).toBe(now + 10_000);
   });
 
   it("treats missing deadlines as open windows", () => {
     expect(isAuctionBidWindowOpen(undefined, Date.now())).toBe(true);
+    expect(isAuctionSettleDelayActive(undefined, Date.now())).toBe(false);
   });
 });

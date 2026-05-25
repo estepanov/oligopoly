@@ -595,6 +595,7 @@ export const GamePhaseSchema = z.enum([
   "waiting_for_roll",
   "waiting_for_buy",
   "waiting_for_auction_bids",
+  "waiting_for_auction_settle",
   "waiting_for_path_choice",
   "rolling_doubles",
   "game_over",
@@ -648,6 +649,7 @@ export const PendingAuctionSchema = z.object({
   tieBreakRound: z.number().int().min(0).optional(),
   resumePhase: z.enum(["action", "rolling_doubles"]),
   bidDeadlineAt: z.number().int().optional(),
+  settleDeadlineAt: z.number().int().optional(),
   /** Present in redacted client views; omitted from persisted engine state. */
   submissionCount: z.number().int().min(0).optional(),
   /** Present in redacted player views; omitted from persisted engine state. */
@@ -830,7 +832,7 @@ export const GameRealtimeEventSchema = z.discriminatedUnion("type", [
     gameId: z.string(),
     currentPlayerId: z.string().optional(),
     deadlineAt: z.number().nullable(),
-    timerKind: z.enum(["turn", "auction_bids"]).optional(),
+    timerKind: z.enum(["turn", "auction_bids", "auction_settle"]).optional(),
   }),
   z.object({
     type: z.literal("game.ai_action"),
