@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import {
   ACTION_POINTS_PER_TURN,
   AFFINITY_CARD_IDS,
+  buildDisruptionDeck,
   buildMarketEventDeck,
   getStartingCapital,
   initTileStates,
@@ -1169,6 +1170,8 @@ lobbyRoutes.post("/:id/start", async (c) => {
     }),
     marketEventDeckRemaining: buildMarketEventDeck(gameSettings, gameId),
     marketEventDiscard: [] as string[],
+    disruptionDeckRemaining: buildDisruptionDeck(gameId),
+    disruptionDiscard: [] as string[],
     settings: gameSettings,
   };
 

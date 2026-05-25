@@ -29,6 +29,13 @@ import {
   TRIPLE_DOUBLES_LIMIT,
 } from "./dice.js";
 import {
+  disruptionDrawCount,
+  drawAndResolveDisruptionCards,
+  normalizeDisruptionDeck,
+  resolveBlackMarketRelay,
+  resolveFlashCrash,
+} from "./disruptionEvents.js";
+import {
   drawAndResolveMarketEvent,
   normalizeMarketEventDeck,
 } from "./marketEvents.js";
@@ -82,6 +89,8 @@ export interface InternalGameState {
   aiPlayers?: InternalAiPlayerState[];
   marketEventDeckRemaining?: string[];
   marketEventDiscard?: string[];
+  disruptionDeckRemaining?: string[];
+  disruptionDiscard?: string[];
 }
 
 export interface InternalAiPlayerState {
@@ -305,6 +314,7 @@ export function normalizeGameState(
     );
   }
   normalizeMarketEventDeck(state);
+  normalizeDisruptionDeck(state);
   // Legacy phase aliases
   if (state.phase === "market_event") {
     state.phase = "waiting_for_market_event";
@@ -635,19 +645,32 @@ function resolveLanding(
         additionalLogs: [...logs, ...drawResult.logEntries],
       };
     }
-    // DISRUPTION CARD, FLASH CRASH, BLACK MARKET RELAY:
-    // These require card deck mechanics (draw + resolve). For now, log them
-    // as events. Full card resolution is a future enhancement.
-    if (
-      tile.name === "DISRUPTION CARD" ||
-      tile.name === "FLASH CRASH" ||
-      tile.name === "BLACK MARKET RELAY"
-    ) {
-      logs.push({
+    if (tile.name === "DISRUPTION CARD") {
+      const drawResult = drawAndResolveDisruptionCards(
+        state,
         playerId,
-        actionType: "special_tile_event",
-        payload: { tileName: tile.name, position: pos },
-      });
+        disruptionDrawCount(state.settings),
+        "tile",
+        pos,
+      );
+      return {
+        state: drawResult.state,
+        additionalLogs: [...logs, ...drawResult.logEntries],
+      };
+    }
+    if (tile.name === "FLASH CRASH") {
+      const crashResult = resolveFlashCrash(state, playerId, pos);
+      return {
+        state: crashResult.state,
+        additionalLogs: [...logs, ...crashResult.logEntries],
+      };
+    }
+    if (tile.name === "BLACK MARKET RELAY") {
+      const relayResult = resolveBlackMarketRelay(state, playerId, pos);
+      return {
+        state: relayResult.state,
+        additionalLogs: [...logs, ...relayResult.logEntries],
+      };
     }
     return { state, additionalLogs: logs };
   }

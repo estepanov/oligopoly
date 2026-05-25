@@ -25,6 +25,14 @@ const ACTION_LABELS: Record<string, string> = {
   market_event_capital_change: "Market event capital change",
   market_event_roll: "Market event roll",
   market_event_deck_empty: "Market event deck empty",
+  disruption_drawn: "Disruption card drawn",
+  disruption_resolved: "Disruption card resolved",
+  disruption_capital_change: "Disruption capital change",
+  disruption_deck_empty: "Disruption deck empty",
+  disruption_discarded_hidden: "Disruption card discarded unseen",
+  black_market_relay_drawn: "Black market relay resolved",
+  flash_crash_resolved: "Flash crash resolved",
+  regulation_released: "Released from regulation",
 };
 
 function payloadSuffix(
