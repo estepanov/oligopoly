@@ -42,6 +42,7 @@ pnpm dev:web      # Web app only
 | Command | Description |
 |---|---|
 | `pnpm build` | Build all packages |
+| `pnpm ci:local` | Run the same checks as CI locally |
 | `pnpm typecheck` | Run TypeScript type checking |
 | `pnpm lint` | Lint with Biome |
 | `pnpm lint:fix` | Lint and auto-fix |
@@ -49,3 +50,7 @@ pnpm dev:web      # Web app only
 | `pnpm test:unit` | Unit tests only |
 | `pnpm test:integration` | Integration tests only |
 | `pnpm test:e2e` | End-to-end tests only |
+
+## Push guardrail
+
+This repo installs a `pre-push` hook (via `pnpm install`/`pnpm prepare`) that runs `pnpm ci:local`. A push is blocked until local CI checks pass.

@@ -33,6 +33,12 @@ Wrangler emulates D1, KV, and R2 locally via Miniflare — no Cloudflare account
 - Auth uses WebAuthn passkeys — there is no guest login. To test authenticated API endpoints, insert test users and sessions directly into D1 via `wrangler d1 execute`.
 - `pnpm run test:e2e` currently has no test files and exits with code 1 — this is expected and not a failure.
 
+### Agent push guardrail (Cursor / Claude / Codex)
+
+- You must run `pnpm run ci:local` and get a clean pass before every `git push`.
+- A repository `pre-push` hook enforces this by running `scripts/run-local-ci.sh` (CI parity checks: build validation/shared, typecheck, lint, unit coverage, integration tests).
+- Never bypass the guardrail in normal workflow. `SKIP_LOCAL_CI_GUARDRAIL=1` is emergency-only and requires explicit human instruction in the task prompt.
+
 ### Lint / Format / Typecheck / Test
 
 ```

@@ -152,10 +152,7 @@ git checkout -b feature/your-change
 
 pnpm run test:unit --watch
 
-pnpm run typecheck
-pnpm run lint
-pnpm run test:integration
-pnpm run test:e2e
+pnpm run ci:local
 ```
 
 Definition of done:
@@ -384,6 +381,11 @@ CI scope:
 - Typecheck, lint, tests
 - Build packages
 - Publish packages
+
+Local guardrail:
+
+- `pnpm run ci:local` mirrors CI checks (build validation/shared, typecheck, lint, unit tests with coverage, integration tests).
+- A repository `pre-push` hook runs `pnpm run ci:local` automatically and blocks the push on failure.
 
 Example release sequence:
 
