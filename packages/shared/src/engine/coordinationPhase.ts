@@ -4,6 +4,7 @@ import {
 } from "../trustConstants.js";
 import type { InternalGameState, LogEntry } from "./gameStateTypes.js";
 import { calcThreadExpiry, isThreadExpired } from "./negotiation.js";
+import { clearRoundOptionalRuleFlags } from "./optionalRuleActions.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
 import { tickRateCardPressureResets } from "./rateCards.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
@@ -32,6 +33,7 @@ export function processCoordinationPhase(
     }
   }
 
+  clearRoundOptionalRuleFlags(newState);
   newState = tickRateCardPressureResets(newState, logs);
   newState = expireNegotiationThreads(newState, logs);
 
@@ -96,6 +98,9 @@ export function createNegotiationThread(
     status: "open",
     startedRound: newState.round,
     expiresAfterRound: calcThreadExpiry(newState.round),
+    visibility: isOptionalRuleEnabled(newState.settings, "open_negotiation")
+      ? "open"
+      : "private",
   });
   return newState;
 }

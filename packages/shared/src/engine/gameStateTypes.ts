@@ -28,6 +28,35 @@ export interface FinalRoundState {
   remainingTurnPlayerIds: string[];
 }
 
+export interface HandshakeAgreementState {
+  id: string;
+  partyA: string;
+  partyB: string;
+  summary: string;
+  partySignatures: Record<string, boolean>;
+  status: "pending" | "active" | "broken";
+  createdRound: number;
+}
+
+export interface PendingSyndicateVoteState {
+  syndicateId: string;
+  voteType: "dissolve_syndicate";
+  votes: Record<string, boolean>;
+}
+
+export interface PendingInsiderPeekState {
+  cardId: string;
+  drawingPlayerId: string;
+  trigger: "round_start" | "tile";
+  tilePosition?: number | string;
+}
+
+export interface MarketEventModifiersState {
+  utilityRentMultiplier?: number;
+  utilityRentMultiplierUntilRound?: number;
+  syntheticCdoMortgageRound?: number;
+}
+
 export interface InternalGameState {
   gameId: string;
   round: number;
@@ -56,6 +85,12 @@ export interface InternalGameState {
   rateCards?: RateCardState[];
   activeContracts?: BindingContract[];
   negotiationThreads?: NegotiationThreadState[];
+  handshakeAgreements?: HandshakeAgreementState[];
+  pendingSyndicateVote?: PendingSyndicateVoteState | null;
+  pendingInsiderPeek?: PendingInsiderPeekState | null;
+  marketEventModifiers?: MarketEventModifiersState;
+  /** tile positions frozen from rent collection until end of round */
+  frozenTilePositions?: (number | string)[];
   finalRound?: FinalRoundState | null;
   pendingDisruptionNullify?: {
     cardId: string;
@@ -73,6 +108,7 @@ export interface NegotiationThreadState {
   status: "open" | "agreed" | "expired" | "cancelled";
   startedRound: number;
   expiresAfterRound: number;
+  visibility?: "private" | "open";
 }
 
 export interface InternalAiPlayerState {
@@ -84,6 +120,10 @@ export interface InternalAiPlayerState {
 
 export interface InternalPlayerState {
   playerId: string;
+  /** Optional rule: hostile takeover used this game */
+  hostileTakeoverUsed?: boolean;
+  /** Optional rule: market manipulation used this round */
+  marketManipulationUsedThisRound?: boolean;
   kind?: "human" | "ai";
   displayName?: string;
   aiPersonality?: AiPersonality;
@@ -134,6 +174,7 @@ export interface GameActionInput {
   expiresRound?: number;
   handshakeId?: string;
   voteType?: string;
+  summary?: string;
 }
 
 export interface ApplyActionResult {

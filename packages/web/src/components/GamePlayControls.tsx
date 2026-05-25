@@ -27,6 +27,49 @@ export function GamePlayControls({
   const ownedTiles = myPlayerId ? ownedTilesForPlayer(state, myPlayerId) : [];
   const currency = state.settings?.currencySymbol ?? "¤";
   const gameOver = state.phase === "game_over";
+  const insiderPeek = (
+    state as GameState & {
+      pendingInsiderPeek?: { cardId: string; drawingPlayerId: string };
+    }
+  ).pendingInsiderPeek;
+
+  if (state.phase === "waiting_for_insider_peek" && insiderPeek) {
+    return (
+      <div className="cardNested">
+        <h3>Insider trading</h3>
+        <p className="muted">
+          Peeked market event:{" "}
+          <code className="inline">{insiderPeek.cardId}</code>
+        </p>
+        <div className="buttonRow">
+          <button
+            type="button"
+            className="button"
+            disabled={busy || myPlayerId !== insiderPeek.drawingPlayerId}
+            onClick={() =>
+              void onAction("Kept peeked card", {
+                type: "insider_keep_market_event",
+              })
+            }
+          >
+            Play this card
+          </button>
+          <button
+            type="button"
+            className="button buttonSecondary"
+            disabled={busy || myPlayerId !== insiderPeek.drawingPlayerId}
+            onClick={() =>
+              void onAction("Discarded peeked card", {
+                type: "insider_discard_market_event",
+              })
+            }
+          >
+            Discard and draw next
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (gameOver) {
     const winner = state.players?.find(

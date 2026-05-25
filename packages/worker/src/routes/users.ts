@@ -408,8 +408,48 @@ userRoutes.get("/me/games", async (c) => {
     return c.json({ error: "Auth adapter not configured" }, 401);
   }
 
-  // Placeholder: game history table not yet in schema
-  return c.json([]);
+  const db = c.env?.DB;
+  if (!db) {
+    return c.json({ error: "Database not configured" }, 500);
+  }
+
+  const rows = await db
+    .prepare(
+      `SELECT id, status, started_at, ended_at, winner_id, player_ids_json
+       FROM games
+       WHERE player_ids_json LIKE ?
+       ORDER BY started_at DESC
+       LIMIT 50`,
+    )
+    .bind(`%"${userId}"%`)
+    .all<{
+      id: string;
+      status: string;
+      started_at: number;
+      ended_at: number | null;
+      winner_id: string | null;
+      player_ids_json: string;
+    }>();
+
+  return c.json(
+    rows.results.map((game) => {
+      let playerIds: string[] = [];
+      try {
+        playerIds = JSON.parse(game.player_ids_json) as string[];
+      } catch {
+        playerIds = [];
+      }
+      return {
+        gameId: game.id,
+        status: game.status,
+        startedAt: game.started_at,
+        endedAt: game.ended_at,
+        winnerId: game.winner_id,
+        playerIds,
+        participated: playerIds.includes(userId),
+      };
+    }),
+  );
 });
 
 // ---------------------------------------------------------------------------

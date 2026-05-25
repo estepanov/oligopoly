@@ -22,8 +22,12 @@ export const FORECLOSURE_RESERVE = 1;
  * @param tileCost - The tile's original acquisition cost
  * @returns The mortgage value (Capital received)
  */
-export function calculateMortgageValue(tileCost: number): number {
-  return Math.floor(tileCost * MORTGAGE_RATE);
+export function calculateMortgageValue(
+  tileCost: number,
+  syntheticCdoActive?: boolean,
+): number {
+  const rate = syntheticCdoActive ? 0.6 : MORTGAGE_RATE;
+  return Math.floor(tileCost * rate);
 }
 
 /**

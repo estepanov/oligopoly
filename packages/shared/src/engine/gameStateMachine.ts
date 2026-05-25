@@ -33,16 +33,29 @@ import type {
   InternalGameState,
   InternalTileState,
 } from "./gameStateTypes.js";
-import { normalizeMarketEventDeck } from "./marketEvents.js";
 import {
   handleBreakHandshake,
+  handleProposeHandshake,
+  handleSignHandshake,
+} from "./handshakeActions.js";
+import {
+  handleInsiderDiscardMarketEvent,
+  handleInsiderKeepMarketEvent,
+  normalizeMarketEventDeck,
+} from "./marketEvents.js";
+import {
   handleProposeContract,
   handleSignContract,
   handleStartNegotiation,
 } from "./negotiationActions.js";
+import {
+  handleHostileTakeover,
+  handleMarketManipulation,
+} from "./optionalRuleActions.js";
 import { handleInitiateAuction } from "./playerAuctionActions.js";
 import { handleEndCoordination, handleSetRateCard } from "./rateCardActions.js";
 import { handleFormSyndicate } from "./syndicateActions.js";
+import { handleCallVote } from "./syndicateVoteActions.js";
 
 export type {
   ApplyActionResult,
@@ -143,6 +156,16 @@ export function applyAction(
     return handleAuctionPass(state, playerId, action);
   }
 
+  if (state.phase === "waiting_for_insider_peek") {
+    if (action.type === "insider_keep_market_event") {
+      return handleInsiderKeepMarketEvent(state, playerId);
+    }
+    if (action.type === "insider_discard_market_event") {
+      return handleInsiderDiscardMarketEvent(state, playerId);
+    }
+    throw "game.invalid_phase";
+  }
+
   if (state.phase === "syndicate_coordination") {
     switch (action.type) {
       case "set_rate_card":
@@ -188,8 +211,18 @@ export function applyAction(
       return handleProposeContract(state, playerId, action);
     case "sign_contract":
       return handleSignContract(state, playerId, action);
+    case "propose_handshake":
+      return handleProposeHandshake(state, playerId, action);
+    case "sign_handshake":
+      return handleSignHandshake(state, playerId, action);
     case "break_handshake":
       return handleBreakHandshake(state, playerId, action);
+    case "call_vote":
+      return handleCallVote(state, playerId, action);
+    case "hostile_takeover":
+      return handleHostileTakeover(state, playerId, action);
+    case "market_manipulation":
+      return handleMarketManipulation(state, playerId, action);
     case "initiate_auction":
       return handleInitiateAuction(state, playerId, action);
     case "pay_debt":

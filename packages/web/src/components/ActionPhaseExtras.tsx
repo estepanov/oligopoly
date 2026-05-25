@@ -30,6 +30,12 @@ export function ActionPhaseExtras({
   const [contractTile, setContractTile] = useState("");
   const [auctionTile, setAuctionTile] = useState<string>("");
   const [affinityTarget, setAffinityTarget] = useState("");
+  const [handshakeParty, setHandshakeParty] = useState("");
+  const [handshakeSummary, setHandshakeSummary] = useState("");
+  const [takeoverTarget, setTakeoverTarget] = useState("");
+  const [takeoverTile, setTakeoverTile] = useState("");
+  const [manipulationTarget, setManipulationTarget] = useState("");
+  const [manipulationTile, setManipulationTile] = useState("");
 
   const myTurn = isMyTurn(state, myPlayerId);
   const me = myPlayerId ? playerById(state, myPlayerId) : undefined;
@@ -38,6 +44,20 @@ export function ActionPhaseExtras({
   const unmortgaged = ownedTiles.filter((t) => !t.mortgaged);
   const debt = me?.outstandingDebt ?? 0;
   const affinityId = state.myAffinityCardId ?? null;
+  const optionalRules = state.settings?.optionalRuleIds ?? [];
+  const handshakes =
+    (
+      state as GameState & {
+        handshakeAgreements?: Array<{
+          id: string;
+          partyA: string;
+          partyB: string;
+          summary: string;
+          status: string;
+          partySignatures?: Record<string, boolean>;
+        }>;
+      }
+    ).handshakeAgreements ?? [];
 
   if (isDisruptionNullifyPhase(state) && myPlayerId) {
     return (
@@ -313,6 +333,218 @@ export function ActionPhaseExtras({
             }
           >
             Initiate player auction
+          </button>
+        </div>
+      )}
+
+      {others.length > 0 && (
+        <div className="handshakeForm">
+          <label className="muted">
+            Handshake with{" "}
+            <select
+              value={handshakeParty}
+              onChange={(e) => setHandshakeParty(e.target.value)}
+              disabled={busy}
+            >
+              <option value="">Player</option>
+              {others.map((p) => (
+                <option key={p.playerId} value={p.playerId}>
+                  {p.displayName ?? p.playerId}
+                </option>
+              ))}
+            </select>
+          </label>
+          <input
+            className="textInput"
+            value={handshakeSummary}
+            onChange={(e) => setHandshakeSummary(e.target.value)}
+            placeholder="Agreement summary"
+            disabled={busy}
+          />
+          <button
+            type="button"
+            className="button buttonSecondary"
+            disabled={busy || !handshakeParty || !handshakeSummary.trim()}
+            onClick={() =>
+              void onAction("Proposed handshake", {
+                type: "propose_handshake",
+                partyB: handshakeParty,
+                summary: handshakeSummary.trim(),
+              })
+            }
+          >
+            Propose handshake
+          </button>
+        </div>
+      )}
+
+      {handshakes.length > 0 && (
+        <ul className="contractList muted">
+          {handshakes.map((handshake) => (
+            <li key={handshake.id}>
+              {handshake.summary} ({handshake.partyA} ↔ {handshake.partyB}) —{" "}
+              {handshake.status}
+              {handshake.status === "pending" &&
+                (handshake.partyA === myPlayerId ||
+                  handshake.partyB === myPlayerId) &&
+                !handshake.partySignatures?.[myPlayerId ?? ""] && (
+                  <button
+                    type="button"
+                    className="button buttonSecondary"
+                    style={{ marginLeft: "0.5rem" }}
+                    disabled={busy}
+                    onClick={() =>
+                      void onAction("Signed handshake", {
+                        type: "sign_handshake",
+                        handshakeId: handshake.id,
+                      })
+                    }
+                  >
+                    Sign
+                  </button>
+                )}
+              {handshake.status === "active" &&
+                (handshake.partyA === myPlayerId ||
+                  handshake.partyB === myPlayerId) && (
+                  <button
+                    type="button"
+                    className="button buttonSecondary"
+                    style={{ marginLeft: "0.5rem" }}
+                    disabled={busy}
+                    onClick={() =>
+                      void onAction("Broke handshake", {
+                        type: "break_handshake",
+                        handshakeId: handshake.id,
+                      })
+                    }
+                  >
+                    Break
+                  </button>
+                )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {me?.syndicateId && (
+        <div className="buttonRow">
+          <button
+            type="button"
+            className="button buttonSecondary"
+            disabled={busy}
+            onClick={() =>
+              void onAction("Called dissolution vote", {
+                type: "call_vote",
+                voteType: "dissolve_syndicate",
+              })
+            }
+          >
+            Vote to dissolve syndicate
+          </button>
+        </div>
+      )}
+
+      {optionalRules.includes("hostile_takeover") &&
+        others.length > 0 &&
+        !(me as { hostileTakeoverUsed?: boolean } | undefined)
+          ?.hostileTakeoverUsed && (
+          <div className="takeoverForm">
+            <label className="muted">
+              Hostile takeover target{" "}
+              <select
+                value={takeoverTarget}
+                onChange={(e) => setTakeoverTarget(e.target.value)}
+                disabled={busy}
+              >
+                <option value="">Player</option>
+                {others.map((p) => (
+                  <option key={p.playerId} value={p.playerId}>
+                    {p.displayName ?? p.playerId}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="muted">
+              Their tile{" "}
+              <select
+                value={takeoverTile}
+                onChange={(e) => setTakeoverTile(e.target.value)}
+                disabled={busy || !takeoverTarget}
+              >
+                <option value="">Tile</option>
+                {(state.players ?? [])
+                  .find((player) => player.playerId === takeoverTarget)
+                  ?.ownedTilePositions.map((position) => (
+                    <option key={String(position)} value={String(position)}>
+                      {tileLabel(position, tileNames)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="button buttonSecondary"
+              disabled={busy || !takeoverTarget || !takeoverTile}
+              onClick={() =>
+                void onAction("Hostile takeover", {
+                  type: "hostile_takeover",
+                  targetPlayerId: takeoverTarget,
+                  tilePosition: parseTilePosition(takeoverTile),
+                })
+              }
+            >
+              Hostile takeover (once per game)
+            </button>
+          </div>
+        )}
+
+      {optionalRules.includes("market_manipulation") && others.length > 0 && (
+        <div className="manipulationForm">
+          <label className="muted">
+            Freeze tile owned by{" "}
+            <select
+              value={manipulationTarget}
+              onChange={(e) => setManipulationTarget(e.target.value)}
+              disabled={busy}
+            >
+              <option value="">Player</option>
+              {others.map((p) => (
+                <option key={p.playerId} value={p.playerId}>
+                  {p.displayName ?? p.playerId}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="muted">
+            Tile{" "}
+            <select
+              value={manipulationTile}
+              onChange={(e) => setManipulationTile(e.target.value)}
+              disabled={busy || !manipulationTarget}
+            >
+              <option value="">Tile</option>
+              {(state.players ?? [])
+                .find((player) => player.playerId === manipulationTarget)
+                ?.ownedTilePositions.map((position) => (
+                  <option key={String(position)} value={String(position)}>
+                    {tileLabel(position, tileNames)}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="button buttonSecondary"
+            disabled={busy || !manipulationTarget || !manipulationTile}
+            onClick={() =>
+              void onAction("Market manipulation", {
+                type: "market_manipulation",
+                targetPlayerId: manipulationTarget,
+                tilePosition: parseTilePosition(manipulationTile),
+              })
+            }
+          >
+            Freeze tile (¤50)
           </button>
         </div>
       )}

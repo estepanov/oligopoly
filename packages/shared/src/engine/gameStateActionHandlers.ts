@@ -818,7 +818,9 @@ export function handleMortgageTile(
   const tile = getTileByPosition(pos);
   if (!tile || tile.cost === null) throw "game.invalid_action";
 
-  const mortgageValue = calculateMortgageValue(tile.cost);
+  const syntheticCdoActive =
+    state.marketEventModifiers?.syntheticCdoMortgageRound === state.round;
+  const mortgageValue = calculateMortgageValue(tile.cost, syntheticCdoActive);
 
   const newState = deepClone(state);
   const np = getPlayer(newState, playerId)!;

@@ -271,6 +271,7 @@ export type LobbyStatus = z.infer<typeof LobbyStatusSchema>;
 export const LobbyPlayerSchema = z.object({
   userId: z.string(),
   isAdmin: z.boolean(),
+  isReady: z.boolean().optional(),
   joinedAt: z.number(),
 });
 export type LobbyPlayer = z.infer<typeof LobbyPlayerSchema>;
@@ -628,6 +629,27 @@ export const GameActionSchema = z.discriminatedUnion("type", [
     type: z.literal("pay_debt"),
     amount: z.number().int().min(1).optional(),
   }),
+  z.object({
+    type: z.literal("propose_handshake"),
+    partyB: z.string(),
+    summary: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("hostile_takeover"),
+    targetPlayerId: z.string(),
+    tilePosition: z.union([z.number().int(), z.string()]),
+  }),
+  z.object({
+    type: z.literal("market_manipulation"),
+    targetPlayerId: z.string(),
+    tilePosition: z.union([z.number().int(), z.string()]),
+  }),
+  z.object({
+    type: z.literal("insider_keep_market_event"),
+  }),
+  z.object({
+    type: z.literal("insider_discard_market_event"),
+  }),
 ]);
 export type GameAction = z.infer<typeof GameActionSchema>;
 
@@ -646,6 +668,7 @@ export const GamePhaseSchema = z.enum([
   "waiting_for_auction_settle",
   "waiting_for_path_choice",
   "waiting_for_disruption_nullify",
+  "waiting_for_insider_peek",
   "rolling_doubles",
   "game_over",
 ]);

@@ -61,6 +61,12 @@ export function computeTileRent(
     return { rent: 0, ownerId: null };
   }
 
+  if (
+    state.frozenTilePositions?.some((pos) => String(pos) === String(position))
+  ) {
+    return { rent: 0, ownerId: null };
+  }
+
   const ownerId = tileState.ownerId;
 
   if (tile.type === "sector_hub") {
@@ -73,6 +79,14 @@ export function computeTileRent(
       ? state.lastDiceRoll[0] + state.lastDiceRoll[1]
       : 7;
     let rent = calculateUtilityRent(utilCount, diceTotal);
+    const modifiers = state.marketEventModifiers;
+    if (
+      modifiers?.utilityRentMultiplier &&
+      modifiers.utilityRentMultiplierUntilRound !== undefined &&
+      state.round <= modifiers.utilityRentMultiplierUntilRound
+    ) {
+      rent = Math.floor(rent * modifiers.utilityRentMultiplier);
+    }
     const spectrumMultiplier = spectrumHolderUtilityMultiplier(
       state,
       ownerId,

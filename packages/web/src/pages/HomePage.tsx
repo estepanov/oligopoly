@@ -13,9 +13,14 @@ export function HomePage() {
         <p className="muted" style={{ marginBottom: "1rem" }}>
           Create, join, and start a lobby before entering a game.
         </p>
-        <Link to="/lobbies" className="button">
-          Open lobbies
-        </Link>
+        <div className="buttonRow">
+          <Link to="/lobbies" className="button">
+            Open lobbies
+          </Link>
+          <Link to="/leaderboard" className="button buttonSecondary">
+            Leaderboard
+          </Link>
+        </div>
         <p className="muted" style={{ marginTop: "0.75rem", marginBottom: 0 }}>
           You can still browse all games from the Games tab.
         </p>

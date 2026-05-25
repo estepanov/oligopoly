@@ -272,6 +272,11 @@ export function applyGameAction(
     case "end_coordination":
     case "initiate_auction":
     case "pay_debt":
+    case "propose_handshake":
+    case "hostile_takeover":
+    case "market_manipulation":
+    case "insider_keep_market_event":
+    case "insider_discard_market_event":
       return {
         ok: false,
         errorKey: GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED,

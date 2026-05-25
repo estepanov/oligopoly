@@ -4,6 +4,7 @@ import { BoardGrid } from "../components/BoardGrid";
 import { GameActionLog } from "../components/GameActionLog";
 import { GameBoardPanel } from "../components/GameBoardPanel";
 import { GamePlayControls } from "../components/GamePlayControls";
+import { PlayerSummaryPanel } from "../components/PlayerSummaryPanel";
 import { useGameSession } from "../hooks/useGameSession";
 import { currentActorId } from "../lib/gameUi";
 
@@ -82,6 +83,8 @@ export function GameDetailPage() {
 
       {state && (
         <>
+          <PlayerSummaryPanel state={state} myPlayerId={myPlayerId} />
+
           <div className="card">
             <h2>Board</h2>
             <BoardGrid

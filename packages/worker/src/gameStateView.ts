@@ -3,7 +3,28 @@ import type { GameState, PendingAuction } from "@oligopoly/validation";
 /** Persisted `state_json` may include server-only affinity assignments. */
 export type PersistedGameState = GameState & {
   affinityAssignments?: Record<string, string>;
-  settings?: { spectatorMode?: string; [key: string]: unknown };
+  negotiationThreads?: Array<{
+    id: string;
+    partyIds: string[];
+    status: string;
+    visibility?: string;
+  }>;
+  handshakeAgreements?: Array<{
+    id: string;
+    partyA: string;
+    partyB: string;
+    summary: string;
+    status: string;
+  }>;
+  pendingInsiderPeek?: {
+    cardId: string;
+    drawingPlayerId: string;
+  };
+  settings?: {
+    spectatorMode?: string;
+    optionalRuleIds?: string[];
+    [key: string]: unknown;
+  };
 };
 
 type ClientPendingAuction = PendingAuction & {
@@ -76,24 +97,92 @@ export function toClientGameState(
     ? redactPendingAuction(state.pendingAuction, playerId, mode)
     : undefined;
 
+  const openNegotiation = Array.isArray(state.settings?.optionalRuleIds)
+    ? state.settings.optionalRuleIds.includes("open_negotiation")
+    : false;
+
+  const negotiationThreads = filterNegotiationThreadsForViewer(
+    state.negotiationThreads,
+    playerId,
+    mode,
+    openNegotiation,
+  );
+
+  const handshakeAgreements = filterHandshakesForViewer(
+    state.handshakeAgreements,
+    playerId,
+    mode,
+    openNegotiation,
+  );
+
+  const insiderPeek =
+    state.pendingInsiderPeek?.drawingPlayerId === playerId
+      ? state.pendingInsiderPeek
+      : undefined;
+
   if (mode === "spectator") {
-    const { affinityAssignments: _a, pendingAuction: _p, ...rest } = state;
-    return { ...rest, ...(pendingAuction ? { pendingAuction } : {}) };
+    const {
+      affinityAssignments: _a,
+      pendingAuction: _p,
+      pendingInsiderPeek: _peek,
+      ...rest
+    } = state;
+    return {
+      ...rest,
+      ...(pendingAuction ? { pendingAuction } : {}),
+      negotiationThreads,
+      handshakeAgreements,
+    };
   }
 
   if (state.affinityAssignments) {
     const myAffinity = state.affinityAssignments[playerId] ?? null;
-    const { affinityAssignments: _all, pendingAuction: _p, ...rest } = state;
+    const {
+      affinityAssignments: _all,
+      pendingAuction: _p,
+      pendingInsiderPeek: _peek,
+      ...rest
+    } = state;
     return {
       ...rest,
       ...(pendingAuction ? { pendingAuction } : {}),
       myAffinityCardId: myAffinity,
+      negotiationThreads,
+      handshakeAgreements,
+      ...(insiderPeek ? { pendingInsiderPeek: insiderPeek } : {}),
     } as Record<string, unknown>;
   }
 
-  const { pendingAuction: _p, ...rest } = state;
+  const { pendingAuction: _p, pendingInsiderPeek: _peek, ...rest } = state;
   return {
     ...rest,
     ...(pendingAuction ? { pendingAuction } : {}),
+    negotiationThreads,
+    handshakeAgreements,
+    ...(insiderPeek ? { pendingInsiderPeek: insiderPeek } : {}),
   } as Record<string, unknown>;
+}
+
+function filterNegotiationThreadsForViewer(
+  threads: PersistedGameState["negotiationThreads"],
+  viewerId: string,
+  mode: "spectator" | "player",
+  openNegotiation: boolean,
+) {
+  if (!threads?.length) return threads;
+  if (openNegotiation || mode === "spectator") return threads;
+  return threads.filter((thread) => thread.partyIds.includes(viewerId));
+}
+
+function filterHandshakesForViewer(
+  handshakes: PersistedGameState["handshakeAgreements"],
+  viewerId: string,
+  mode: "spectator" | "player",
+  openNegotiation: boolean,
+) {
+  if (!handshakes?.length) return handshakes;
+  if (openNegotiation || mode === "spectator") return handshakes;
+  return handshakes.filter(
+    (entry) => entry.partyA === viewerId || entry.partyB === viewerId,
+  );
 }

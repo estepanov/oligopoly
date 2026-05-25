@@ -48,6 +48,22 @@ export function Layout() {
             </li>
             <li>
               <NavLink
+                to="/leaderboard"
+                className={({ isActive }) => (isActive ? "active" : undefined)}
+              >
+                Leaderboard
+              </NavLink>
+            </li>
+            <li>
+              <NavLink
+                to="/profile"
+                className={({ isActive }) => (isActive ? "active" : undefined)}
+              >
+                Profile
+              </NavLink>
+            </li>
+            <li>
+              <NavLink
                 to="/dev"
                 className={({ isActive }) => (isActive ? "active" : undefined)}
               >
