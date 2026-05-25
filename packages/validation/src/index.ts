@@ -547,6 +547,10 @@ export const GameActionSchema = z.discriminatedUnion("type", [
     amount: z.number().int().min(1),
   }),
   z.object({
+    type: z.literal("auction_pass"),
+    tilePosition: z.union([z.number().int(), z.string()]),
+  }),
+  z.object({
     type: z.literal("start_negotiation"),
     targetPlayerIds: z.array(z.string()),
   }),
@@ -590,6 +594,7 @@ export const GamePhaseSchema = z.enum([
   "syndicate_coordination",
   "waiting_for_roll",
   "waiting_for_buy",
+  "waiting_for_auction_bids",
   "waiting_for_path_choice",
   "rolling_doubles",
   "game_over",
@@ -630,6 +635,27 @@ export const RateCardSchema = z.object({
 });
 export type RateCard = z.infer<typeof RateCardSchema>;
 
+export const PendingAuctionSchema = z.object({
+  tilePosition: z.union([z.number().int(), z.string()]),
+  trigger: z.literal("decline"),
+  auctionType: z.literal("sealed_bids"),
+  submissions: z.record(
+    z.string(),
+    z.union([z.number().int().min(1), z.literal("pass")]),
+  ),
+  eligiblePlayerIds: z.array(z.string()),
+  tieBreakMinBid: z.number().int().min(1).optional(),
+  tieBreakRound: z.number().int().min(0).optional(),
+  resumePhase: z.enum(["action", "rolling_doubles"]),
+  /** Present in redacted client views; omitted from persisted engine state. */
+  submissionCount: z.number().int().min(0).optional(),
+  /** Present in redacted player views; omitted from persisted engine state. */
+  mySubmission: z
+    .union([z.number().int().min(1), z.literal("pass")])
+    .optional(),
+});
+export type PendingAuction = z.infer<typeof PendingAuctionSchema>;
+
 export const GameStateSchema = z.object({
   gameId: z.string(),
   round: z.number().int(),
@@ -649,6 +675,7 @@ export const GameStateSchema = z.object({
     .union([z.number().int(), z.string()])
     .nullable()
     .optional(),
+  pendingAuction: PendingAuctionSchema.optional(),
   /** Last dice roll result */
   lastDiceRoll: z
     .tuple([z.number().int().min(1).max(6), z.number().int().min(1).max(6)])

@@ -1,5 +1,10 @@
 import type { ApplyActionResult } from "@oligopoly/shared";
 import type { AiPersonality, GameAction } from "@oligopoly/validation";
+import {
+  type PersistedGameState,
+  redactPendingAuctionForBroadcast,
+  toClientGameState,
+} from "../gameStateView.js";
 import { broadcastGameEvent } from "../realtime/notify.js";
 
 type PersistOptions = {
@@ -69,7 +74,7 @@ export async function persistGameActionResult(
 
   await db.batch(statements);
 
-  const { affinityAssignments: _affinity, ...publicState } = result.state;
+  const publicState = publicStateForBroadcast(result.state);
   await broadcastGameEvent(options.gameRoom, gameId, {
     type: "game.action_applied",
     sentAt: now,
@@ -81,17 +86,34 @@ export async function persistGameActionResult(
   });
 }
 
+function publicStateForBroadcast(state: ApplyActionResult["state"]) {
+  const { affinityAssignments: _affinity, pendingAuction, ...rest } = state;
+  if (!pendingAuction) {
+    return rest;
+  }
+
+  return {
+    ...rest,
+    pendingAuction: redactPendingAuctionForBroadcast(pendingAuction),
+  };
+}
+
 export function toActionResponse(
   result: ApplyActionResult,
   subject: string | null,
   extra: Record<string, unknown> = {},
 ) {
-  const { affinityAssignments, ...publicState } = result.state;
-  const myAffinity = subject ? (affinityAssignments?.[subject] ?? null) : null;
+  if (!subject) {
+    const { affinityAssignments: _affinity, ...publicState } = result.state;
+    return {
+      ...publicStateForBroadcast(result.state),
+      logEntries: result.logEntries,
+      ...extra,
+    };
+  }
 
   return {
-    ...publicState,
-    ...(subject ? { myAffinityCardId: myAffinity } : {}),
+    ...toClientGameState(result.state as PersistedGameState, "player", subject),
     logEntries: result.logEntries,
     ...extra,
   };

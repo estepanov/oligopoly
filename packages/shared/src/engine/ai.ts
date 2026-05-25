@@ -1,6 +1,11 @@
 import type { AiPersonality, GameAction } from "@oligopoly/validation";
 import { getTileByPosition } from "../config/board.js";
 import { isAiControlledActor, resolveAiPersonality } from "./aiControl.js";
+import {
+  getActiveEligibleBidders,
+  hasAuctionSubmission,
+  suggestAiAuctionBid,
+} from "./auction.js";
 import type { InternalGameState } from "./gameStateMachine.js";
 
 export type AiDecision = {
@@ -13,6 +18,21 @@ const defaultPersonality: AiPersonality = "opportunist";
 
 function currentPlayerId(state: InternalGameState): string | null {
   return state.turnOrder[state.currentPlayerIndex] ?? null;
+}
+
+export function findNextAiAuctionActor(
+  state: InternalGameState,
+): string | null {
+  if (state.phase !== "waiting_for_auction_bids" || !state.pendingAuction) {
+    return null;
+  }
+
+  for (const playerId of getActiveEligibleBidders(state)) {
+    if (hasAuctionSubmission(state.pendingAuction, playerId)) continue;
+    if (isAiControlledActor(state, playerId)) return playerId;
+  }
+
+  return null;
 }
 
 function deterministicDice(
@@ -46,14 +66,43 @@ function shouldBuy(
   return player.capital >= tile.cost;
 }
 
-export function chooseAiAction(state: InternalGameState): AiDecision | null {
-  const actorId = currentPlayerId(state);
-  if (!actorId) return null;
-
+export function chooseAiActionForPlayer(
+  state: InternalGameState,
+  actorId: string,
+): AiDecision | null {
   if (!isAiControlledActor(state, actorId)) return null;
 
   const personality =
     resolveAiPersonality(state, actorId) ?? defaultPersonality;
+
+  if (state.phase === "waiting_for_auction_bids" && state.pendingAuction) {
+    if (hasAuctionSubmission(state.pendingAuction, actorId)) return null;
+    if (!getActiveEligibleBidders(state).includes(actorId)) return null;
+
+    const submission = suggestAiAuctionBid(state, actorId);
+    if (submission === "pass") {
+      return {
+        actorId,
+        personality,
+        action: {
+          type: "auction_pass",
+          tilePosition: state.pendingAuction.tilePosition,
+        },
+      };
+    }
+
+    return {
+      actorId,
+      personality,
+      action: {
+        type: "auction_bid",
+        tilePosition: state.pendingAuction.tilePosition,
+        amount: submission,
+      },
+    };
+  }
+
+  if (actorId !== currentPlayerId(state)) return null;
 
   if (state.phase === "waiting_for_roll" || state.phase === "rolling_doubles") {
     return {
@@ -92,4 +141,14 @@ export function chooseAiAction(state: InternalGameState): AiDecision | null {
   }
 
   return null;
+}
+
+export function chooseAiAction(state: InternalGameState): AiDecision | null {
+  if (state.phase === "waiting_for_auction_bids") {
+    const actorId = findNextAiAuctionActor(state);
+    return actorId ? chooseAiActionForPlayer(state, actorId) : null;
+  }
+
+  const actorId = currentPlayerId(state);
+  return actorId ? chooseAiActionForPlayer(state, actorId) : null;
 }

@@ -26,6 +26,68 @@ export function isMyTurn(state: GameState, myPlayerId: string | null): boolean {
   return currentActorId(state) === myPlayerId;
 }
 
+export function isAuctionPhase(state: GameState): boolean {
+  return (
+    state.phase === "waiting_for_auction_bids" && Boolean(state.pendingAuction)
+  );
+}
+
+export function activeEligibleAuctionPlayers(state: GameState): string[] {
+  if (!state.pendingAuction) return [];
+  const eliminated = new Set(state.eliminatedPlayerIds ?? []);
+  return state.pendingAuction.eligiblePlayerIds.filter(
+    (playerId) => !eliminated.has(playerId),
+  );
+}
+
+export function canParticipateInAuction(
+  state: GameState,
+  myPlayerId: string | null,
+): boolean {
+  if (!myPlayerId) return false;
+  return activeEligibleAuctionPlayers(state).includes(myPlayerId);
+}
+
+export function hasSubmittedAuction(
+  state: GameState,
+  myPlayerId: string | null,
+): boolean {
+  if (!myPlayerId || !state.pendingAuction) return false;
+  return state.pendingAuction.mySubmission !== undefined;
+}
+
+/**
+ * Broadcast WS snapshots omit viewer-specific auction fields. Preserve the
+ * local player's sealed submission until settlement or a tie-break reset.
+ */
+export function mergeAuctionClientView(
+  previous: GameState | null,
+  incoming: GameState,
+): GameState {
+  const prevAuction = previous?.pendingAuction;
+  const nextAuction = incoming.pendingAuction;
+  if (!prevAuction?.mySubmission || !nextAuction) {
+    return incoming;
+  }
+  if (nextAuction.mySubmission !== undefined) {
+    return incoming;
+  }
+  if (
+    String(prevAuction.tilePosition) !== String(nextAuction.tilePosition) ||
+    (prevAuction.tieBreakRound ?? 0) !== (nextAuction.tieBreakRound ?? 0)
+  ) {
+    return incoming;
+  }
+
+  return {
+    ...incoming,
+    pendingAuction: {
+      ...nextAuction,
+      mySubmission: prevAuction.mySubmission,
+    },
+  };
+}
+
 export function ownedTilesForPlayer(
   state: GameState,
   playerId: string,

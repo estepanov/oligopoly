@@ -13,6 +13,11 @@ import {
   TOTAL_BOARD_MARKET_VALUE,
 } from "../config/board.js";
 import {
+  type PendingAuctionState,
+  recordAuctionSubmission,
+  startDeclineAuction,
+} from "./auction.js";
+import {
   BOARD_SIZE,
   isDiagonalChoice,
   isDoubles,
@@ -61,6 +66,7 @@ export interface InternalGameState {
   players: InternalPlayerState[];
   tiles: InternalTileState[];
   pendingBuyTilePosition: number | string | null;
+  pendingAuction?: PendingAuctionState;
   lastDiceRoll: [number, number] | null;
   winnerId: string | null;
   eliminatedPlayerIds: string[];
@@ -109,6 +115,8 @@ export interface GameActionInput {
   amount?: number;
   /** Server-injected path-choice die result (1-6) for passing through START */
   pathChoiceDie?: number;
+  /** Used by auction_pass submissions */
+  pass?: true;
 }
 
 export interface ApplyActionResult {
@@ -268,6 +276,9 @@ export function normalizeGameState(
   if (!state.affinityAssignments) {
     state.affinityAssignments = {};
   }
+  if (!state.pendingAuction) {
+    state.pendingAuction = undefined;
+  }
   // If phase is old-style "market_event" or "action", map to new phases
   if (state.phase === "market_event") {
     state.phase = "waiting_for_roll";
@@ -286,6 +297,13 @@ export function applyAction(
 ): ApplyActionResult {
   if (state.phase === "game_over") {
     throw "game.completed";
+  }
+
+  if (action.type === "auction_bid") {
+    return handleAuctionBid(state, playerId, action);
+  }
+  if (action.type === "auction_pass") {
+    return handleAuctionPass(state, playerId, action);
   }
 
   const currentPid = state.turnOrder[state.currentPlayerIndex];
@@ -744,18 +762,15 @@ function handleDeclineTile(
     throw "game.wrong_tile";
   }
 
-  const newState = deepClone(state);
-  newState.pendingBuyTilePosition = null;
-
-  const p = getPlayer(newState, playerId)!;
-
-  if (p.doublesCount > 0 && p.doublesCount < TRIPLE_DOUBLES_LIMIT) {
-    newState.phase = "rolling_doubles";
-  } else {
-    newState.phase = "action";
-  }
+  const p = getPlayer(state, playerId)!;
+  const resumePhase =
+    p.doublesCount > 0 && p.doublesCount < TRIPLE_DOUBLES_LIMIT
+      ? "rolling_doubles"
+      : "action";
 
   const tile = getTileByPosition(action.tilePosition);
+  const newState = startDeclineAuction(state, action.tilePosition, resumePhase);
+
   const logs: LogEntry[] = [
     {
       playerId,
@@ -765,9 +780,59 @@ function handleDeclineTile(
         name: tile?.name ?? "Unknown",
       },
     },
+    {
+      playerId: null,
+      actionType: "auction_started",
+      payload: {
+        position: action.tilePosition,
+        name: tile?.name ?? "Unknown",
+        auctionType: "sealed_bids",
+      },
+    },
   ];
 
   return { state: newState, logEntries: logs };
+}
+
+function handleAuctionBid(
+  state: InternalGameState,
+  playerId: string,
+  action: GameActionInput,
+): ApplyActionResult {
+  const auction = state.pendingAuction;
+  if (!auction) {
+    throw "game.auction_not_active";
+  }
+  if (
+    action.tilePosition === undefined ||
+    String(action.tilePosition) !== String(auction.tilePosition)
+  ) {
+    throw "game.wrong_tile";
+  }
+  if (action.amount === undefined || action.amount < 1) {
+    throw "game.invalid_action";
+  }
+
+  return recordAuctionSubmission(state, playerId, action.amount);
+}
+
+function handleAuctionPass(
+  state: InternalGameState,
+  playerId: string,
+  action: GameActionInput,
+): ApplyActionResult {
+  const auction = state.pendingAuction;
+  if (!auction) {
+    throw "game.auction_not_active";
+  }
+  if (
+    action.tilePosition === undefined ||
+    String(action.tilePosition) !== String(auction.tilePosition)
+  ) {
+    throw "game.wrong_tile";
+  }
+
+  return recordAuctionSubmission(state, playerId, "pass");
 }
 
 function handleEndTurn(

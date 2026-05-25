@@ -256,6 +256,7 @@ export function applyGameAction(
     case "mortgage_tile":
     case "redeem_tile":
     case "auction_bid":
+    case "auction_pass":
     case "start_negotiation":
     case "sign_contract":
     case "sign_handshake":

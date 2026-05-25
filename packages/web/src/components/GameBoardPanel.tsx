@@ -30,6 +30,15 @@ export function GameBoardPanel({
           </p>
         )}
 
+      {state.pendingAuction && (
+        <p className="gameBoardHighlight">
+          Auction in progress:{" "}
+          <strong>
+            {tileLabel(state.pendingAuction.tilePosition, tileNames)}
+          </strong>
+        </p>
+      )}
+
       {me && (
         <p className="muted">
           You are at <strong>{tileLabel(me.position, tileNames)}</strong> with{" "}

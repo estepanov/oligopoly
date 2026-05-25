@@ -113,7 +113,11 @@ export {
 // Engine — negotiation, charter, trustworthiness
 // ---------------------------------------------------------------------------
 export type { AiDecision } from "./engine/ai.js";
-export { chooseAiAction } from "./engine/ai.js";
+export {
+  chooseAiAction,
+  chooseAiActionForPlayer,
+  findNextAiAuctionActor,
+} from "./engine/ai.js";
 export {
   applyTimeoutTakeover,
   clearTimeoutTakeoversForPlayer,
@@ -121,6 +125,16 @@ export {
   replaceKickedPlayerWithAi,
   resolveAiPersonality,
 } from "./engine/aiControl.js";
+export type { PendingAuctionState } from "./engine/auction.js";
+export {
+  allEligiblePlayersSubmitted,
+  getActiveEligibleBidders,
+  hasAuctionSubmission,
+  recordAuctionSubmission,
+  settleSealedAuction,
+  startDeclineAuction,
+  suggestAiAuctionBid,
+} from "./engine/auction.js";
 export {
   validateContributionWeights,
   validateRevenueSplit,
