@@ -153,6 +153,15 @@ export function disruptionDrawCount(
   return 1;
 }
 
+function blackMarketRelayParams(
+  settings: Record<string, unknown> | undefined,
+): { drawTotal: number; keepTotal: number } {
+  if (disruptionDrawCount(settings) === 2) {
+    return { drawTotal: 4, keepTotal: 2 };
+  }
+  return { drawTotal: 2, keepTotal: 1 };
+}
+
 function takeFromDisruptionDeck(
   state: InternalGameState,
   count: number,
@@ -436,24 +445,29 @@ export function resolveBlackMarketRelay(
     return { state: newState, logEntries: logs };
   }
 
-  const drawn = takeFromDisruptionDeck(newState, Math.min(2, deck.length));
+  const { drawTotal, keepTotal } = blackMarketRelayParams(newState.settings);
+  const drawn = takeFromDisruptionDeck(
+    newState,
+    Math.min(drawTotal, deck.length),
+  );
   const sorted = [...drawn].sort();
-  const keepId = sorted[0];
-  const discardId = sorted[1];
+  const keepIds = sorted.slice(0, Math.min(keepTotal, sorted.length));
+  const discardIds = sorted.slice(keepIds.length);
 
-  if (discardId) {
+  if (discardIds.length > 0) {
     newState.disruptionDiscard = [
       ...(newState.disruptionDiscard ?? []),
-      discardId,
+      ...discardIds,
     ];
     logs.push({
       playerId: drawingPlayerId,
       actionType: "disruption_discarded_hidden",
-      payload: { trigger: "black_market_relay", count: 1 },
+      payload: {
+        trigger: "black_market_relay",
+        count: discardIds.length,
+      },
     });
   }
-
-  newState.disruptionDiscard = [...(newState.disruptionDiscard ?? []), keepId];
 
   logs.push({
     playerId: drawingPlayerId,
@@ -461,24 +475,32 @@ export function resolveBlackMarketRelay(
     payload: {
       trigger: "black_market_relay",
       tilePosition,
-      keptCardId: keepId,
-      discardedCount: discardId ? 1 : 0,
+      keptCardIds: keepIds,
+      discardedCount: discardIds.length,
+      blitz: keepTotal > 1,
     },
   });
 
-  logs.push({
-    playerId: drawingPlayerId,
-    actionType: "disruption_drawn",
-    payload: {
-      cardId: keepId,
-      name: cardName(keepId),
-      trigger: "black_market_relay",
-      tilePosition,
-      deckRemaining: newState.disruptionDeckRemaining?.length ?? 0,
-    },
-  });
+  for (const keepId of keepIds) {
+    newState.disruptionDiscard = [
+      ...(newState.disruptionDiscard ?? []),
+      keepId,
+    ];
 
-  resolveDisruptionCard(newState, keepId, drawingPlayerId, logs);
+    logs.push({
+      playerId: drawingPlayerId,
+      actionType: "disruption_drawn",
+      payload: {
+        cardId: keepId,
+        name: cardName(keepId),
+        trigger: "black_market_relay",
+        tilePosition,
+        deckRemaining: newState.disruptionDeckRemaining?.length ?? 0,
+      },
+    });
+
+    resolveDisruptionCard(newState, keepId, drawingPlayerId, logs);
+  }
 
   return { state: newState, logEntries: logs };
 }

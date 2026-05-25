@@ -149,10 +149,52 @@ describe("resolveBlackMarketRelay", () => {
         (e) => e.actionType === "black_market_relay_drawn",
       ),
     ).toBe(true);
+    const relayLog = result.logEntries.find(
+      (entry) => entry.actionType === "black_market_relay_drawn",
+    );
+    expect(relayLog?.payload).toMatchObject({
+      keptCardIds: ["disruption_bridge_loan"],
+      discardedCount: 1,
+      blitz: false,
+    });
     const drawer = result.state.players.find(
       (player) => player.playerId === "player-1",
     )!;
     expect(drawer.capital).toBe(1600);
+  });
+
+  it("keeps and resolves two cards when disruption blitz is enabled", () => {
+    const state = makeDisruptionState({
+      settings: { optionalRuleIds: ["disruption_blitz"] },
+      disruptionDeckRemaining: [
+        "disruption_bridge_loan",
+        "disruption_patent_troll",
+        "disruption_golden_parachute",
+        "disruption_go_to_regulation",
+      ],
+    });
+    const result = resolveBlackMarketRelay(state, "player-1", "D4");
+
+    expect(result.state.disruptionDeckRemaining).toEqual([]);
+    expect(result.state.disruptionDiscard).toHaveLength(4);
+    expect(
+      result.logEntries.filter(
+        (entry) => entry.actionType === "disruption_drawn",
+      ),
+    ).toHaveLength(2);
+    expect(
+      result.logEntries.filter(
+        (entry) => entry.actionType === "disruption_resolved",
+      ),
+    ).toHaveLength(2);
+    const relayLog = result.logEntries.find(
+      (entry) => entry.actionType === "black_market_relay_drawn",
+    );
+    expect(relayLog?.payload).toMatchObject({
+      keptCardIds: ["disruption_bridge_loan", "disruption_go_to_regulation"],
+      discardedCount: 2,
+      blitz: true,
+    });
   });
 });
 
