@@ -384,7 +384,7 @@ CI scope:
 
 Local guardrail:
 
-- `pnpm run ci:local` mirrors CI checks (build validation/shared, typecheck, lint, unit tests with coverage, integration tests).
+- `pnpm run ci:local` mirrors CI checks (canonical check order is defined in `package.json` scripts).
 - A repository `pre-push` hook runs `pnpm run ci:local` automatically and blocks the push on failure.
 
 Example release sequence:
