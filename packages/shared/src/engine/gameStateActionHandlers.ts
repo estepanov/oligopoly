@@ -1,12 +1,6 @@
-// Action handlers extracted from gameStateMachine for maintainability.
-
-// Action handlers
-// Pure, server-authoritative game state transition engine.
-// Takes current state + action -> returns new state or error string.
-// ---------------------------------------------------------------------------
+// Tile movement, landing resolution, auctions-on-turn, and property actions.
 
 import {
-  ALL_TILES,
   CORNER_POSITIONS,
   DIAGONAL_TILES,
   getTileByPosition,
@@ -17,17 +11,8 @@ import {
   applyLastMileLogisticsTraverseBonus,
   hasPlayerAffinity,
 } from "./affinity.js";
-import {
-  handleDisruptionNullifyResponse,
-  handleUseAffinity,
-} from "./affinityActions.js";
 import { recordAuctionSubmission, startDeclineAuction } from "./auction.js";
-import {
-  computeAuctionBidDeadline,
-  computeAuctionSettleDeadline,
-} from "./auctionTiming.js";
 import { processCoordinationPhase } from "./coordinationPhase.js";
-import { handlePayDebt } from "./debtActions.js";
 import {
   isDiagonalChoice,
   isDoubles,
@@ -38,29 +23,17 @@ import {
 import {
   disruptionDrawCount,
   drawAndResolveDisruptionCards,
-  normalizeDisruptionDeck,
   resolveBlackMarketRelay,
   resolveFlashCrash,
 } from "./disruptionEvents.js";
 import { collectFreeMarketPool } from "./freeMarket.js";
-import {
-  drawAndResolveMarketEvent,
-  normalizeMarketEventDeck,
-} from "./marketEvents.js";
+import { drawAndResolveMarketEvent } from "./marketEvents.js";
 import { calculateMortgageValue, calculateRedemptionCost } from "./mortgage.js";
-import {
-  handleBreakHandshake,
-  handleProposeContract,
-  handleSignContract,
-  handleStartNegotiation,
-} from "./negotiationActions.js";
 import {
   isOptionalRuleEnabled,
   regulationPenaltiesEnabled,
 } from "./optionalRulesEngine.js";
 import { resolvePostMovePhase } from "./phaseHelpers.js";
-import { handleInitiateAuction } from "./playerAuctionActions.js";
-import { handleEndCoordination, handleSetRateCard } from "./rateCardActions.js";
 import {
   recordOpposingSectorLanding,
   revokeRateCardsForMortgage,
@@ -79,32 +52,19 @@ import {
   GOVERNMENT_GRANT,
   PASS_START_BONUS,
 } from "./setup.js";
-import { deepClone, getPlayer } from "./stateUtils.js";
-import { areSameSyndicate } from "./syndicate.js";
-import { handleFormSyndicate } from "./syndicateActions.js";
-import {
-  applyWinIfThresholdCrossed,
-  markFinalRoundTurnComplete,
-} from "./winResolution.js";
-
-export type {
-  ApplyActionResult,
-  GameActionInput,
-  InternalAiPlayerState,
-  InternalGameState,
-  InternalPlayerState,
-  InternalTileState,
-  LogEntry,
-} from "./gameStateTypes.js";
-
 import type {
   ApplyActionResult,
   GameActionInput,
   InternalGameState,
   InternalPlayerState,
-  InternalTileState,
   LogEntry,
 } from "./gameStateTypes.js";
+import { deepClone, getPlayer } from "./stateUtils.js";
+import { areSameSyndicate } from "./syndicate.js";
+import {
+  applyWinIfThresholdCrossed,
+  markFinalRoundTurnComplete,
+} from "./winResolution.js";
 
 function exitDiagonalAtFreeMarket(
   state: InternalGameState,
@@ -128,11 +88,6 @@ function exitDiagonalAtFreeMarket(
 
   player.position = CORNER_POSITIONS.FREE_MARKET;
   return { skipLandingResolve: true };
-}
-
-function _getCurrentPlayer(state: InternalGameState): InternalPlayerState {
-  const pid = state.turnOrder[state.currentPlayerIndex];
-  return state.players.find((p) => p.playerId === pid)!;
 }
 
 function getTileOwner(

@@ -1,111 +1,11 @@
 // ---------------------------------------------------------------------------
-// Game State Machine
-// Pure, server-authoritative game state transition engine.
-// Takes current state + action -> returns new state or error string.
+// Game State Machine — dispatcher, normalization, and tile bootstrap.
+// Action implementations live in gameStateActionHandlers.ts.
 // ---------------------------------------------------------------------------
 
-import {
-  ALL_TILES,
-  CORNER_POSITIONS,
-  DIAGONAL_TILES,
-  getTileByPosition,
-} from "../config/board.js";
-import {
-  AFFINITY_IDS,
-  applyAcquisitionCostAffinity,
-  applyLastMileLogisticsTraverseBonus,
-  hasPlayerAffinity,
-} from "./affinity.js";
-import {
-  handleDisruptionNullifyResponse,
-  handleUseAffinity,
-} from "./affinityActions.js";
-import { recordAuctionSubmission, startDeclineAuction } from "./auction.js";
-import {
-  computeAuctionBidDeadline,
-  computeAuctionSettleDeadline,
-} from "./auctionTiming.js";
-import { processCoordinationPhase } from "./coordinationPhase.js";
-import { handlePayDebt } from "./debtActions.js";
-import {
-  isDiagonalChoice,
-  isDoubles,
-  moveOnPerimeter,
-  rollPathChoiceDie,
-  TRIPLE_DOUBLES_LIMIT,
-} from "./dice.js";
-import {
-  disruptionDrawCount,
-  drawAndResolveDisruptionCards,
-  normalizeDisruptionDeck,
-  resolveBlackMarketRelay,
-  resolveFlashCrash,
-} from "./disruptionEvents.js";
-import { collectFreeMarketPool } from "./freeMarket.js";
-import {
-  drawAndResolveMarketEvent,
-  normalizeMarketEventDeck,
-} from "./marketEvents.js";
-import { calculateMortgageValue, calculateRedemptionCost } from "./mortgage.js";
-import {
-  handleBreakHandshake,
-  handleProposeContract,
-  handleSignContract,
-  handleStartNegotiation,
-} from "./negotiationActions.js";
-import {
-  isOptionalRuleEnabled,
-  regulationPenaltiesEnabled,
-} from "./optionalRulesEngine.js";
-import { resolvePostMovePhase } from "./phaseHelpers.js";
-import { handleInitiateAuction } from "./playerAuctionActions.js";
-import { handleEndCoordination, handleSetRateCard } from "./rateCardActions.js";
-import {
-  recordOpposingSectorLanding,
-  revokeRateCardsForMortgage,
-} from "./rateCards.js";
-import { calculateDevelopmentCost, MAX_DEVELOPMENT_TOKENS } from "./rent.js";
-import { settleRentPayment } from "./rentPayment.js";
-import {
-  computeAffinityRentBonusForTile,
-  computeTileRent,
-} from "./rentResolution.js";
-import {
-  ACTION_COSTS,
-  ACTION_POINTS_PER_TURN,
-  CORPORATE_TAX_I,
-  CORPORATE_TAX_II,
-  GOVERNMENT_GRANT,
-  PASS_START_BONUS,
-} from "./setup.js";
-import { deepClone, getPlayer } from "./stateUtils.js";
-import { areSameSyndicate } from "./syndicate.js";
-import { handleFormSyndicate } from "./syndicateActions.js";
-import {
-  applyWinIfThresholdCrossed,
-  markFinalRoundTurnComplete,
-} from "./winResolution.js";
-
-export type {
-  ApplyActionResult,
-  GameActionInput,
-  InternalAiPlayerState,
-  InternalGameState,
-  InternalPlayerState,
-  InternalTileState,
-  LogEntry,
-} from "./gameStateTypes.js";
-
-import type {
-  ApplyActionResult,
-  GameActionInput,
-  InternalGameState,
-  InternalPlayerState,
-  InternalTileState,
-  LogEntry,
-} from "./gameStateTypes.js";
-
-// ---------------------------------------------------------------------------
+import { ALL_TILES } from "../config/board.js";
+import { handleDisruptionNullifyResponse, handleUseAffinity } from "./affinityActions.js";
+import { computeAuctionBidDeadline, computeAuctionSettleDeadline } from "./auctionTiming.js";
 import {
   handleAuctionBid,
   handleAuctionPass,
@@ -119,13 +19,35 @@ import {
   handleRedeemTile,
   handleRollDice,
 } from "./gameStateActionHandlers.js";
-// Core State Machine
-// ---------------------------------------------------------------------------
+import { handlePayDebt } from "./debtActions.js";
+import { normalizeDisruptionDeck } from "./disruptionEvents.js";
+import { normalizeMarketEventDeck } from "./marketEvents.js";
+import {
+  handleBreakHandshake,
+  handleProposeContract,
+  handleSignContract,
+  handleStartNegotiation,
+} from "./negotiationActions.js";
+import { handleInitiateAuction } from "./playerAuctionActions.js";
+import { handleEndCoordination, handleSetRateCard } from "./rateCardActions.js";
+import type {
+  ApplyActionResult,
+  GameActionInput,
+  InternalGameState,
+  InternalTileState,
+} from "./gameStateTypes.js";
+import { handleFormSyndicate } from "./syndicateActions.js";
 
-/**
- * Initialize tile states from the board config. Called when game starts
- * and the initial state doesn't include tiles yet.
- */
+export type {
+  ApplyActionResult,
+  GameActionInput,
+  InternalAiPlayerState,
+  InternalGameState,
+  InternalPlayerState,
+  InternalTileState,
+  LogEntry,
+} from "./gameStateTypes.js";
+
 export function initTileStates(): InternalTileState[] {
   return ALL_TILES.filter(
     (t) =>
@@ -140,10 +62,6 @@ export function initTileStates(): InternalTileState[] {
   }));
 }
 
-/**
- * Convert a raw state_json from DB into our internal format,
- * ensuring all fields exist.
- */
 export function normalizeGameState(
   raw: Record<string, unknown>,
 ): InternalGameState {
@@ -190,17 +108,12 @@ export function normalizeGameState(
   }
   normalizeMarketEventDeck(state);
   normalizeDisruptionDeck(state);
-  // Legacy phase aliases
   if (state.phase === "market_event") {
     state.phase = "waiting_for_market_event";
   }
   return state;
 }
 
-/**
- * Apply a game action to the current state. Returns new state + log entries.
- * Throws a string error key on invalid actions.
- */
 export function applyAction(
   state: InternalGameState,
   playerId: string,
