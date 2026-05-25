@@ -28,4 +28,6 @@ export interface BindingContract {
   signedAt: number;
   fulfilledAt: number | null;
   breachedAt: number | null;
+  /** Set when a party executes sign_contract; binding once both parties are present. */
+  partySignatures?: Partial<Record<string, boolean>>;
 }

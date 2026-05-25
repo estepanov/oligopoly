@@ -1,5 +1,8 @@
 import type { AiPersonality } from "@oligopoly/validation";
-import type { PendingAuctionState } from "./auction.js";
+import type {
+  AuctionResumePhase,
+  PendingAuctionState,
+} from "./auctionTypes.js";
 import type { SyndicateCharterState, SyndicateState } from "./syndicate.js";
 import type { BindingContract } from "./types.js";
 
@@ -14,7 +17,7 @@ export interface PendingForeclosureState {
   debtorId: string;
   debtRemaining: number;
   tileQueue: (number | string)[];
-  resumePhase: string;
+  resumePhase: AuctionResumePhase;
   creditorId?: string;
 }
 

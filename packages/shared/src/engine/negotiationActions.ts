@@ -3,7 +3,7 @@ import {
   canCreateBindingContract,
   clampTrustworthiness,
   HANDSHAKE_BREACH_PENALTY,
-} from "../index.js";
+} from "../trustConstants.js";
 import { createNegotiationThread } from "./coordinationPhase.js";
 import type {
   ApplyActionResult,
@@ -78,15 +78,47 @@ export function handleSignContract(
     throw "game.invalid_action";
   }
 
+  const newState = deepClone(state);
+  const contracts = newState.activeContracts ?? [];
+  const index = contracts.findIndex((entry) => entry.id === contractId);
+  if (index < 0) {
+    throw NegotiationErrorKeys.CONTRACT_INVALID_TERMS;
+  }
+
+  const updated: BindingContract = {
+    ...contracts[index],
+    partySignatures: {
+      ...contracts[index].partySignatures,
+      [playerId]: true,
+    },
+  };
+
+  const bothSigned =
+    updated.partySignatures?.[updated.partyA] &&
+    updated.partySignatures?.[updated.partyB];
+  if (bothSigned) {
+    updated.signedAt = Date.now();
+    for (const thread of newState.negotiationThreads ?? []) {
+      if (thread.status !== "open") continue;
+      const parties = new Set(thread.partyIds);
+      if (parties.has(updated.partyA) && parties.has(updated.partyB)) {
+        thread.status = "agreed";
+      }
+    }
+  }
+
+  contracts[index] = updated;
+  newState.activeContracts = contracts;
+
   const logs: LogEntry[] = [
     {
       playerId,
       actionType: "contract_signed",
-      payload: { contractId },
+      payload: { contractId, bothSigned: !!bothSigned },
     },
   ];
 
-  return { state: deepClone(state), logEntries: logs };
+  return { state: newState, logEntries: logs };
 }
 
 export function handleBreakHandshake(

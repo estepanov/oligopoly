@@ -187,15 +187,25 @@ export function chooseAiActionForPlayer(
   return null;
 }
 
-export function chooseAiAction(state: InternalGameState): AiDecision | null {
-  if (state.phase === "waiting_for_auction_bids") {
-    const actorId = findNextAiAuctionActor(state);
-    return actorId ? chooseAiActionForPlayer(state, actorId) : null;
-  }
+const AI_PHASE_ACTOR_FINDERS: Record<
+  string,
+  (state: InternalGameState) => string | null
+> = {
+  waiting_for_auction_bids: findNextAiAuctionActor,
+  syndicate_coordination: findNextAiCoordinationActor,
+};
 
-  if (state.phase === "syndicate_coordination") {
-    const actorId = findNextAiCoordinationActor(state);
-    return actorId ? chooseAiActionForPlayer(state, actorId) : null;
+export function findNextAiActorForPhase(
+  state: InternalGameState,
+): string | null {
+  const finder = AI_PHASE_ACTOR_FINDERS[state.phase];
+  return finder ? finder(state) : null;
+}
+
+export function chooseAiAction(state: InternalGameState): AiDecision | null {
+  const phaseActor = findNextAiActorForPhase(state);
+  if (phaseActor) {
+    return chooseAiActionForPlayer(state, phaseActor);
   }
 
   const actorId = currentPlayerId(state);

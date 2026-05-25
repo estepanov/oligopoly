@@ -3,7 +3,7 @@ import {
   HANDSHAKE_BREACH_PENALTY,
   THREAD_EXPIRY_PENALTY,
   TRUSTWORTHINESS_BINDING_THRESHOLD,
-} from "../index.js";
+} from "../trustConstants.js";
 
 export function applyHandshakeBreach(score: number): number {
   return clampTrustworthiness(score + HANDSHAKE_BREACH_PENALTY);

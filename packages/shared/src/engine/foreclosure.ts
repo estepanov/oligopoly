@@ -1,5 +1,6 @@
 import { getTileByPosition } from "../config/board.js";
-import { startForeclosureAuction } from "./auction.js";
+import { startForeclosureAuction } from "./auctionLifecycle.js";
+import type { AuctionResumePhase } from "./auctionTypes.js";
 import type { InternalGameState, LogEntry } from "./gameStateTypes.js";
 import { FORECLOSURE_RESERVE } from "./mortgage.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
@@ -17,7 +18,7 @@ export function startForeclosureSequence(
   state: InternalGameState,
   debtorId: string,
   debtRemaining: number,
-  resumePhase: string,
+  resumePhase: AuctionResumePhase,
   logs: LogEntry[],
   creditorId?: string,
 ): InternalGameState {
@@ -82,7 +83,7 @@ export function startNextForeclosureAuction(
   const auctionState = startForeclosureAuction(
     newState,
     nextTile,
-    pending.resumePhase as "action",
+    pending.resumePhase,
   );
 
   logs.push({

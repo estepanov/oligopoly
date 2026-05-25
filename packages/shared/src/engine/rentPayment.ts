@@ -1,4 +1,5 @@
 import { getTileByPosition } from "../config/board.js";
+import type { AuctionResumePhase } from "./auctionTypes.js";
 import { startForeclosureSequence } from "./foreclosure.js";
 import type { InternalGameState, LogEntry } from "./gameStateTypes.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
@@ -64,11 +65,13 @@ export function settleRentPayment(
     return { state: newState, logs, shortfall };
   }
 
+  const resumePhase: AuctionResumePhase =
+    state.phase === "rolling_doubles" ? "rolling_doubles" : "action";
   const foreclosureState = startForeclosureSequence(
     newState,
     visitorId,
     shortfall,
-    state.phase,
+    resumePhase,
     logs,
     ownerId,
   );

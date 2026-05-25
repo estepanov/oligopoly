@@ -1,4 +1,7 @@
-import { clampTrustworthiness, THREAD_EXPIRY_PENALTY } from "../index.js";
+import {
+  clampTrustworthiness,
+  THREAD_EXPIRY_PENALTY,
+} from "../trustConstants.js";
 import type { InternalGameState, LogEntry } from "./gameStateTypes.js";
 import { calcThreadExpiry, isThreadExpired } from "./negotiation.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
