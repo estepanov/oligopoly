@@ -97,22 +97,6 @@ function toEngineState(
   return deepClone(state) as EngineGameState;
 }
 
-function selectPrimaryLogEntry(
-  actorId: string,
-  actionType: GameAction["type"],
-  entries: Array<{
-    playerId: string | null;
-    actionType: string;
-    payload: unknown;
-  }>,
-) {
-  return (
-    entries.find((entry) => entry.playerId === actorId) ??
-    entries.find((entry) => entry.actionType === actionType) ??
-    entries[0]
-  );
-}
-
 function applyViaAuthoritativeStateMachine(
   state: EngineGameState,
   action: GameAction,
@@ -129,7 +113,7 @@ function applyViaAuthoritativeStateMachine(
     const primary =
       result.primaryLogIndex !== undefined
         ? result.logEntries[result.primaryLogIndex]
-        : selectPrimaryLogEntry(ctx.actorId, action.type, result.logEntries);
+        : result.logEntries[0];
     return {
       ok: true,
       state: toEngineState(result.state),

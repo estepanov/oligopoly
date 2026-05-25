@@ -166,6 +166,40 @@ function resolveCategoryEffect(
   }
 }
 
+const grant150ToDrawingPlayer: MarketEventHandler = ({
+  state,
+  cardId,
+  drawingPlayerId,
+  logs,
+}) => {
+  const player = getPlayer(state, drawingPlayerId);
+  if (!player) return true;
+  const delta = adjustCapital(player, 150);
+  logs.push({
+    playerId: drawingPlayerId,
+    actionType: "market_event_capital_change",
+    payload: { cardId, delta, capital: player.capital },
+  });
+  return true;
+};
+
+const applyTenPercentCapitalLossToAllPlayers: MarketEventHandler = ({
+  state,
+  cardId,
+  logs,
+}) => {
+  for (const player of activePlayers(state)) {
+    const loss = Math.floor(player.capital * 0.1);
+    const delta = adjustCapital(player, -loss);
+    logs.push({
+      playerId: player.playerId,
+      actionType: "market_event_capital_change",
+      payload: { cardId, delta, capital: player.capital },
+    });
+  }
+  return true;
+};
+
 const STANDARD_MARKET_EVENT_HANDLERS: Record<string, MarketEventHandler> = {
   stimulus_package: ({ state, cardId, logs }) => {
     applyToAllPlayers(state, 100, logs, cardId);
@@ -179,52 +213,10 @@ const STANDARD_MARKET_EVENT_HANDLERS: Record<string, MarketEventHandler> = {
     applyToAllPlayers(state, 75, logs, cardId);
     return true;
   },
-  innovation_grant: ({ state, cardId, drawingPlayerId, logs }) => {
-    const player = getPlayer(state, drawingPlayerId);
-    if (!player) return true;
-    const delta = adjustCapital(player, 150);
-    logs.push({
-      playerId: drawingPlayerId,
-      actionType: "market_event_capital_change",
-      payload: { cardId, delta, capital: player.capital },
-    });
-    return true;
-  },
-  ipo_windfall: ({ state, cardId, drawingPlayerId, logs }) => {
-    const player = getPlayer(state, drawingPlayerId);
-    if (!player) return true;
-    const delta = adjustCapital(player, 150);
-    logs.push({
-      playerId: drawingPlayerId,
-      actionType: "market_event_capital_change",
-      payload: { cardId, delta, capital: player.capital },
-    });
-    return true;
-  },
-  market_crash: ({ state, cardId, logs }) => {
-    for (const player of activePlayers(state)) {
-      const loss = Math.floor(player.capital * 0.1);
-      const delta = adjustCapital(player, -loss);
-      logs.push({
-        playerId: player.playerId,
-        actionType: "market_event_capital_change",
-        payload: { cardId, delta, capital: player.capital },
-      });
-    }
-    return true;
-  },
-  financial_meltdown: ({ state, cardId, logs }) => {
-    for (const player of activePlayers(state)) {
-      const loss = Math.floor(player.capital * 0.1);
-      const delta = adjustCapital(player, -loss);
-      logs.push({
-        playerId: player.playerId,
-        actionType: "market_event_capital_change",
-        payload: { cardId, delta, capital: player.capital },
-      });
-    }
-    return true;
-  },
+  innovation_grant: grant150ToDrawingPlayer,
+  ipo_windfall: grant150ToDrawingPlayer,
+  market_crash: applyTenPercentCapitalLossToAllPlayers,
+  financial_meltdown: applyTenPercentCapitalLossToAllPlayers,
   recession: ({ state, cardId, logs }) => {
     applyToAllPlayers(state, -75, logs, cardId);
     return true;

@@ -168,6 +168,50 @@ const GLOBAL_ACTION_ROUTES: Record<string, PhaseActionHandler> = {
     handleAuctionPass(state, playerId, action),
 };
 
+const TURN_ACTION_ROUTES: Record<string, PhaseActionHandler> = {
+  roll_dice: (state, playerId, action) =>
+    handleRollDice(state, playerId, action),
+  buy_tile: (state, playerId, action) => handleBuyTile(state, playerId, action),
+  decline_tile: (state, playerId, action) =>
+    handleDeclineTile(state, playerId, action),
+  end_turn: (state, playerId) => handleEndTurn(state, playerId),
+  path_choice: (state, playerId, action) =>
+    handlePathChoice(state, playerId, action),
+  develop_tile: (state, playerId, action) =>
+    handleDevelopTile(state, playerId, action),
+  mortgage_tile: (state, playerId, action) =>
+    handleMortgageTile(state, playerId, action),
+  redeem_tile: (state, playerId, action) =>
+    handleRedeemTile(state, playerId, action),
+  draw_market_event: (state, playerId) =>
+    handleDrawMarketEvent(state, playerId),
+  form_syndicate: (state, playerId, action) =>
+    handleFormSyndicate(state, playerId, action),
+  use_affinity: (state, playerId, action) =>
+    handleUseAffinity(state, playerId, action),
+  start_negotiation: (state, playerId, action) =>
+    handleStartNegotiation(state, playerId, action),
+  propose_contract: (state, playerId, action) =>
+    handleProposeContract(state, playerId, action),
+  sign_contract: (state, playerId, action) =>
+    handleSignContract(state, playerId, action),
+  propose_handshake: (state, playerId, action) =>
+    handleProposeHandshake(state, playerId, action),
+  sign_handshake: (state, playerId, action) =>
+    handleSignHandshake(state, playerId, action),
+  break_handshake: (state, playerId, action) =>
+    handleBreakHandshake(state, playerId, action),
+  call_vote: (state, playerId, action) =>
+    handleCallVote(state, playerId, action),
+  hostile_takeover: (state, playerId, action) =>
+    handleHostileTakeover(state, playerId, action),
+  market_manipulation: (state, playerId, action) =>
+    handleMarketManipulation(state, playerId, action),
+  initiate_auction: (state, playerId, action) =>
+    handleInitiateAuction(state, playerId, action),
+  pay_debt: (state, playerId, action) => handlePayDebt(state, playerId, action),
+};
+
 function applySpecialActionRoute(
   state: InternalGameState,
   playerId: string,
@@ -236,140 +280,13 @@ export function applyAction(
     throw "game.not_your_turn";
   }
 
-  switch (action.type) {
-    case "roll_dice":
-      return withPrimaryLogIndex(
-        handleRollDice(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "buy_tile":
-      return withPrimaryLogIndex(
-        handleBuyTile(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "decline_tile":
-      return withPrimaryLogIndex(
-        handleDeclineTile(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "end_turn":
-      return withPrimaryLogIndex(
-        handleEndTurn(state, playerId),
-        playerId,
-        action.type,
-      );
-    case "path_choice":
-      return withPrimaryLogIndex(
-        handlePathChoice(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "develop_tile":
-      return withPrimaryLogIndex(
-        handleDevelopTile(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "mortgage_tile":
-      return withPrimaryLogIndex(
-        handleMortgageTile(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "redeem_tile":
-      return withPrimaryLogIndex(
-        handleRedeemTile(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "draw_market_event":
-      return withPrimaryLogIndex(
-        handleDrawMarketEvent(state, playerId),
-        playerId,
-        action.type,
-      );
-    case "form_syndicate":
-      return withPrimaryLogIndex(
-        handleFormSyndicate(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "use_affinity":
-      return withPrimaryLogIndex(
-        handleUseAffinity(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "start_negotiation":
-      return withPrimaryLogIndex(
-        handleStartNegotiation(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "propose_contract":
-      return withPrimaryLogIndex(
-        handleProposeContract(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "sign_contract":
-      return withPrimaryLogIndex(
-        handleSignContract(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "propose_handshake":
-      return withPrimaryLogIndex(
-        handleProposeHandshake(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "sign_handshake":
-      return withPrimaryLogIndex(
-        handleSignHandshake(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "break_handshake":
-      return withPrimaryLogIndex(
-        handleBreakHandshake(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "call_vote":
-      return withPrimaryLogIndex(
-        handleCallVote(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "hostile_takeover":
-      return withPrimaryLogIndex(
-        handleHostileTakeover(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "market_manipulation":
-      return withPrimaryLogIndex(
-        handleMarketManipulation(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "initiate_auction":
-      return withPrimaryLogIndex(
-        handleInitiateAuction(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    case "pay_debt":
-      return withPrimaryLogIndex(
-        handlePayDebt(state, playerId, action),
-        playerId,
-        action.type,
-      );
-    default:
-      throw "game.invalid_action";
+  const turnHandler = TURN_ACTION_ROUTES[action.type];
+  if (!turnHandler) {
+    throw "game.invalid_action";
   }
+  return withPrimaryLogIndex(
+    turnHandler(state, playerId, action),
+    playerId,
+    action.type,
+  );
 }

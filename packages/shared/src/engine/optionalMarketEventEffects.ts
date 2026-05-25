@@ -360,15 +360,3 @@ export const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
     return true;
   },
 };
-
-export function resolveOptionalMarketEventEffect(
-  state: InternalGameState,
-  cardId: string,
-  drawingPlayerId: string,
-  logs: LogEntry[],
-  trigger?: MarketEventTrigger,
-): boolean {
-  const handler = OPTIONAL_MARKET_EVENT_HANDLERS[cardId];
-  if (!handler) return false;
-  return handler({ state, cardId, drawingPlayerId, logs, trigger });
-}
