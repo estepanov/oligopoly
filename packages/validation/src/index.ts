@@ -324,6 +324,7 @@ export const GameErrorKeys = {
   NOT_PLAYER: "game.not_player",
   GAME_COMPLETED: "game.completed",
   NOT_YOUR_TURN: "game.not_your_turn",
+  NOT_AI_TURN: "game.not_ai_turn",
   INVALID_ACTION: "game.invalid_action",
   MUST_ROLL_FIRST: "game.must_roll_first",
   ALREADY_ROLLED: "game.already_rolled",

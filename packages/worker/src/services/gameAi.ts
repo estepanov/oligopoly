@@ -9,7 +9,7 @@ import {
   type ApplyActionResult,
   type InternalGameState,
 } from "@oligopoly/shared";
-import type { AiPersonality } from "@oligopoly/validation";
+import type { AiPersonality, GameAction } from "@oligopoly/validation";
 import { persistGameActionResult } from "./gamePersistence.js";
 import { broadcastGameEvent } from "../realtime/notify.js";
 
@@ -19,11 +19,18 @@ type ActiveGameRow = {
   state_json: string | null;
 };
 
-export type StepAiTurnResult = {
-  applied: boolean;
-  decision?: ReturnType<typeof chooseAiAction>;
-  result?: ApplyActionResult;
-};
+export type StepAiTurnFailureReason = "not_found" | "not_ai_turn";
+
+export type StepAiTurnResult =
+  | {
+      applied: true;
+      decision: NonNullable<ReturnType<typeof chooseAiAction>>;
+      result: ApplyActionResult;
+    }
+  | {
+      applied: false;
+      reason: StepAiTurnFailureReason;
+    };
 
 async function loadActiveGame(
   db: D1Database,
@@ -39,9 +46,7 @@ async function loadActiveGame(
     });
 }
 
-function buildEngineInput(
-  action: NonNullable<ReturnType<typeof chooseAiAction>>["action"],
-) {
+function buildEngineInput(action: GameAction) {
   return {
     ...action,
     ...(action.type === "roll_dice"
@@ -56,13 +61,13 @@ export async function stepGameAiTurn(
   gameRoom?: DurableObjectNamespace,
 ): Promise<StepAiTurnResult> {
   const row = await loadActiveGame(db, gameId);
-  if (!row) return { applied: false };
+  if (!row) return { applied: false, reason: "not_found" };
 
   const gameState = normalizeGameState(
     JSON.parse(row.state_json!) as Record<string, unknown>,
   );
   const decision = chooseAiAction(gameState);
-  if (!decision) return { applied: false };
+  if (!decision) return { applied: false, reason: "not_ai_turn" };
 
   const result = applyAction(
     gameState,
@@ -75,7 +80,7 @@ export async function stepGameAiTurn(
     aiMeta: {
       aiPlayerId: decision.actorId,
       personality: decision.personality,
-      action: decision.action as Record<string, unknown>,
+      action: decision.action,
     },
   });
 
@@ -93,7 +98,7 @@ export async function runAiTurnLoop(
     const step = await stepGameAiTurn(db, gameId, gameRoom);
     if (!step.applied) break;
     steps += 1;
-    if (step.result?.state.phase === "game_over") break;
+    if (step.result.state.phase === "game_over") break;
   }
   return steps;
 }
@@ -120,29 +125,51 @@ export async function applyTimeoutTakeoverAndStep(
   gameRoom?: DurableObjectNamespace,
 ): Promise<StepAiTurnResult> {
   const row = await loadActiveGame(db, gameId);
-  if (!row) return { applied: false };
+  if (!row) return { applied: false, reason: "not_found" };
 
-  const gameState = normalizeGameState(
+  let gameState = normalizeGameState(
     JSON.parse(row.state_json!) as Record<string, unknown>,
   );
+  const logEntries: ApplyActionResult["logEntries"] = [];
+
   if (!isAiControlledActor(gameState, humanId)) {
-    const withTakeover = applyTimeoutTakeover(gameState, humanId);
-    await persistStateMutation(
-      db,
-      gameId,
-      withTakeover,
-      [
-        {
-          playerId: humanId,
-          actionType: "timeout_takeover",
-          payload: { humanId },
-        },
-      ],
-      gameRoom,
-    );
+    gameState = applyTimeoutTakeover(gameState, humanId);
+    logEntries.push({
+      playerId: humanId,
+      actionType: "timeout_takeover",
+      payload: { humanId },
+    });
   }
 
-  return stepGameAiTurn(db, gameId, gameRoom);
+  const decision = chooseAiAction(gameState);
+  if (!decision) {
+    if (logEntries.length > 0) {
+      await persistStateMutation(db, gameId, gameState, logEntries, gameRoom);
+    }
+    return { applied: false, reason: "not_ai_turn" };
+  }
+
+  const result = applyAction(
+    gameState,
+    decision.actorId,
+    buildEngineInput(decision.action),
+  );
+
+  await persistGameActionResult(
+    db,
+    gameId,
+    { state: result.state, logEntries: [...logEntries, ...result.logEntries] },
+    {
+      gameRoom,
+      aiMeta: {
+        aiPlayerId: decision.actorId,
+        personality: decision.personality,
+        action: decision.action,
+      },
+    },
+  );
+
+  return { applied: true, decision, result };
 }
 
 export async function kickPlayerToAiReplacement(
@@ -177,7 +204,6 @@ export async function kickPlayerToAiReplacement(
     gameRoom,
   );
 
-  await runAiTurnLoop(db, gameId, gameRoom);
   return nextState;
 }
 

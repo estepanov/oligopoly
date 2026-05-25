@@ -433,8 +433,11 @@ gameRoutes.post("/:id/ai/step", async (c) => {
   }
 
   const step = await stepGameAiTurn(db, id, c.env?.GAME_ROOM);
-  if (!step.applied || !step.decision || !step.result) {
-    return c.json({ error: GameErrorKeys.NOT_YOUR_TURN }, 409);
+  if (!step.applied) {
+    if (step.reason === "not_found") {
+      return c.json({ error: GameErrorKeys.NOT_FOUND }, 404);
+    }
+    return c.json({ error: GameErrorKeys.NOT_AI_TURN }, 409);
   }
 
   return c.json(

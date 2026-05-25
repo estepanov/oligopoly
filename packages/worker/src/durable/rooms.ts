@@ -1,16 +1,13 @@
 import {
   isAiControlledActor,
   normalizeGameState,
-  type InternalGameState,
 } from "@oligopoly/shared";
 import {
   applyTimeoutTakeoverAndStep,
   runAiTurnLoop,
 } from "../services/gameAi.js";
-import {
-  currentTurnActorId,
-  turnTimeoutToMs,
-} from "../services/turnTimeout.js";
+import { syncTurnTimer } from "../services/gameScheduler.js";
+import { currentTurnActorId } from "../services/turnTimeout.js";
 
 type RoomEnv = {
   DB?: D1Database;
@@ -236,17 +233,21 @@ export class GameRoom extends RealtimeRoom {
     const actorId = currentTurnActorId(state);
     if (!actorId) return;
 
-    await this.scheduleTurnTimer(gameId, state);
-
-    if (!isAiControlledActor(state, actorId) || !this.env.DB) {
+    if (
+      isAiControlledActor(state, actorId) &&
+      this.env.DB &&
+      !(await this.state.storage.get<boolean>("aiLoopRunning"))
+    ) {
+      await this.runAiLoop(gameId);
       return;
     }
 
-    if (await this.state.storage.get<boolean>("aiLoopRunning")) {
-      return;
-    }
-
-    await this.runAiLoop(gameId);
+    await syncTurnTimer(
+      this.state.storage,
+      gameId,
+      state,
+      (message) => this.broadcast(message),
+    );
   }
 
   private async runAiLoop(gameId: string) {
@@ -264,42 +265,15 @@ export class GameRoom extends RealtimeRoom {
         const latest = normalizeGameState(
           JSON.parse(row.state_json) as Record<string, unknown>,
         );
-        await this.scheduleTurnTimer(gameId, latest);
+        await syncTurnTimer(
+          this.state.storage,
+          gameId,
+          latest,
+          (message) => this.broadcast(message),
+        );
       }
     } finally {
       await this.state.storage.delete("aiLoopRunning");
     }
-  }
-
-  private async scheduleTurnTimer(gameId: string, state: InternalGameState) {
-    const actorId = currentTurnActorId(state);
-    if (!actorId) return;
-
-    const timeoutMs = turnTimeoutToMs(
-      (state.settings?.turnTimeout as string | undefined) ?? "5min",
-    );
-    if (timeoutMs === null) {
-      await this.state.storage.deleteAlarm();
-      this.broadcast(
-        jsonEvent("game.timer", {
-          gameId,
-          currentPlayerId: actorId,
-          deadlineAt: null,
-        }),
-      );
-      return;
-    }
-
-    const deadlineAt = Date.now() + timeoutMs;
-    await this.state.storage.put("turnActorId", actorId);
-    await this.state.storage.put("turnDeadlineAt", deadlineAt);
-    await this.state.storage.setAlarm(deadlineAt);
-    this.broadcast(
-      jsonEvent("game.timer", {
-        gameId,
-        currentPlayerId: actorId,
-        deadlineAt,
-      }),
-    );
   }
 }

@@ -16,7 +16,8 @@ import {
 import { Hono } from "hono";
 import { broadcastLobbyEvent } from "../realtime/notify.js";
 import { upgradeWebSocket } from "../realtime/upgrade.js";
-import { kickPlayerToAiReplacement, notifyGameSchedule, runAiTurnLoop } from "../services/gameAi.js";
+import { kickInGamePlayerToAi } from "../services/gameKick.js";
+import { notifyGameSchedule } from "../services/gameAi.js";
 import {
   buildAiPlayersFromSlots,
   countTotalSeats,
@@ -1057,21 +1058,7 @@ lobbyRoutes.delete("/:id/player/:uid", async (c) => {
   }
 
   if (lobby.status === "in_game") {
-    const activeGame = await db
-      .prepare(
-        "SELECT id FROM games WHERE lobby_id = ? AND status = 'active' ORDER BY started_at DESC LIMIT 1",
-      )
-      .bind(id)
-      .first<{ id: string }>();
-
-    if (activeGame) {
-      await kickPlayerToAiReplacement(
-        db,
-        activeGame.id,
-        uid,
-        c.env?.GAME_ROOM,
-      );
-    }
+    await kickInGamePlayerToAi(db, id, uid, c.env?.GAME_ROOM);
   }
 
   await db
@@ -1274,7 +1261,6 @@ lobbyRoutes.post("/:id/start", async (c) => {
 
   const { affinityAssignments: _affinity, ...publicInitialState } = initialState;
   await notifyGameSchedule(c.env?.GAME_ROOM, gameId, publicInitialState);
-  await runAiTurnLoop(db, gameId, c.env?.GAME_ROOM);
 
   return c.json(startResponse);
 });
