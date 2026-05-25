@@ -348,6 +348,96 @@ code.inline {
   background: rgba(249, 212, 35, 0.08);
 }
 
+.boardGrid {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.boardGridRow,
+.boardGridMiddle {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.boardGridRow {
+  grid-template-columns: repeat(11, minmax(0, 1fr));
+}
+
+.boardGridMiddle {
+  grid-template-columns: minmax(72px, 1fr) minmax(120px, 1.4fr) minmax(72px, 1fr);
+}
+
+.boardGridColumn {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.boardGridCenter {
+  display: grid;
+  place-content: center;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  border: 1px dashed var(--color-card-border);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.boardGridCell {
+  min-height: 3.5rem;
+  padding: 0.35rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  display: grid;
+  gap: 0.15rem;
+}
+
+.boardGridCellOwned {
+  border-color: rgba(249, 212, 35, 0.35);
+}
+
+.boardGridCellMine {
+  background: rgba(249, 212, 35, 0.08);
+}
+
+.boardGridCellActive {
+  box-shadow: inset 0 0 0 1px rgba(249, 212, 35, 0.55);
+}
+
+.boardGridPosition {
+  font-size: 0.7rem;
+  color: var(--color-muted);
+}
+
+.boardGridName {
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.boardGridOccupants {
+  font-size: 0.68rem;
+  color: var(--color-accent-start);
+}
+
+.gameActionLog {
+  list-style: none;
+  display: grid;
+  gap: 0.75rem;
+  max-height: 18rem;
+  overflow: auto;
+}
+
+.gameActionLogItem {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.gameActionLogMeta {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
 .ownedTilesPanel {
   margin-top: 1.25rem;
 }

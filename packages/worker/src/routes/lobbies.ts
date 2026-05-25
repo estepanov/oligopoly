@@ -123,7 +123,24 @@ const getSubject = (c: {
   return c.get("userId") ?? null;
 };
 
-const toLobbyResponse = (row: LobbyRow, players: LobbyPlayerRow[] = []) => ({
+const getActiveGameIdForLobby = async (
+  db: D1Database,
+  lobbyId: string,
+): Promise<string | undefined> => {
+  const row = await db
+    .prepare(
+      "SELECT id FROM games WHERE lobby_id = ? AND status = 'active' ORDER BY started_at DESC LIMIT 1",
+    )
+    .bind(lobbyId)
+    .first<{ id: string }>();
+  return row?.id;
+};
+
+const toLobbyResponse = (
+  row: LobbyRow,
+  players: LobbyPlayerRow[] = [],
+  gameId?: string,
+) => ({
   id: row.id,
   name: row.name,
   hostId: row.host_id,
@@ -156,12 +173,25 @@ const toLobbyResponse = (row: LobbyRow, players: LobbyPlayerRow[] = []) => ({
   currencySymbol: row.currency_symbol ?? "¤",
   currencyMultiplier: row.currency_multiplier ?? "1",
   aiSlots: parseAiSlots(row.ai_slots_json),
+  ...(gameId ? { gameId } : {}),
 });
+
+const buildLobbyResponse = async (
+  db: D1Database,
+  row: LobbyRow,
+  players: LobbyPlayerRow[] = [],
+) => {
+  const gameId =
+    row.status === "in_game"
+      ? await getActiveGameIdForLobby(db, row.id)
+      : undefined;
+  return toLobbyResponse(row, players, gameId);
+};
 
 type LeaveLobbyResponse = {
   lobbyId: string;
   deleted: boolean;
-  lobby?: ReturnType<typeof toLobbyResponse>;
+  lobby?: Awaited<ReturnType<typeof buildLobbyResponse>>;
 };
 
 const publishLobbyUpdate = async (
@@ -316,7 +346,7 @@ const leaveLobby = async (
   return {
     lobbyId: lobby.id,
     deleted: false,
-    lobby: toLobbyResponse(updatedLobby, updatedPlayers),
+    lobby: await buildLobbyResponse(db, updatedLobby, updatedPlayers),
   };
 };
 
@@ -531,7 +561,7 @@ lobbyRoutes.get("/:id", async (c) => {
     .bind(id)
     .all<LobbyPlayerRow>();
 
-  return c.json(toLobbyResponse(lobby, playersResult.results));
+  return c.json(await buildLobbyResponse(db, lobby, playersResult.results));
 });
 
 // POST /:id/join — Join a public lobby
@@ -1071,7 +1101,11 @@ lobbyRoutes.delete("/:id/player/:uid", async (c) => {
     .bind(id)
     .all<LobbyPlayerRow>();
 
-  const kickResponse = toLobbyResponse(lobby, playersResult.results);
+  const kickResponse = await buildLobbyResponse(
+    db,
+    lobby,
+    playersResult.results,
+  );
   await publishLobbyUpdate(c.env, id, kickResponse);
   return c.json(kickResponse);
 });
@@ -1254,7 +1288,7 @@ lobbyRoutes.post("/:id/start", async (c) => {
   };
 
   const startResponse = {
-    ...toLobbyResponse(updated, lobbyPlayers),
+    ...(await buildLobbyResponse(db, updated, lobbyPlayers)),
     gameId,
   };
   await publishLobbyUpdate(c.env, id, startResponse);

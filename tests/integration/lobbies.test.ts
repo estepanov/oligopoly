@@ -247,6 +247,19 @@ const createD1Stub = (): D1Stub => {
       return { results: row ? [row] : [], first: row };
     }
 
+    // SELECT id FROM games WHERE lobby_id = ? AND status = 'active' ...
+    if (
+      trimmed.startsWith(
+        "SELECT id FROM games WHERE lobby_id = ? AND status = 'active'",
+      )
+    ) {
+      const rows = tables.games
+        .filter((r) => r.lobby_id === binds[0] && r.status === "active")
+        .sort((a, b) => (b.started_at as number) - (a.started_at as number));
+      const row = rows[0] ?? null;
+      return { results: row ? [row] : [], first: row };
+    }
+
     // UPDATE lobbies SET ... WHERE id = ? (settings update)
     if (trimmed.startsWith("UPDATE lobbies SET")) {
       const id = binds[binds.length - 1];
@@ -877,6 +890,45 @@ describe("POST /api/lobbies/:id/start", () => {
     const game = await gameRes.json();
     expect(game.status).toBe("active");
     expect(game.playerCount).toBe(2);
+  });
+
+  it("returns active gameId on GET when lobby is in_game", async () => {
+    const db = createD1Stub();
+    const createRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Rejoin Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    const lobby = await createRes.json();
+
+    await requestWithEnv(`/api/lobbies/${lobby.id}/join`, {
+      method: "POST",
+      headers: { "x-subject": "user-2" },
+      db,
+    });
+
+    const startRes = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      db,
+    });
+    expect(startRes.status).toBe(200);
+    const startBody = await startRes.json();
+
+    const getRes = await requestWithEnv(`/api/lobbies/${lobby.id}`, {
+      method: "GET",
+      db,
+    });
+    expect(getRes.status).toBe(200);
+    const getBody = await getRes.json();
+    expect(getBody.status).toBe("in_game");
+    expect(getBody.gameId).toBe(startBody.gameId);
   });
 
   it("starts a solo-vs-AI lobby when AI fills the second seat", async () => {

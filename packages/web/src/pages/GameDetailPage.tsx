@@ -1,21 +1,25 @@
-import type { GameAction, GameState, GameSummary } from "@oligopoly/validation";
-import {
-  GameRealtimeEventSchema,
-  GameStateSchema,
+import type {
+  GameAction,
+  GameLogEntry,
+  GameState,
+  GameSummary,
 } from "@oligopoly/validation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { fetchGameConfig } from "../api/gameConfig";
 import {
+  fetchGameLog,
   fetchGameState,
   fetchGameSummary,
-  gameWebSocketUrl,
   submitGameAction,
 } from "../api/games";
 import { ApiError } from "../api/http";
 import { useAuth } from "../components/AuthContext";
+import { BoardGrid } from "../components/BoardGrid";
+import { GameActionLog } from "../components/GameActionLog";
 import { GameBoardPanel } from "../components/GameBoardPanel";
 import { GamePlayControls } from "../components/GamePlayControls";
+import { useGameRealtime } from "../hooks/useGameRealtime";
 import { buildTileNameMap } from "../lib/boardDisplay";
 import { currentActorId, isMyTurn } from "../lib/gameUi";
 
@@ -24,13 +28,27 @@ export function GameDetailPage() {
   const { user } = useAuth();
   const [game, setGame] = useState<GameSummary | null>(null);
   const [state, setState] = useState<GameState | null>(null);
+  const [logEntries, setLogEntries] = useState<GameLogEntry[]>([]);
   const [tileNames, setTileNames] = useState<Map<string, string>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState(false);
-  const [wsStatus, setWsStatus] = useState("disconnected");
-  const [turnDeadline, setTurnDeadline] = useState<number | null>(null);
   const [lastAction, setLastAction] = useState<string | null>(null);
+
+  const handleRealtimeState = useCallback(
+    (nextState: GameState, source: string) => {
+      setState(nextState);
+      setLastAction(source);
+    },
+    [],
+  );
+
+  const { wsStatus, turnDeadline, lastEvent, setLastEvent } = useGameRealtime(
+    id,
+    {
+      onState: handleRealtimeState,
+    },
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -49,6 +67,8 @@ export function GameDetailPage() {
   useEffect(() => {
     if (!id) {
       setGame(null);
+      setState(null);
+      setLogEntries([]);
       setError("Missing game id");
       setLoading(false);
       return;
@@ -59,18 +79,21 @@ export function GameDetailPage() {
       setLoading(true);
       setError(null);
       try {
-        const [summary, gameState] = await Promise.all([
+        const [summary, gameState, logResponse] = await Promise.all([
           fetchGameSummary(id),
           fetchGameState(id),
+          fetchGameLog(id).catch(() => ({ log: [] as GameLogEntry[] })),
         ]);
         if (!cancelled) {
           setGame(summary);
           setState(gameState);
+          setLogEntries(logResponse.log);
         }
       } catch (e) {
         if (!cancelled) {
           setGame(null);
           setState(null);
+          setLogEntries([]);
           if (e instanceof ApiError && e.status === 404) {
             setError("Game not found.");
           } else {
@@ -86,44 +109,6 @@ export function GameDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
-
-  useEffect(() => {
-    if (!id) return;
-
-    setWsStatus("connecting");
-    const socket = new WebSocket(gameWebSocketUrl(id));
-    socket.onopen = () => setWsStatus("connected");
-    socket.onclose = () => setWsStatus("disconnected");
-    socket.onerror = () => setWsStatus("error");
-    socket.onmessage = (event) => {
-      try {
-        const parsed = GameRealtimeEventSchema.safeParse(
-          JSON.parse(String(event.data)),
-        );
-        if (parsed.success) {
-          const message = parsed.data;
-          if (message.type === "game.action_applied" && "state" in message) {
-            setState(GameStateSchema.parse(message.state));
-            setLastAction("Realtime state update");
-            return;
-          }
-          if (message.type === "game.snapshot" && "payload" in message) {
-            setState(GameStateSchema.parse(message.payload));
-            setLastAction("Realtime snapshot");
-            return;
-          }
-          if (message.type === "game.timer" && "deadlineAt" in message) {
-            setTurnDeadline(message.deadlineAt ?? null);
-            return;
-          }
-        }
-      } catch {
-        // Fall through to raw event logging.
-      }
-      setLastAction(`Realtime event: ${event.data}`);
-    };
-    return () => socket.close();
   }, [id]);
 
   const myPlayerId = useMemo(() => {
@@ -142,6 +127,10 @@ export function GameDetailPage() {
       const next = await submitGameAction(id, action);
       setState(next);
       setLastAction(label);
+      if (next.logEntries?.length) {
+        const appended = next.logEntries;
+        setLogEntries((current) => [...current, ...appended]);
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Action failed");
     } finally {
@@ -151,11 +140,18 @@ export function GameDetailPage() {
 
   const refreshState = async () => {
     if (!id) return;
-    setState(await fetchGameState(id));
+    const [gameState, logResponse] = await Promise.all([
+      fetchGameState(id),
+      fetchGameLog(id).catch(() => ({ log: [] as GameLogEntry[] })),
+    ]);
+    setState(gameState);
+    setLogEntries(logResponse.log);
+    setLastEvent(null);
   };
 
   const currentPlayerId = state ? currentActorId(state) : null;
   const myTurn = state ? isMyTurn(state, myPlayerId) : false;
+  const statusLine = lastAction ?? lastEvent;
 
   if (!id) {
     return (
@@ -209,14 +205,26 @@ export function GameDetailPage() {
       </div>
 
       {state && (
-        <div className="card">
-          <h2>Board</h2>
-          <GameBoardPanel
-            state={state}
-            tileNames={tileNames}
-            myPlayerId={myPlayerId}
-          />
-        </div>
+        <>
+          <div className="card">
+            <h2>Board</h2>
+            <BoardGrid
+              state={state}
+              tileNames={tileNames}
+              myPlayerId={myPlayerId}
+            />
+            <GameBoardPanel
+              state={state}
+              tileNames={tileNames}
+              myPlayerId={myPlayerId}
+            />
+          </div>
+
+          <div className="card">
+            <h2>Action log</h2>
+            <GameActionLog entries={logEntries} tileNames={tileNames} />
+          </div>
+        </>
       )}
 
       <div className="card">
@@ -262,7 +270,7 @@ export function GameDetailPage() {
                 Refresh
               </button>
             </div>
-            {lastAction && <p className="muted">{lastAction}</p>}
+            {statusLine && <p className="muted">{statusLine}</p>}
           </>
         ) : (
           <p className="muted">Sign in as a game participant to load state.</p>
