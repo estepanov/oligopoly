@@ -36,7 +36,7 @@ export function isAuctionPhase(state: GameState): boolean {
 
 export function isSealedAuctionPhase(state: GameState): boolean {
   return (
-    isAuctionPhase(state) && state.pendingAuction?.auctionType !== "open_bids"
+    isAuctionPhase(state) && state.pendingAuction?.auctionType === "sealed_bids"
   );
 }
 
@@ -44,6 +44,26 @@ export function isOpenAuctionPhase(state: GameState): boolean {
   return (
     isAuctionPhase(state) && state.pendingAuction?.auctionType === "open_bids"
   );
+}
+
+export function isLiveAuctionPhase(state: GameState): boolean {
+  return (
+    isAuctionPhase(state) &&
+    state.pendingAuction?.auctionType === "live_bidding"
+  );
+}
+
+export function currentAuctionHighBid(state: GameState): number {
+  const auction = state.pendingAuction;
+  if (!auction) return 0;
+  const floor = (auction.tieBreakMinBid ?? 1) - 1;
+  let high = floor;
+  for (const value of Object.values(auction.submissions)) {
+    if (typeof value === "number" && value > high) {
+      high = value;
+    }
+  }
+  return high;
 }
 
 export function isAuctionBiddingPhase(state: GameState): boolean {
@@ -73,7 +93,10 @@ export function hasSubmittedAuction(
   myPlayerId: string | null,
 ): boolean {
   if (!myPlayerId || !state.pendingAuction) return false;
-  if (state.pendingAuction.auctionType === "open_bids") {
+  if (
+    state.pendingAuction.auctionType === "open_bids" ||
+    state.pendingAuction.auctionType === "live_bidding"
+  ) {
     return Object.hasOwn(state.pendingAuction.submissions, myPlayerId);
   }
   return state.pendingAuction.mySubmission !== undefined;
@@ -92,7 +115,8 @@ export function mergeAuctionClientView(
   if (
     !prevAuction?.mySubmission ||
     !nextAuction ||
-    nextAuction.auctionType === "open_bids"
+    nextAuction.auctionType === "open_bids" ||
+    nextAuction.auctionType === "live_bidding"
   ) {
     return incoming;
   }

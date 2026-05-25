@@ -6,6 +6,7 @@ import {
   hasAuctionSubmission,
   suggestAiAuctionBid,
 } from "./auction.js";
+import { isLiveAuction } from "./auctionMode.js";
 import type { InternalGameState } from "./gameStateMachine.js";
 
 export type AiDecision = {
@@ -28,8 +29,15 @@ export function findNextAiAuctionActor(
   }
 
   for (const playerId of getActiveEligibleBidders(state)) {
+    if (!isAiControlledActor(state, playerId)) continue;
+    if (isLiveAuction(state.pendingAuction)) {
+      if (suggestAiAuctionBid(state, playerId) !== "pass") {
+        return playerId;
+      }
+      continue;
+    }
     if (hasAuctionSubmission(state.pendingAuction, playerId)) continue;
-    if (isAiControlledActor(state, playerId)) return playerId;
+    return playerId;
   }
 
   return null;
@@ -76,11 +84,17 @@ export function chooseAiActionForPlayer(
     resolveAiPersonality(state, actorId) ?? defaultPersonality;
 
   if (state.phase === "waiting_for_auction_bids" && state.pendingAuction) {
-    if (hasAuctionSubmission(state.pendingAuction, actorId)) return null;
+    if (
+      !isLiveAuction(state.pendingAuction) &&
+      hasAuctionSubmission(state.pendingAuction, actorId)
+    ) {
+      return null;
+    }
     if (!getActiveEligibleBidders(state).includes(actorId)) return null;
 
     const submission = suggestAiAuctionBid(state, actorId);
     if (submission === "pass") {
+      if (isLiveAuction(state.pendingAuction)) return null;
       return {
         actorId,
         personality,

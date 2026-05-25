@@ -12,6 +12,7 @@ export type LobbyRow = {
   turn_timeout: string;
   auction_bid_window: string;
   auction_settle_delay: string;
+  auction_extension_window: string;
   auction_type: string;
   voice_video_enabled: number;
   spectator_mode: string;
@@ -66,6 +67,7 @@ export const toLobbyResponse = (
   turnTimeout: row.turn_timeout ?? "5min",
   auctionBidWindow: row.auction_bid_window ?? "1min",
   auctionSettleDelay: row.auction_settle_delay ?? "30s",
+  auctionExtensionWindow: row.auction_extension_window ?? "15s",
   auctionType: row.auction_type ?? "sealed_bids",
   voiceVideoEnabled: (row.voice_video_enabled ?? 0) === 1,
   spectatorMode: row.spectator_mode ?? "disabled",

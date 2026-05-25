@@ -21,7 +21,10 @@ function withSubmissionCount(auction: PendingAuction): ClientPendingAuction {
 export function redactPendingAuctionForBroadcast(
   auction: PendingAuction,
 ): PendingAuction & { submissionCount: number } {
-  if (auction.auctionType === "open_bids") {
+  if (
+    auction.auctionType === "open_bids" ||
+    auction.auctionType === "live_bidding"
+  ) {
     return withSubmissionCount(auction);
   }
 
@@ -38,7 +41,10 @@ function redactPendingAuction(
   viewerId: string,
   mode: "spectator" | "player",
 ): ClientPendingAuction {
-  if (auction.auctionType === "open_bids") {
+  if (
+    auction.auctionType === "open_bids" ||
+    auction.auctionType === "live_bidding"
+  ) {
     return withSubmissionCount(auction);
   }
 

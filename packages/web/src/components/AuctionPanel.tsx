@@ -4,9 +4,11 @@ import { tileLabel } from "../lib/boardDisplay";
 import {
   activeEligibleAuctionPlayers,
   canParticipateInAuction,
+  currentAuctionHighBid,
   hasSubmittedAuction,
   isAuctionBiddingPhase,
   isAuctionPhase,
+  isLiveAuctionPhase,
   isOpenAuctionPhase,
   isSealedAuctionPhase,
   playerById,
@@ -36,20 +38,28 @@ export function AuctionPanel({
 
   const bidding = isAuctionBiddingPhase(state);
   const openAuction = isOpenAuctionPhase(state);
+  const liveAuction = isLiveAuctionPhase(state);
   const sealedAuction = isSealedAuctionPhase(state);
+  const visibleBids = openAuction || liveAuction;
 
   const currency = state.settings?.currencySymbol ?? "¤";
   const tileName = tileLabel(auction.tilePosition, tileNames);
-  const minBid = auction.tieBreakMinBid ?? 1;
+  const highBid = currentAuctionHighBid(state);
+  const minBid = liveAuction
+    ? Math.max(auction.tieBreakMinBid ?? 1, highBid + 1)
+    : (auction.tieBreakMinBid ?? 1);
   const submitted = hasSubmittedAuction(state, myPlayerId);
   const eligible = canParticipateInAuction(state, myPlayerId);
   const submissionCount = auction.submissionCount ?? 0;
   const eligibleCount = activeEligibleAuctionPlayers(state).length;
-  const panelTitle = openAuction
-    ? "Open auction"
-    : bidding
-      ? "Sealed auction"
-      : "Auction settling";
+  const panelTitle = liveAuction
+    ? "Live auction"
+    : openAuction
+      ? "Open auction"
+      : bidding
+        ? "Sealed auction"
+        : "Auction settling";
+  const showBidForm = bidding && eligible && (liveAuction || !submitted);
 
   return (
     <div className="auctionPanel">
@@ -63,10 +73,23 @@ export function AuctionPanel({
       <p className="muted">
         {bidding ? (
           <>
-            Minimum bid: {currency}
-            {minBid}. Submissions: {submissionCount}/{eligibleCount}
+            {liveAuction ? (
+              <>
+                High bid: {currency}
+                {highBid > 0 ? highBid.toLocaleString() : "none"}. Next bid ≥
+                {currency}
+                {minBid}
+              </>
+            ) : (
+              <>
+                Minimum bid: {currency}
+                {minBid}
+              </>
+            )}
+            {!liveAuction &&
+              `. Submissions: ${submissionCount}/${eligibleCount}`}
             {auction.bidDeadlineAt
-              ? ` · closes ${new Date(auction.bidDeadlineAt).toLocaleTimeString()}`
+              ? ` · ${liveAuction ? "ends" : "closes"} ${new Date(auction.bidDeadlineAt).toLocaleTimeString()}`
               : ""}
           </>
         ) : (
@@ -80,7 +103,7 @@ export function AuctionPanel({
         )}
       </p>
 
-      {openAuction && bidding && (
+      {visibleBids && bidding && (
         <ul className="auctionBidList">
           {Object.entries(auction.submissions).map(([playerId, value]) => {
             const player = playerById(state, playerId);
@@ -106,7 +129,7 @@ export function AuctionPanel({
         <p className="muted">You are not eligible to bid in this auction.</p>
       )}
 
-      {bidding && eligible && submitted && (
+      {bidding && eligible && submitted && !liveAuction && (
         <p className="ok">
           {openAuction
             ? "Your bid is locked in."
@@ -114,7 +137,7 @@ export function AuctionPanel({
         </p>
       )}
 
-      {bidding && eligible && !submitted && (
+      {showBidForm && (
         <>
           <label className="muted" htmlFor="auction-bid-amount">
             Bid amount
@@ -142,21 +165,23 @@ export function AuctionPanel({
                 });
               }}
             >
-              Submit bid
+              {liveAuction ? "Place bid" : "Submit bid"}
             </button>
-            <button
-              type="button"
-              className="button buttonSecondary"
-              disabled={busy}
-              onClick={() =>
-                void onAction(`Passed on ${tileName}`, {
-                  type: "auction_pass",
-                  tilePosition: auction.tilePosition,
-                })
-              }
-            >
-              Pass
-            </button>
+            {!liveAuction && (
+              <button
+                type="button"
+                className="button buttonSecondary"
+                disabled={busy}
+                onClick={() =>
+                  void onAction(`Passed on ${tileName}`, {
+                    type: "auction_pass",
+                    tilePosition: auction.tilePosition,
+                  })
+                }
+              >
+                Pass
+              </button>
+            )}
           </div>
         </>
       )}

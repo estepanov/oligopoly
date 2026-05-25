@@ -851,6 +851,10 @@ function handleAuctionPass(
     throw "game.wrong_tile";
   }
 
+  if (state.pendingAuction?.auctionType === "live_bidding") {
+    throw "game.invalid_action";
+  }
+
   return recordAuctionSubmission(state, playerId, "pass");
 }
 
