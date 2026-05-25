@@ -20,6 +20,11 @@ const ACTION_LABELS: Record<string, string> = {
   auction_settled: "Auction settled",
   auction_no_bids: "Auction ended with no bids",
   auction_tie_break: "Auction tie-break round",
+  market_event_drawn: "Market event drawn",
+  market_event_resolved: "Market event resolved",
+  market_event_capital_change: "Market event capital change",
+  market_event_roll: "Market event roll",
+  market_event_deck_empty: "Market event deck empty",
 };
 
 function payloadSuffix(

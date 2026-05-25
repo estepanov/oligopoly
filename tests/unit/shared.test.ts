@@ -116,6 +116,15 @@ describe("chooseAiAction", () => {
     settings: {},
   };
 
+  it("chooses draw_market_event during round-start phase", () => {
+    const decision = chooseAiAction({
+      ...baseAiState,
+      phase: "waiting_for_market_event",
+    });
+
+    expect(decision?.action.type).toBe("draw_market_event");
+  });
+
   it("chooses deterministic roll actions for AI turns", () => {
     const decision = chooseAiAction(baseAiState);
 
@@ -2128,6 +2137,34 @@ describe("applyAction — end_turn", () => {
     const result = applyAction(state, "player-2", { type: "end_turn" });
     expect(result.state.currentPlayerIndex).toBe(0);
     expect(result.state.round).toBe(2);
+    expect(result.state.phase).toBe("waiting_for_market_event");
+  });
+});
+
+describe("applyAction — draw_market_event", () => {
+  it("draws and resolves the top card at round start", () => {
+    const state = makeTestGameState({
+      phase: "waiting_for_market_event",
+      marketEventDeckRemaining: ["stimulus_package"],
+      marketEventDiscard: [],
+    });
+    const result = applyAction(state, "player-1", {
+      type: "draw_market_event",
+    });
+
+    expect(result.state.phase).toBe("waiting_for_roll");
+    expect(result.state.marketEventDiscard).toEqual(["stimulus_package"]);
+    expect(result.state.marketEventDeckRemaining).toEqual([]);
+    expect(
+      result.logEntries.some((e) => e.actionType === "market_event_drawn"),
+    ).toBe(true);
+  });
+
+  it("rejects draw_market_event outside round-start phase", () => {
+    const state = makeTestGameState({ phase: "waiting_for_roll" });
+    expect(() =>
+      applyAction(state, "player-1", { type: "draw_market_event" }),
+    ).toThrow("game.invalid_phase");
   });
 });
 
@@ -2225,7 +2262,10 @@ describe("applyAction — diagonal overflow", () => {
   });
 
   it("continues remaining movement on perimeter after reaching FREE MARKET", () => {
-    const state = makeTestGameState();
+    const state = makeTestGameState({
+      marketEventDeckRemaining: [],
+      marketEventDiscard: [],
+    });
     state.players[0].isOnDiagonal = true;
     state.players[0].position = "D5";
     state.freeMarketPool = 50;
@@ -2317,7 +2357,7 @@ describe("applyAction — regulation penalty persists through next turn", () => 
     const result = applyAction(state, "player-2", { type: "end_turn" });
     const p1 = result.state.players.find((p) => p.playerId === "player-1")!;
     expect(p1.actionPointsRemaining).toBe(0);
-    expect(result.state.phase).toBe("waiting_for_roll");
+    expect(result.state.phase).toBe("waiting_for_market_event");
   });
 
   it("clears regulation after the regulated player completes their penalty turn", () => {

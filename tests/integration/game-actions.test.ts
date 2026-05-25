@@ -3,8 +3,67 @@ import {
   advanceAuctionSettle,
   createAndStartGame,
   createD1Stub,
+  drawRoundStartMarketEvent,
+  type HarnessDb,
+  loadStoredGameState,
   requestWithEnv,
+  storedActorId,
 } from "../helpers/workerGameplayHarness.js";
+
+describe("POST /api/games/:id/action — draw_market_event", () => {
+  it("starts games in waiting_for_market_event and resolves the round-start draw", async () => {
+    const db = createD1Stub();
+    const createRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Market Event Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    const lobby = (await createRes.json()) as Record<string, unknown>;
+
+    await requestWithEnv(`/api/lobbies/${lobby.id}/join`, {
+      method: "POST",
+      headers: { "x-subject": "user-2" },
+      db,
+    });
+
+    const startRes = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      db,
+    });
+    expect(startRes.status).toBe(200);
+    const startBody = (await startRes.json()) as Record<string, unknown>;
+    const gameId = startBody.gameId as string;
+
+    const stateRes = await requestWithEnv(`/api/games/${gameId}/state`, {
+      method: "GET",
+      headers: { "x-subject": "user-1" },
+      db,
+    });
+    expect(stateRes.status).toBe(200);
+    const initialState = (await stateRes.json()) as Record<string, unknown>;
+    expect(initialState.phase).toBe("waiting_for_market_event");
+
+    const storedState = loadStoredGameState(db as HarnessDb, gameId);
+    const actorId = storedActorId(storedState);
+
+    const drawRes = await requestWithEnv(`/api/games/${gameId}/action`, {
+      method: "POST",
+      headers: { "x-subject": actorId },
+      body: { type: "draw_market_event" },
+      db,
+    });
+    expect(drawRes.status).toBe(200);
+    const drawBody = (await drawRes.json()) as Record<string, unknown>;
+    expect(drawBody.phase).toBe("waiting_for_roll");
+  });
+});
 
 describe("POST /api/games/:id/action — basics", () => {
   it("returns 401 without auth", async () => {
@@ -148,7 +207,7 @@ describe("POST /api/games/:id/action — roll_dice", () => {
 describe("POST /api/games/:id/action — buy_tile / decline_tile", () => {
   it("can buy a tile from position 1 (Digital Content Co., cost 60)", async () => {
     const db = createD1Stub();
-    const { gameId, currentPlayer } = await createAndStartGame(db);
+    const { gameId, currentPlayer, capitals } = await createAndStartGame(db);
 
     // Roll [1, 2] = 3 -> position 3 = Mobile Gaming Inc. (cost 80)
     const rollRes = await requestWithEnv(`/api/games/${gameId}/action`, {
@@ -178,7 +237,7 @@ describe("POST /api/games/:id/action — buy_tile / decline_tile", () => {
       ownedTilePositions: number[];
     }>;
     const buyer = players.find((p) => p.playerId === currentPlayer)!;
-    expect(buyer.capital).toBe(1500 - 80);
+    expect(buyer.capital).toBe(capitals[currentPlayer] - 80);
     expect(buyer.ownedTilePositions).toContain(3);
   });
 
@@ -321,7 +380,8 @@ describe("POST /api/games/:id/action — end_turn", () => {
 describe("POST /api/games/:id/action — rent payment", () => {
   it("charges rent when landing on owned tile", async () => {
     const db = createD1Stub();
-    const { gameId, currentPlayer, otherPlayer } = await createAndStartGame(db);
+    const { gameId, currentPlayer, otherPlayer, capitals } =
+      await createAndStartGame(db);
 
     // Player 1: Roll to pos 3 (Mobile Gaming Inc.) and buy it
     await requestWithEnv(`/api/games/${gameId}/action`, {
@@ -361,8 +421,8 @@ describe("POST /api/games/:id/action — rent payment", () => {
     const payer = players.find((p) => p.playerId === otherPlayer)!;
     const owner = players.find((p) => p.playerId === currentPlayer)!;
 
-    expect(payer.capital).toBe(1500 - 4);
-    expect(owner.capital).toBe(1500 - 80 + 4);
+    expect(payer.capital).toBe(capitals[otherPlayer] - 4);
+    expect(owner.capital).toBe(capitals[currentPlayer] - 80 + 4);
   });
 });
 
@@ -437,7 +497,7 @@ describe("POST /api/games/:id/action — doubles", () => {
 describe("POST /api/games/:id/action — special tiles", () => {
   it("pays Corporate Tax I when landing on position 4", async () => {
     const db = createD1Stub();
-    const { gameId, currentPlayer } = await createAndStartGame(db);
+    const { gameId, currentPlayer, capitals } = await createAndStartGame(db);
 
     // [1, 3] = 4 -> CORPORATE TAX I (pays 75 to free market pool)
     const res = await requestWithEnv(`/api/games/${gameId}/action`, {
@@ -454,7 +514,7 @@ describe("POST /api/games/:id/action — special tiles", () => {
       capital: number;
     }>;
     const player = players.find((p) => p.playerId === currentPlayer)!;
-    expect(player.capital).toBe(1500 - 75);
+    expect(player.capital).toBe(capitals[currentPlayer] - 75);
     expect(body.freeMarketPool).toBe(75);
   });
 });
@@ -499,6 +559,8 @@ describe("Full game round cycle", () => {
     // After both players go, round should advance
     expect(end2Body.round).toBe(2);
 
+    await drawRoundStartMarketEvent(db, gameId, currentPlayer);
+
     // Player 1 can take their turn again in round 2
     const round2Res = await requestWithEnv(`/api/games/${gameId}/action`, {
       method: "POST",
@@ -513,7 +575,7 @@ describe("Full game round cycle", () => {
 describe("POST /api/games/:id/action — mortgage and redeem", () => {
   it("can mortgage an owned tile during action phase", async () => {
     const db = createD1Stub();
-    const { gameId, currentPlayer } = await createAndStartGame(db);
+    const { gameId, currentPlayer, capitals } = await createAndStartGame(db);
 
     // Roll to pos 3, buy it
     await requestWithEnv(`/api/games/${gameId}/action`, {
@@ -545,13 +607,13 @@ describe("POST /api/games/:id/action — mortgage and redeem", () => {
       mortgagedTilePositions: number[];
     }>;
     const player = players.find((p) => p.playerId === currentPlayer)!;
-    expect(player.capital).toBe(1500 - 80 + 40);
+    expect(player.capital).toBe(capitals[currentPlayer] - 80 + 40);
     expect(player.mortgagedTilePositions).toContain(3);
   });
 
   it("can redeem a mortgaged tile", async () => {
     const db = createD1Stub();
-    const { gameId, currentPlayer } = await createAndStartGame(db);
+    const { gameId, currentPlayer, capitals } = await createAndStartGame(db);
 
     // Roll to pos 3, buy it, mortgage it
     await requestWithEnv(`/api/games/${gameId}/action`, {
@@ -589,7 +651,7 @@ describe("POST /api/games/:id/action — mortgage and redeem", () => {
       mortgagedTilePositions: number[];
     }>;
     const player = players.find((p) => p.playerId === currentPlayer)!;
-    expect(player.capital).toBe(1500 - 80 + 40 - 44);
+    expect(player.capital).toBe(capitals[currentPlayer] - 80 + 40 - 44);
     expect(player.mortgagedTilePositions).not.toContain(3);
   });
 });

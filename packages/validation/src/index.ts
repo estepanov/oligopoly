@@ -553,6 +553,9 @@ export const GameActionSchema = z.discriminatedUnion("type", [
     tilePosition: z.union([z.number().int(), z.string()]),
   }),
   z.object({
+    type: z.literal("draw_market_event"),
+  }),
+  z.object({
     type: z.literal("start_negotiation"),
     targetPlayerIds: z.array(z.string()),
   }),
@@ -594,6 +597,7 @@ export const GamePhaseSchema = z.enum([
   "market_event",
   "action",
   "syndicate_coordination",
+  "waiting_for_market_event",
   "waiting_for_roll",
   "waiting_for_buy",
   "waiting_for_auction_bids",

@@ -209,6 +209,13 @@ export {
   initTileStates,
   normalizeGameState,
 } from "./engine/gameStateMachine.js";
+export type { MarketEventTrigger } from "./engine/marketEvents.js";
+export {
+  buildMarketEventDeck,
+  drawAndResolveMarketEvent,
+  normalizeMarketEventDeck,
+  resolveMarketEventCard,
+} from "./engine/marketEvents.js";
 export {
   calculateAbsorptionPrice,
   calculateMortgageValue,

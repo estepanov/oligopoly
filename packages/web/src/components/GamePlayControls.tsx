@@ -68,6 +68,21 @@ export function GamePlayControls({
           disabled={
             turnControlsLocked ||
             !myTurn ||
+            state.phase !== "waiting_for_market_event"
+          }
+          onClick={() =>
+            void onAction("Drew market event", { type: "draw_market_event" })
+          }
+        >
+          Draw market event
+        </button>
+
+        <button
+          type="button"
+          className="button"
+          disabled={
+            turnControlsLocked ||
+            !myTurn ||
             !["waiting_for_roll", "rolling_doubles"].includes(state.phase ?? "")
           }
           onClick={() => void onAction("Rolled dice", { type: "roll_dice" })}

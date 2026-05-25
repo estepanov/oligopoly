@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   createD1Stub,
   createSoloAiGame,
+  drawRoundStartMarketEvent,
   ensureActorTurn,
   type HarnessDb,
   isActorTurn,
+  loadStoredGameState,
   requestWithEnv,
   stepAiUntil,
+  storedActorId,
 } from "../helpers/workerGameplayHarness.js";
 
 describe("e2e solo vs AI gameplay", () => {
@@ -15,6 +18,11 @@ describe("e2e solo vs AI gameplay", () => {
     const { gameId, humanId } = await createSoloAiGame(db);
 
     await ensureActorTurn(db, gameId, humanId);
+
+    const readyState = loadStoredGameState(db, gameId);
+    if (readyState.phase === "waiting_for_market_event") {
+      await drawRoundStartMarketEvent(db, gameId, storedActorId(readyState));
+    }
 
     const rollRes = await requestWithEnv(`/api/games/${gameId}/action`, {
       method: "POST",
@@ -57,7 +65,9 @@ describe("e2e solo vs AI gameplay", () => {
     });
     expect(endRes.status).toBe(200);
     const endBody = (await endRes.json()) as Record<string, unknown>;
-    expect(endBody.phase).toBe("waiting_for_roll");
+    expect(["waiting_for_roll", "waiting_for_market_event"]).toContain(
+      endBody.phase,
+    );
 
     const afterAi = await stepAiUntil(
       db,
@@ -66,6 +76,10 @@ describe("e2e solo vs AI gameplay", () => {
       16,
     );
     expect(isActorTurn(afterAi, humanId)).toBe(true);
-    expect(["waiting_for_roll", "rolling_doubles"]).toContain(afterAi.phase);
+    expect([
+      "waiting_for_roll",
+      "rolling_doubles",
+      "waiting_for_market_event",
+    ]).toContain(afterAi.phase);
   });
 });

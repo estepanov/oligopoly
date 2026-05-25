@@ -62,13 +62,50 @@ async function createAndStartGame(db: D1Database) {
     ._tables.games[0];
   const state = JSON.parse(gameRow.state_json as string);
 
-  return {
-    gameId: startBody.gameId as string,
-    lobbyId: lobby.id as string,
-    turnOrder: state.turnOrder as string[],
-    currentPlayer: state.turnOrder[0] as string,
-    otherPlayer: state.turnOrder[1] as string,
+  const gameId = startBody.gameId as string;
+  const currentPlayer = state.turnOrder[0] as string;
+
+  await drawRoundStartMarketEvent(db, gameId, currentPlayer);
+
+  const updatedRow = (db as D1Database & { _tables: Record<string, Row[]> })
+    ._tables.games[0];
+  const updatedState = JSON.parse(updatedRow.state_json as string) as {
+    turnOrder: string[];
+    players: Array<{ playerId: string; capital: number }>;
   };
+
+  return {
+    gameId,
+    lobbyId: lobby.id as string,
+    turnOrder: updatedState.turnOrder as string[],
+    currentPlayer,
+    otherPlayer: updatedState.turnOrder[1] as string,
+    capitals: Object.fromEntries(
+      updatedState.players.map((player) => [player.playerId, player.capital]),
+    ) as Record<string, number>,
+  };
+}
+
+export async function drawRoundStartMarketEvent(
+  db: D1Database,
+  gameId: string,
+  actorId: string,
+) {
+  const state = loadStoredGameState(db as HarnessDb, gameId);
+  if (state.phase !== "waiting_for_market_event") return state;
+
+  const res = await requestWithEnv(`/api/games/${gameId}/action`, {
+    method: "POST",
+    headers: { "x-subject": actorId },
+    body: { type: "draw_market_event" },
+    db,
+  });
+  if (res.status !== 200) {
+    throw new Error(
+      `Failed to draw round-start market event: ${res.status} ${await res.text()}`,
+    );
+  }
+  return loadStoredGameState(db as HarnessDb, gameId);
 }
 
 export async function createSoloAiGame(db: D1Database) {

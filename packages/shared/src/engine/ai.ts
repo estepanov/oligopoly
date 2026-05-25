@@ -118,6 +118,14 @@ export function chooseAiActionForPlayer(
 
   if (actorId !== currentPlayerId(state)) return null;
 
+  if (state.phase === "waiting_for_market_event") {
+    return {
+      actorId,
+      personality,
+      action: { type: "draw_market_event" },
+    };
+  }
+
   if (state.phase === "waiting_for_roll" || state.phase === "rolling_doubles") {
     return {
       actorId,
