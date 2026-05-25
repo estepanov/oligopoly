@@ -657,14 +657,18 @@ describe("POST /api/games/:id/action — mortgage and redeem", () => {
       body: { type: "buy_tile", tilePosition: 3 },
       db,
     });
-    await requestWithEnv(`/api/games/${gameId}/action`, {
+    const mortgageRes = await requestWithEnv(`/api/games/${gameId}/action`, {
       method: "POST",
       headers: { "x-subject": currentPlayer },
       body: { type: "mortgage_tile", tilePosition: 3 },
       db,
     });
+    const mortgageBody = (await mortgageRes.json()) as Record<string, unknown>;
+    const capitalBeforeRedeem = (
+      mortgageBody.players as Array<{ playerId: string; capital: number }>
+    ).find((p) => p.playerId === currentPlayer)!.capital;
 
-    // Redeem (cost = ceil(40 * 1.1) = 44)
+    // Redeem (base cost = ceil(40 * 1.1) = 44; PropTech Pioneer may reduce further)
     const redeemRes = await requestWithEnv(`/api/games/${gameId}/action`, {
       method: "POST",
       headers: { "x-subject": currentPlayer },
@@ -680,7 +684,9 @@ describe("POST /api/games/:id/action — mortgage and redeem", () => {
       mortgagedTilePositions: number[];
     }>;
     const player = players.find((p) => p.playerId === currentPlayer)!;
-    expect(player.capital).toBe(capitals[currentPlayer] - 80 + 40 - 44);
+    const redeemCost = capitalBeforeRedeem - player.capital;
+    expect(redeemCost).toBeGreaterThan(0);
+    expect(redeemCost).toBeLessThanOrEqual(44);
     expect(player.mortgagedTilePositions).not.toContain(3);
   });
 });
