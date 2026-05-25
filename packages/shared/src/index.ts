@@ -115,6 +115,13 @@ export {
 export type { AiDecision } from "./engine/ai.js";
 export { chooseAiAction } from "./engine/ai.js";
 export {
+  applyTimeoutTakeover,
+  clearTimeoutTakeoversForPlayer,
+  isAiControlledActor,
+  replaceKickedPlayerWithAi,
+  resolveAiPersonality,
+} from "./engine/aiControl.js";
+export {
   validateContributionWeights,
   validateRevenueSplit,
 } from "./engine/charter.js";

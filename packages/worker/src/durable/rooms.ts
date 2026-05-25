@@ -1,7 +1,20 @@
-import { normalizeGameState } from "@oligopoly/shared";
+import {
+  isAiControlledActor,
+  normalizeGameState,
+  type InternalGameState,
+} from "@oligopoly/shared";
+import {
+  applyTimeoutTakeoverAndStep,
+  runAiTurnLoop,
+} from "../services/gameAi.js";
+import {
+  currentTurnActorId,
+  turnTimeoutToMs,
+} from "../services/turnTimeout.js";
 
 type RoomEnv = {
   DB?: D1Database;
+  GAME_ROOM?: DurableObjectNamespace;
 };
 
 function jsonEvent(type: string, payload: Record<string, unknown>) {
@@ -20,7 +33,7 @@ abstract class RealtimeRoom {
     const url = new URL(request.url);
     if (request.method === "POST" && url.searchParams.has("notify")) {
       const body = await request.text();
-      this.broadcast(body);
+      await this.handleNotify(body);
       return new Response("ok");
     }
 
@@ -37,6 +50,10 @@ abstract class RealtimeRoom {
     server.send(await this.snapshotEvent(request));
 
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  protected async handleNotify(body: string): Promise<void> {
+    this.broadcast(body);
   }
 
   protected broadcast(message: string) {
@@ -121,10 +138,64 @@ export class LobbyRoom extends RealtimeRoom {
 }
 
 export class GameRoom extends RealtimeRoom {
+  protected async handleNotify(body: string): Promise<void> {
+    if (await this.state.storage.get<boolean>("aiLoopRunning")) {
+      this.broadcast(body);
+      return;
+    }
+
+    await super.handleNotify(body);
+
+    try {
+      const event = JSON.parse(body) as {
+        type?: string;
+        gameId?: string;
+        state?: Record<string, unknown>;
+      };
+      if (
+        (event.type === "game.action_applied" ||
+          event.type === "game.schedule") &&
+        event.gameId &&
+        event.state
+      ) {
+        await this.syncAfterStateChange(event.gameId, event.state);
+      }
+    } catch {
+      // Ignore malformed notify payloads.
+    }
+  }
+
+  async alarm(): Promise<void> {
+    const gameId = await this.state.storage.get<string>("gameId");
+    const actorId = await this.state.storage.get<string>("turnActorId");
+    if (!gameId || !actorId || !this.env.DB) return;
+
+    const deadline = await this.state.storage.get<number>("turnDeadlineAt");
+    if (deadline && Date.now() < deadline) {
+      await this.state.storage.setAlarm(deadline);
+      return;
+    }
+
+    await this.state.storage.put("aiLoopRunning", true);
+    try {
+      await applyTimeoutTakeoverAndStep(
+        this.env.DB,
+        gameId,
+        actorId,
+        this.env.GAME_ROOM,
+      );
+    } finally {
+      await this.state.storage.delete("aiLoopRunning");
+    }
+  }
+
   protected async snapshotEvent(request: Request): Promise<string> {
     const url = new URL(request.url);
     const gameId = url.searchParams.get("gameId") ?? "";
     const spectator = url.searchParams.get("spectator") === "1";
+    if (gameId) {
+      await this.state.storage.put("gameId", gameId);
+    }
     const payload = await this.loadGamePayload(gameId, spectator);
     return jsonEvent("game.snapshot", { gameId, payload });
   }
@@ -148,5 +219,87 @@ export class GameRoom extends RealtimeRoom {
     const gameState = normalizeGameState(raw);
     const { affinityAssignments: _hidden, ...publicState } = gameState;
     return { ...publicState, gameId, spectator };
+  }
+
+  private async syncAfterStateChange(
+    gameId: string,
+    rawState: Record<string, unknown>,
+  ) {
+    await this.state.storage.put("gameId", gameId);
+    const state = normalizeGameState(rawState);
+
+    if (state.phase === "game_over") {
+      await this.state.storage.deleteAlarm();
+      return;
+    }
+
+    const actorId = currentTurnActorId(state);
+    if (!actorId) return;
+
+    await this.scheduleTurnTimer(gameId, state);
+
+    if (!isAiControlledActor(state, actorId) || !this.env.DB) {
+      return;
+    }
+
+    if (await this.state.storage.get<boolean>("aiLoopRunning")) {
+      return;
+    }
+
+    await this.runAiLoop(gameId);
+  }
+
+  private async runAiLoop(gameId: string) {
+    if (!this.env.DB) return;
+
+    await this.state.storage.put("aiLoopRunning", true);
+    try {
+      await runAiTurnLoop(this.env.DB, gameId, this.env.GAME_ROOM);
+      const row = await this.env.DB.prepare(
+        "SELECT state_json FROM games WHERE id = ?",
+      )
+        .bind(gameId)
+        .first<{ state_json: string | null }>();
+      if (row?.state_json) {
+        const latest = normalizeGameState(
+          JSON.parse(row.state_json) as Record<string, unknown>,
+        );
+        await this.scheduleTurnTimer(gameId, latest);
+      }
+    } finally {
+      await this.state.storage.delete("aiLoopRunning");
+    }
+  }
+
+  private async scheduleTurnTimer(gameId: string, state: InternalGameState) {
+    const actorId = currentTurnActorId(state);
+    if (!actorId) return;
+
+    const timeoutMs = turnTimeoutToMs(
+      (state.settings?.turnTimeout as string | undefined) ?? "5min",
+    );
+    if (timeoutMs === null) {
+      await this.state.storage.deleteAlarm();
+      this.broadcast(
+        jsonEvent("game.timer", {
+          gameId,
+          currentPlayerId: actorId,
+          deadlineAt: null,
+        }),
+      );
+      return;
+    }
+
+    const deadlineAt = Date.now() + timeoutMs;
+    await this.state.storage.put("turnActorId", actorId);
+    await this.state.storage.put("turnDeadlineAt", deadlineAt);
+    await this.state.storage.setAlarm(deadlineAt);
+    this.broadcast(
+      jsonEvent("game.timer", {
+        gameId,
+        currentPlayerId: actorId,
+        deadlineAt,
+      }),
+    );
   }
 }

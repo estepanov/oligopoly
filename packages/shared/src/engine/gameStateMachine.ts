@@ -64,6 +64,7 @@ export interface InternalGameState {
   lastDiceRoll: [number, number] | null;
   winnerId: string | null;
   eliminatedPlayerIds: string[];
+  kickedPlayerIds?: string[];
   settings: Record<string, unknown>;
   aiPlayers?: InternalAiPlayerState[];
 }
@@ -260,6 +261,9 @@ export function normalizeGameState(
   }
   if (!state.eliminatedPlayerIds) {
     state.eliminatedPlayerIds = [];
+  }
+  if (!state.kickedPlayerIds) {
+    state.kickedPlayerIds = [];
   }
   if (!state.affinityAssignments) {
     state.affinityAssignments = {};
@@ -837,6 +841,10 @@ function handleEndTurn(
   newState.phase = "waiting_for_roll";
   newState.lastDiceRoll = null;
   newState.pendingBuyTilePosition = null;
+
+  newState.aiPlayers = (newState.aiPlayers ?? []).filter(
+    (ai) => ai.takeoverForPlayerId !== playerId,
+  );
 
   return { state: newState, logEntries: logs };
 }

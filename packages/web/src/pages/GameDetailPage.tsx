@@ -22,7 +22,20 @@ export function GameDetailPage() {
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState(false);
   const [wsStatus, setWsStatus] = useState("disconnected");
+  const [turnDeadline, setTurnDeadline] = useState<number | null>(null);
   const [lastAction, setLastAction] = useState<string | null>(null);
+
+  const isAiTurn = (gameState: GameState | null) => {
+    if (!gameState) return false;
+    const actorId =
+      gameState.turnOrder?.[gameState.currentPlayerIndex ?? -1] ?? null;
+    if (!actorId) return false;
+    const player = gameState.players?.find((entry) => entry.playerId === actorId);
+    if (player?.kind === "ai") return true;
+    return (gameState.aiPlayers ?? []).some(
+      (ai) => ai.playerId === actorId || ai.takeoverForPlayerId === actorId,
+    );
+  };
 
   useEffect(() => {
     if (!id) {
@@ -91,6 +104,10 @@ export function GameDetailPage() {
             setLastAction("Realtime snapshot");
             return;
           }
+          if (message.type === "game.timer" && "deadlineAt" in message) {
+            setTurnDeadline(message.deadlineAt ?? null);
+            return;
+          }
         }
       } catch {
         // Fall through to raw event logging.
@@ -99,6 +116,41 @@ export function GameDetailPage() {
     };
     return () => socket.close();
   }, [id]);
+
+  useEffect(() => {
+    if (!id || !state || busyAction || state.phase === "game_over") return;
+    if (!isAiTurn(state)) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setBusyAction(true);
+        setError(null);
+        try {
+          const next = await stepAiTurn(id);
+          if (!cancelled) {
+            setState(next);
+            setLastAction(
+              next.aiAction
+                ? `AI ${next.aiPlayerId} chose ${next.aiAction.type}`
+                : "AI step complete",
+            );
+          }
+        } catch (e) {
+          if (!cancelled) {
+            setError(e instanceof ApiError ? e.message : "AI step failed");
+          }
+        } finally {
+          if (!cancelled) setBusyAction(false);
+        }
+      })();
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [id, state, busyAction]);
 
   const refreshState = async () => {
     if (!id) return;
@@ -209,6 +261,12 @@ export function GameDetailPage() {
             <dl className="detailsGrid">
               <dt className="muted">Realtime</dt>
               <dd>{wsStatus}</dd>
+              <dt className="muted">Turn deadline</dt>
+              <dd>
+                {turnDeadline
+                  ? new Date(turnDeadline).toLocaleTimeString()
+                  : "—"}
+              </dd>
               <dt className="muted">Round</dt>
               <dd>{state.round}</dd>
               <dt className="muted">Phase</dt>

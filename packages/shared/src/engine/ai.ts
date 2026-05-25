@@ -1,5 +1,6 @@
 import type { AiPersonality, GameAction } from "@oligopoly/validation";
 import { getTileByPosition } from "../config/board.js";
+import { isAiControlledActor, resolveAiPersonality } from "./aiControl.js";
 import type { InternalGameState } from "./gameStateMachine.js";
 
 export type AiDecision = {
@@ -49,12 +50,9 @@ export function chooseAiAction(state: InternalGameState): AiDecision | null {
   const actorId = currentPlayerId(state);
   if (!actorId) return null;
 
-  const aiRuntime = state.aiPlayers?.find((ai) => ai.playerId === actorId);
-  const player = state.players.find((p) => p.playerId === actorId);
-  if (!aiRuntime && player?.kind !== "ai") return null;
+  if (!isAiControlledActor(state, actorId)) return null;
 
-  const personality =
-    aiRuntime?.personality ?? player?.aiPersonality ?? defaultPersonality;
+  const personality = resolveAiPersonality(state, actorId) ?? defaultPersonality;
 
   if (state.phase === "waiting_for_roll" || state.phase === "rolling_doubles") {
     return {

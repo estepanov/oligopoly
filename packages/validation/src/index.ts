@@ -652,6 +652,8 @@ export const GameStateSchema = z.object({
   winnerId: z.string().nullable().optional(),
   /** IDs of eliminated players */
   eliminatedPlayerIds: z.array(z.string()).optional(),
+  /** Human players permanently replaced by AI after an admin kick */
+  kickedPlayerIds: z.array(z.string()).optional(),
   settings: z
     .object({
       turnTimeout: TurnTimeoutSchema.optional(),
@@ -802,6 +804,12 @@ export const GameRealtimeEventSchema = z.discriminatedUnion("type", [
     aiPlayerId: z.string(),
     personality: AiPersonalitySchema,
     action: GameActionSchema,
+  }),
+  z.object({
+    type: z.literal("game.schedule"),
+    sentAt: z.number(),
+    gameId: z.string(),
+    state: GameStateSchema,
   }),
 ]);
 export type GameRealtimeEvent = z.infer<typeof GameRealtimeEventSchema>;

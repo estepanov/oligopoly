@@ -230,6 +230,9 @@ AI player protocol:
 - Supported personalities are `loyalist`, `opportunist`, and `disruptor`.
 - Deterministic rules-based AI is the baseline and must always return a legal action. LLM-assisted decisions are optional, gated by `ANTHROPIC_API_KEY`, daily/monthly budget checks, and deterministic fallback.
 - Timeout takeover temporarily maps a human player to an AI runtime entry; kick replacement permanently replaces the human actor for the rest of the game.
+- `GameRoom` schedules turn-timeout alarms from `settings.turnTimeout`, emits `game.timer`, applies timeout takeover on alarm, and auto-runs AI turns via `runAiTurnLoop` after canonical state writes.
+- `DELETE /api/lobbies/:id/player/:uid` during `in_game` replaces the kicked human seat with a permanent AI replacement in the active game state.
+- `POST /api/games/:id/ai/step` remains available for manual/debug stepping; the web client also auto-steps AI turns when the GameRoom binding is unavailable locally.
 - AI cost tracking uses KV keys shaped as `ai_cost:daily:{date}` and feeds admin analytics.
 
 Auth consistency rule:

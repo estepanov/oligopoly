@@ -1,6 +1,5 @@
 import {
   applyAction,
-  chooseAiAction,
   normalizeGameState,
   rollPathChoiceDie,
 } from "@oligopoly/shared";
@@ -16,6 +15,7 @@ import {
   toClientGameState,
 } from "../gameStateView.js";
 import { upgradeWebSocket } from "../realtime/upgrade.js";
+import { stepGameAiTurn } from "../services/gameAi.js";
 import {
   persistGameActionResult,
   toActionResponse,
@@ -432,55 +432,16 @@ gameRoutes.post("/:id/ai/step", async (c) => {
     return c.json({ error: GameErrorKeys.DB_NOT_CONFIGURED }, 500);
   }
 
-  const row = await db
-    .prepare(
-      "SELECT id, status, player_ids_json, state_json FROM games WHERE id = ?",
-    )
-    .bind(id)
-    .first<{
-      id: string;
-      status: string;
-      player_ids_json: string;
-      state_json: string | null;
-    }>();
-
-  if (!row) {
-    return c.json({ error: GameErrorKeys.NOT_FOUND }, 404);
-  }
-  if (row.status !== "active") {
-    return c.json({ error: GameErrorKeys.GAME_COMPLETED }, 409);
-  }
-
-  const rawState = row.state_json
-    ? (JSON.parse(row.state_json) as Record<string, unknown>)
-    : { gameId: id, round: 0 };
-  const gameState = normalizeGameState(rawState);
-  const decision = chooseAiAction(gameState);
-  if (!decision) {
+  const step = await stepGameAiTurn(db, id, c.env?.GAME_ROOM);
+  if (!step.applied || !step.decision || !step.result) {
     return c.json({ error: GameErrorKeys.NOT_YOUR_TURN }, 409);
   }
 
-  const result = applyAction(gameState, decision.actorId, {
-    ...decision.action,
-    ...(decision.action.type === "roll_dice"
-      ? { pathChoiceDie: rollPathChoiceDie() }
-      : {}),
-  });
-
-  await persistGameActionResult(db, id, result, {
-    gameRoom: c.env?.GAME_ROOM,
-    aiMeta: {
-      aiPlayerId: decision.actorId,
-      personality: decision.personality,
-      action: decision.action as Record<string, unknown>,
-    },
-  });
-
   return c.json(
-    toActionResponse(result, null, {
-      aiAction: decision.action,
-      aiPlayerId: decision.actorId,
-      aiPersonality: decision.personality,
+    toActionResponse(step.result, null, {
+      aiAction: step.decision.action,
+      aiPlayerId: step.decision.actorId,
+      aiPersonality: step.decision.personality,
     }),
   );
 });
