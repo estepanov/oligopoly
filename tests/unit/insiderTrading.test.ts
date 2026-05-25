@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
 import {
   drawAndResolveMarketEvent,
   handleInsiderDiscardMarketEvent,
   shouldOfferInsiderPeek,
 } from "@oligopoly/shared";
-import type { InternalGameState } from "../../packages/shared/src/engine/gameStateTypes.js";
+import { describe, expect, it } from "vitest";
 import { initTileStates } from "../../packages/shared/src/engine/gameStateMachine.js";
+import type { InternalGameState } from "../../packages/shared/src/engine/gameStateTypes.js";
 
 function marketEventState(): InternalGameState {
   return {

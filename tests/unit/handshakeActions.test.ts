@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { initTileStates } from "../../packages/shared/src/engine/gameStateMachine.js";
+import type { InternalGameState } from "../../packages/shared/src/engine/gameStateTypes.js";
 import {
   handleBreakHandshake,
   handleProposeHandshake,
   handleSignHandshake,
 } from "../../packages/shared/src/engine/handshakeActions.js";
-import type { InternalGameState } from "../../packages/shared/src/engine/gameStateTypes.js";
-import { initTileStates } from "../../packages/shared/src/engine/gameStateMachine.js";
 
 function actionState(): InternalGameState {
   return {

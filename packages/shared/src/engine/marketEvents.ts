@@ -1,5 +1,8 @@
-import { getTileByPosition, getTilesBySector, SECTOR_IDS } from "../config/board.js";
-import { hashSeed } from "./deckShuffle.js";
+import {
+  getTileByPosition,
+  getTilesBySector,
+  SECTOR_IDS,
+} from "../config/board.js";
 import { OPTIONAL_MARKET_EVENT_CARDS_REGISTRY } from "../config/marketEventCards.js";
 import {
   MARKET_EVENT_DECK,
@@ -7,7 +10,7 @@ import {
   type MarketEventCard,
 } from "../config/marketEventDeck.js";
 import { startDeclineAuction } from "./auction.js";
-import { shuffleDeterministic } from "./deckShuffle.js";
+import { hashSeed, shuffleDeterministic } from "./deckShuffle.js";
 import { rollFairD6 } from "./dice.js";
 import type {
   ApplyActionResult,
@@ -388,8 +391,10 @@ function resolveSpecificEffect(
       );
       if (donors.length === 0) return true;
       const donor =
-        donors[hashSeed(`${state.gameId}:${state.round}:${cardId}:donor`) %
-          donors.length];
+        donors[
+          hashSeed(`${state.gameId}:${state.round}:${cardId}:donor`) %
+            donors.length
+        ];
       const recipients = activePlayers(state).filter(
         (player) => player.playerId !== donor.playerId,
       );
@@ -596,21 +601,21 @@ export function handleInsiderDiscardMarketEvent(
   newState.marketEventDeckRemaining = [...remaining, discarded];
   newState.pendingInsiderPeek = null;
 
-  const logs: LogEntry[] = [
-    {
-      playerId,
-      actionType: "insider_discarded_market_event",
-      payload: { cardId: discarded, returnedTo: "deck_bottom" },
-    },
-  ];
-
-  return drawAndResolveMarketEvent(
+  const resolved = drawAndResolveMarketEvent(
     newState,
     playerId,
     peek.trigger,
     peek.tilePosition,
     { skipInsiderPeek: true },
   );
+
+  resolved.logEntries.unshift({
+    playerId,
+    actionType: "insider_discarded_market_event",
+    payload: { cardId: discarded, returnedTo: "deck_bottom" },
+  });
+
+  return resolved;
 }
 
 function finishMarketEventDraw(
