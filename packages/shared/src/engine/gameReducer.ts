@@ -80,11 +80,17 @@ const KNOWN_ENGINE_ERROR_KEYS = new Set<string>([
   ...Object.values(GameErrorKeys),
 ]);
 
-function mapEngineThrow(err: unknown): GameEngineErrorKey {
-  if (typeof err === "string" && KNOWN_ENGINE_ERROR_KEYS.has(err)) {
+function mapEngineThrow(err: string): GameEngineErrorKey {
+  if (KNOWN_ENGINE_ERROR_KEYS.has(err)) {
     return err as GameEngineErrorKey;
   }
   return GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED;
+}
+
+function toLogPayload(payload: unknown): Record<string, unknown> {
+  return payload && typeof payload === "object"
+    ? (payload as Record<string, unknown>)
+    : {};
 }
 
 function toInternalState(state: EngineGameState) {
@@ -118,9 +124,12 @@ function applyViaAuthoritativeStateMachine(
       ok: true,
       state: toEngineState(result.state),
       logActionType: primary?.actionType ?? action.type,
-      logPayload: (primary?.payload ?? {}) as Record<string, unknown>,
+      logPayload: toLogPayload(primary?.payload),
     };
   } catch (err) {
+    if (typeof err !== "string") {
+      throw err;
+    }
     return { ok: false, errorKey: mapEngineThrow(err) };
   }
 }

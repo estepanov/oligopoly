@@ -1,4 +1,10 @@
-import type { AiPersonality, GameAction } from "@oligopoly/validation";
+import type {
+  AiPersonality,
+  GameAction,
+  GamePhase,
+  InGameHandshakeAgreement,
+  PendingInsiderPeek,
+} from "@oligopoly/validation";
 import type {
   AuctionResumePhase,
   PendingAuctionState,
@@ -28,15 +34,7 @@ export interface FinalRoundState {
   remainingTurnPlayerIds: string[];
 }
 
-export interface HandshakeAgreementState {
-  id: string;
-  partyA: string;
-  partyB: string;
-  summary: string;
-  partySignatures: Record<string, boolean>;
-  status: "pending" | "active" | "broken";
-  createdRound: number;
-}
+export type HandshakeAgreementState = InGameHandshakeAgreement;
 
 export interface PendingSyndicateVoteState {
   syndicateId: string;
@@ -44,12 +42,9 @@ export interface PendingSyndicateVoteState {
   votes: Record<string, boolean>;
 }
 
-export interface PendingInsiderPeekState {
-  cardId: string;
-  drawingPlayerId: string;
+export type PendingInsiderPeekState = PendingInsiderPeek & {
   trigger: "round_start" | "tile";
-  tilePosition?: number | string;
-}
+};
 
 export interface MarketEventModifiersState {
   utilityRentMultiplier?: number;
@@ -60,7 +55,7 @@ export interface MarketEventModifiersState {
 export interface InternalGameState {
   gameId: string;
   round: number;
-  phase: string;
+  phase: GamePhase;
   currentPlayerIndex: number;
   turnOrder: string[];
   freeMarketPool: number;

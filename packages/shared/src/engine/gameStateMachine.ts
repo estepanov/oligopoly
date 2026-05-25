@@ -3,6 +3,7 @@
 // Action implementations live in gameStateActionHandlers.ts.
 // ---------------------------------------------------------------------------
 
+import type { GamePhase } from "@oligopoly/validation";
 import { ALL_TILES } from "../config/board.js";
 import {
   handleDisruptionNullifyResponse,
@@ -147,9 +148,8 @@ type NonTurnActionType =
   | "set_rate_card";
 type TurnActionType = Exclude<GameActionType, NonTurnActionType>;
 
-const PHASE_ACTION_ROUTES: Record<
-  string,
-  Partial<Record<GameActionType, PhaseActionHandler>>
+const PHASE_ACTION_ROUTES: Partial<
+  Record<GamePhase, Partial<Record<GameActionType, PhaseActionHandler>>>
 > = {
   waiting_for_disruption_nullify: {
     use_affinity: (state, playerId, action) =>
@@ -258,13 +258,6 @@ function withPrimaryLogIndex(
     return result;
   }
 
-  const actorLogIndex = result.logEntries.findIndex(
-    (entry) => entry.playerId === playerId,
-  );
-  if (actorLogIndex >= 0) {
-    return { ...result, primaryLogIndex: actorLogIndex };
-  }
-
   const matchingTypeIndex = result.logEntries.findIndex(
     (entry) => entry.actionType === actionType,
   );
@@ -272,13 +265,17 @@ function withPrimaryLogIndex(
     return { ...result, primaryLogIndex: matchingTypeIndex };
   }
 
-  if (result.logEntries.length === 0) {
-    return result;
+  const actorLogIndex = result.logEntries.findIndex(
+    (entry) => entry.playerId === playerId,
+  );
+  if (actorLogIndex >= 0) {
+    return { ...result, primaryLogIndex: actorLogIndex };
   }
-  if (result.logEntries.length === 1) {
+
+  if (result.logEntries.length > 0) {
     return { ...result, primaryLogIndex: 0 };
   }
-  throw "game.action_not_implemented";
+  return result;
 }
 
 export function applyAction(
