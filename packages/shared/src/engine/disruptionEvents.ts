@@ -474,6 +474,7 @@ export function resolvePendingDisruptionCard(
   newState.pendingDisruptionNullify = null;
 
   if (remainingDraws > 0) {
+    newState.phase = resolvePostMovePhase(newState, pending.drawingPlayerId);
     const continued = drawAndResolveDisruptionCards(
       newState,
       pending.drawingPlayerId,
@@ -481,8 +482,18 @@ export function resolvePendingDisruptionCard(
       pending.trigger as DisruptionTrigger,
       pending.tilePosition,
     );
+    const continuedState = continued.state;
+    if (
+      continuedState.phase === "waiting_for_disruption_nullify" &&
+      !continuedState.pendingDisruptionNullify
+    ) {
+      continuedState.phase = resolvePostMovePhase(
+        continuedState,
+        pending.drawingPlayerId,
+      );
+    }
     return {
-      state: continued.state,
+      state: continuedState,
       logEntries: [...logs, ...continued.logEntries],
     };
   }

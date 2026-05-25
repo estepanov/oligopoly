@@ -152,9 +152,7 @@ export async function processGameCompletion(
   const achievementStatements: D1PreparedStatement[] = [];
 
   for (const playerId of playerIds) {
-    if (state.kickedPlayerIds?.includes(playerId)) {
-      continue;
-    }
+    const isKicked = state.kickedPlayerIds?.includes(playerId) ?? false;
 
     const statsRow = await db
       .prepare(
@@ -169,12 +167,6 @@ export async function processGameCompletion(
         recent_games_json: string;
       }>();
 
-    const gamesPlayed = (statsRow?.games_played ?? 0) + 1;
-    const won = playerWonGame(state, playerId, winnerId);
-    const wins = (statsRow?.wins ?? 0) + (won ? 1 : 0);
-    const tradesCompleted = statsRow?.trades_completed ?? 0;
-    const auctionsWon = statsRow?.auctions_won ?? 0;
-
     const recentGames = statsRow?.recent_games_json
       ? (JSON.parse(statsRow.recent_games_json) as RecentGameSummary[])
       : [];
@@ -183,6 +175,43 @@ export async function processGameCompletion(
       result: gameResultForPlayer(state, playerId, winnerId),
       endedAt,
     });
+
+    if (isKicked) {
+      if (statsRow) {
+        statements.push(
+          db
+            .prepare(
+              "UPDATE user_stats SET recent_games_json = ? WHERE user_id = ?",
+            )
+            .bind(
+              JSON.stringify(recentGames.slice(0, MAX_RECENT_GAMES)),
+              playerId,
+            ),
+        );
+      } else {
+        statements.push(
+          db
+            .prepare(
+              "INSERT INTO user_stats (user_id, games_played, wins, trades_completed, auctions_won, recent_games_json) VALUES (?, ?, ?, ?, ?, ?)",
+            )
+            .bind(
+              playerId,
+              0,
+              0,
+              0,
+              0,
+              JSON.stringify(recentGames.slice(0, MAX_RECENT_GAMES)),
+            ),
+        );
+      }
+      continue;
+    }
+
+    const gamesPlayed = (statsRow?.games_played ?? 0) + 1;
+    const won = playerWonGame(state, playerId, winnerId);
+    const wins = (statsRow?.wins ?? 0) + (won ? 1 : 0);
+    const tradesCompleted = statsRow?.trades_completed ?? 0;
+    const auctionsWon = statsRow?.auctions_won ?? 0;
 
     if (statsRow) {
       statements.push(

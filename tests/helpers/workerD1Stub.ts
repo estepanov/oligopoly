@@ -269,6 +269,14 @@ export function createWorkerD1Stub(): WorkerD1Stub {
       return { results: row ? [row] : [], first: row };
     }
 
+    if (trimmed.includes("SELECT player_ids_json FROM games WHERE id = ?")) {
+      const row = tables.games.find((r) => r.id === binds[0]) ?? null;
+      return {
+        results: row ? [row] : [],
+        first: row ? { player_ids_json: row.player_ids_json } : null,
+      };
+    }
+
     if (
       trimmed.includes("SELECT id, player_ids_json FROM games WHERE id = ?")
     ) {
@@ -419,6 +427,18 @@ export function createWorkerD1Stub(): WorkerD1Stub {
         auctions_won,
         recent_games_json,
       });
+      return { results: [], success: true };
+    }
+
+    if (
+      trimmed.startsWith(
+        "UPDATE user_stats SET recent_games_json = ? WHERE user_id = ?",
+      )
+    ) {
+      const row = tables.user_stats.find((r) => r.user_id === binds[1]);
+      if (row) {
+        row.recent_games_json = binds[0];
+      }
       return { results: [], success: true };
     }
 
