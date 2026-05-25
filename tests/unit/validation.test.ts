@@ -1,7 +1,6 @@
 import {
-  AuctionTypeSchema,
   AiPersonalitySchema,
-  GameRealtimeEventSchema,
+  AuctionTypeSchema,
   BindingContractSchema,
   BindingContractTermSchema,
   BoardTileSchema,
@@ -9,6 +8,7 @@ import {
   CurrencyMultiplierSchema,
   GameActionSchema,
   GamePhaseSchema,
+  GameRealtimeEventSchema,
   GameStateSchema,
   HandshakeAgreementSchema,
   HealthResponseSchema,

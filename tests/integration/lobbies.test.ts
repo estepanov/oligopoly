@@ -960,9 +960,9 @@ describe("POST /api/lobbies/:id/invite + join/:token", () => {
 });
 
 describe("GET /api/lobbies/:id/ws", () => {
-  it("returns 501 stub", async () => {
+  it("requires a WebSocket upgrade", async () => {
     const res = await requestWithEnv("/api/lobbies/some-id/ws");
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(426);
   });
 });
 

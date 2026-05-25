@@ -154,8 +154,8 @@ export { applyGameAction } from "./engine/gameReducer.js";
 export type {
   ApplyActionResult,
   GameActionInput,
-  InternalGameState,
   InternalAiPlayerState,
+  InternalGameState,
   InternalPlayerState,
   InternalTileState,
   LogEntry,

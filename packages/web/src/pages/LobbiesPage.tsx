@@ -1080,11 +1080,11 @@ export function LobbiesPage() {
                 </li>
               ))}
             </ul>
-            {selectedLobby.aiSlots.length > 0 && (
+            {(selectedLobby.aiSlots ?? []).length > 0 && (
               <>
                 <h3 className="subheading">AI seats</h3>
                 <ul className="plainList">
-                  {selectedLobby.aiSlots.map((slot) => (
+                  {(selectedLobby.aiSlots ?? []).map((slot) => (
                     <li key={slot.id}>
                       {slot.name} ({slot.personality})
                     </li>

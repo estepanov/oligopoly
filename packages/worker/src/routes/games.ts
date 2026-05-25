@@ -558,7 +558,7 @@ gameRoutes.post("/:id/ai/step", async (c) => {
 });
 
 async function upgradeGameWebSocket(c: Context<AppEnv>, spectator: boolean) {
-  const id = c.req.param("id");
+  const id = c.req.param("id") ?? "";
   if (c.req.header("Upgrade") !== "websocket") {
     return c.json({ error: "Expected WebSocket upgrade" }, 426);
   }

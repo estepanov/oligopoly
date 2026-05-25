@@ -190,16 +190,16 @@ describe("applyGameAction", () => {
     expect(second.state.phase).toBe("action");
   });
 
-  it("returns ACTION_NOT_IMPLEMENTED for buy_tile", () => {
+  it("logs contracted non-core actions instead of returning ACTION_NOT_IMPLEMENTED", () => {
     const state = minimalTwoPlayerState("action");
     const r = applyGameAction(
       state,
       { type: "buy_tile", tilePosition: 1 },
       { actorId: "alice" },
     );
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.errorKey).toBe(GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.logActionType).toBe("buy_tile");
     }
   });
 });

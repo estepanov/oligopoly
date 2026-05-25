@@ -59,7 +59,7 @@ const LeaveLobbyResponseSchema = z.object({
 });
 
 export type Lobby = z.infer<typeof LobbySchema> & { status: LobbyStatus };
-export type CreateLobbyInput = z.infer<typeof CreateLobbyInputSchema>;
+export type CreateLobbyInput = z.input<typeof CreateLobbyInputSchema>;
 export type StartLobbyResponse = z.infer<typeof StartLobbyResponseSchema>;
 export type LobbiesListResponse = z.infer<typeof LobbiesListResponseSchema>;
 export type LeaveLobbyResponse = z.infer<typeof LeaveLobbyResponseSchema>;

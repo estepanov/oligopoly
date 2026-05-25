@@ -24,6 +24,7 @@ import { gameRoutes } from "./routes/games";
 import { leaderboardRoutes } from "./routes/leaderboard";
 import { lobbyRoutes } from "./routes/lobbies";
 import { userRoutes } from "./routes/users";
+
 export { GameRoom, LobbyRoom } from "./durable/rooms";
 
 type Bindings = {
