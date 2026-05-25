@@ -12,6 +12,7 @@ import {
   getTileByPosition,
   TOTAL_BOARD_MARKET_VALUE,
 } from "../config/board.js";
+import { hasPlayerAffinity } from "./affinity.js";
 import {
   type PendingAuctionState,
   recordAuctionSubmission,
@@ -52,6 +53,7 @@ import {
   ACTION_POINTS_PER_TURN,
   CORPORATE_TAX_I,
   CORPORATE_TAX_II,
+  DIAGONAL_TRAVERSE_BONUS,
   FREE_MARKET_MINIMUM,
   GOVERNMENT_GRANT,
   PASS_START_BONUS,
@@ -157,6 +159,28 @@ function getPlayer(
   playerId: string,
 ): InternalPlayerState | undefined {
   return state.players.find((p) => p.playerId === playerId);
+}
+
+function awardLastMileDiagonalBonus(
+  state: InternalGameState,
+  playerId: string,
+  logs: LogEntry[],
+): void {
+  if (!hasPlayerAffinity(state, playerId, "last_mile_logistics")) return;
+
+  const player = getPlayer(state, playerId);
+  if (!player) return;
+
+  player.capital += DIAGONAL_TRAVERSE_BONUS;
+  logs.push({
+    playerId,
+    actionType: "affinity_bonus",
+    payload: {
+      affinityId: "last_mile_logistics",
+      amount: DIAGONAL_TRAVERSE_BONUS,
+      reason: "diagonal_traverse",
+    },
+  });
 }
 
 function getCurrentPlayer(state: InternalGameState): InternalPlayerState {
@@ -448,6 +472,7 @@ function handleRollDice(
       // Roll off diagonal -> arrive at FREE MARKET, collect pool,
       // then continue remaining steps on the perimeter from position 20.
       p.isOnDiagonal = false;
+      awardLastMileDiagonalBonus(newState, playerId, logs);
       const pool = Math.max(newState.freeMarketPool, FREE_MARKET_MINIMUM);
       p.capital += pool;
       newState.freeMarketPool = 0;
@@ -503,6 +528,7 @@ function handleRollDice(
           } else {
             // Overran the diagonal — arrive at FREE MARKET + continue
             p.isOnDiagonal = false;
+            awardLastMileDiagonalBonus(newState, playerId, logs);
             const pool = Math.max(newState.freeMarketPool, FREE_MARKET_MINIMUM);
             p.capital += pool;
             newState.freeMarketPool = 0;
@@ -1055,7 +1081,11 @@ function handleDevelopTile(
     throw "game.max_development";
 
   const tokenNum = tileState.developmentTokens + 1;
-  const cost = calculateDevelopmentCost(tile.cost!, tokenNum);
+  const cost = calculateDevelopmentCost(
+    tile.cost!,
+    tokenNum,
+    hasPlayerAffinity(state, playerId, "lean_manufacturing"),
+  );
   if (p.capital < cost) throw "game.insufficient_capital";
 
   const newState = deepClone(state);
@@ -1142,7 +1172,10 @@ function handleRedeemTile(
   const tile = getTileByPosition(pos);
   if (!tile || tile.cost === null) throw "game.invalid_action";
 
-  const redemptionCost = calculateRedemptionCost(tile.cost);
+  const redemptionCost = calculateRedemptionCost(
+    tile.cost,
+    hasPlayerAffinity(state, playerId, "proptech_pioneer"),
+  );
   const p = getPlayer(state, playerId)!;
   if (p.capital < redemptionCost) throw "game.insufficient_capital";
 

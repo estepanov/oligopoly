@@ -31,6 +31,7 @@ const ACTION_LABELS: Record<string, string> = {
   disruption_deck_empty: "Disruption deck empty",
   disruption_discarded_hidden: "Disruption card discarded unseen",
   black_market_relay_drawn: "Black market relay resolved",
+  affinity_bonus: "Affinity bonus collected",
   flash_crash_resolved: "Flash crash resolved",
   regulation_released: "Released from regulation",
 };
