@@ -91,7 +91,7 @@ export function recordOpposingSectorLanding(
     if (syndicate.memberIds.includes(visitorId)) {
       continue;
     }
-    card.roundsWithoutOpposingLanding = 0;
+    card.roundsWithoutLanding = 0;
   }
   return newState;
 }
@@ -104,15 +104,15 @@ export function tickRateCardPressureResets(
   if (!newState.rateCards?.length) return newState;
 
   for (const card of newState.rateCards) {
-    card.roundsWithoutOpposingLanding += 1;
-    if (card.roundsWithoutOpposingLanding >= RATE_CARD_RESET_ROUNDS) {
+    card.roundsWithoutLanding += 1;
+    if (card.roundsWithoutLanding >= RATE_CARD_RESET_ROUNDS) {
       card.multiplier = 1;
       logs.push({
         playerId: null,
         actionType: "rate_card_reset",
         payload: { sectorId: card.sectorId, syndicateId: card.syndicateId },
       });
-      card.roundsWithoutOpposingLanding = 0;
+      card.roundsWithoutLanding = 0;
     }
   }
   return newState;
@@ -133,7 +133,7 @@ export function upsertRateCard(
     sectorId,
     syndicateId,
     multiplier: clamped,
-    roundsWithoutOpposingLanding: 0,
+    roundsWithoutLanding: 0,
   };
   if (existing >= 0) {
     cards[existing] = next;

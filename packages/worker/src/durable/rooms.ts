@@ -1,5 +1,6 @@
 import {
   findNextAiAuctionActor,
+  findNextAiCoordinationActor,
   isAiControlledActor,
   normalizeGameState,
 } from "@oligopoly/shared";
@@ -273,6 +274,17 @@ export class GameRoom extends RealtimeRoom {
       !(await this.state.storage.get<boolean>("aiLoopRunning"))
     ) {
       if (findNextAiAuctionActor(state)) {
+        await this.runAiLoop(gameId);
+        return;
+      }
+    }
+
+    if (
+      state.phase === "syndicate_coordination" &&
+      this.env.DB &&
+      !(await this.state.storage.get<boolean>("aiLoopRunning"))
+    ) {
+      if (findNextAiCoordinationActor(state)) {
         await this.runAiLoop(gameId);
         return;
       }

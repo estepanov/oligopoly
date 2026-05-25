@@ -7,7 +7,7 @@ export interface RateCardState {
   sectorId: string;
   syndicateId: string;
   multiplier: number;
-  roundsWithoutOpposingLanding: number;
+  roundsWithoutLanding: number;
 }
 
 export interface PendingForeclosureState {

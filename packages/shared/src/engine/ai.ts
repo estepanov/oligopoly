@@ -21,6 +21,22 @@ function currentPlayerId(state: InternalGameState): string | null {
   return state.turnOrder[state.currentPlayerIndex] ?? null;
 }
 
+export function findNextAiCoordinationActor(
+  state: InternalGameState,
+): string | null {
+  if (state.phase !== "syndicate_coordination") return null;
+
+  for (const playerId of state.turnOrder) {
+    if (state.eliminatedPlayerIds.includes(playerId)) continue;
+    if (!isAiControlledActor(state, playerId)) continue;
+    const player = state.players.find((p) => p.playerId === playerId);
+    if (player?.coordinationAcknowledged) continue;
+    return playerId;
+  }
+
+  return null;
+}
+
 export function findNextAiAuctionActor(
   state: InternalGameState,
 ): string | null {
@@ -82,6 +98,12 @@ export function chooseAiActionForPlayer(
 
   const personality =
     resolveAiPersonality(state, actorId) ?? defaultPersonality;
+
+  if (state.phase === "syndicate_coordination") {
+    const player = state.players.find((p) => p.playerId === actorId);
+    if (player?.coordinationAcknowledged) return null;
+    return { actorId, personality, action: { type: "end_coordination" } };
+  }
 
   if (state.phase === "waiting_for_auction_bids" && state.pendingAuction) {
     if (
@@ -168,6 +190,11 @@ export function chooseAiActionForPlayer(
 export function chooseAiAction(state: InternalGameState): AiDecision | null {
   if (state.phase === "waiting_for_auction_bids") {
     const actorId = findNextAiAuctionActor(state);
+    return actorId ? chooseAiActionForPlayer(state, actorId) : null;
+  }
+
+  if (state.phase === "syndicate_coordination") {
+    const actorId = findNextAiCoordinationActor(state);
     return actorId ? chooseAiActionForPlayer(state, actorId) : null;
   }
 

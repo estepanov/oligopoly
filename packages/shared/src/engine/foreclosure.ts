@@ -19,6 +19,7 @@ export function startForeclosureSequence(
   debtRemaining: number,
   resumePhase: string,
   logs: LogEntry[],
+  creditorId?: string,
 ): InternalGameState {
   const tileQueue = getMortgagedTileQueue(state, debtorId);
   const newState = deepClone(state);
@@ -43,6 +44,7 @@ export function startForeclosureSequence(
     debtRemaining,
     tileQueue,
     resumePhase,
+    creditorId,
   };
 
   return startNextForeclosureAuction(newState, logs);
@@ -110,6 +112,15 @@ export function applyForeclosureAuctionProceeds(
   const remaining = pending.debtRemaining - applied;
   newState.pendingForeclosure = { ...pending, debtRemaining: remaining };
 
+  if (pending.creditorId && applied > 0) {
+    const creditor = getPlayer(newState, pending.creditorId);
+    if (creditor) {
+      creditor.capital += applied;
+      creditor.rentCollectedTotal =
+        (creditor.rentCollectedTotal ?? 0) + applied;
+    }
+  }
+
   const debtor = getPlayer(newState, pending.debtorId);
   const surplus = proceeds - applied;
   if (debtor && surplus > 0) {
@@ -119,7 +130,12 @@ export function applyForeclosureAuctionProceeds(
   logs.push({
     playerId: pending.debtorId,
     actionType: "foreclosure_proceeds",
-    payload: { proceeds, debtRemaining: remaining },
+    payload: {
+      proceeds,
+      applied,
+      creditorId: pending.creditorId ?? null,
+      debtRemaining: remaining,
+    },
   });
 
   if (newState.pendingForeclosure.tileQueue.length > 0) {

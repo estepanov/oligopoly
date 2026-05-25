@@ -70,6 +70,7 @@ export function settleRentPayment(
     shortfall,
     state.phase,
     logs,
+    ownerId,
   );
   return {
     state: foreclosureState,

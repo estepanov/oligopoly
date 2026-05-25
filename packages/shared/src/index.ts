@@ -122,6 +122,7 @@ export {
   chooseAiAction,
   chooseAiActionForPlayer,
   findNextAiAuctionActor,
+  findNextAiCoordinationActor,
 } from "./engine/ai.js";
 export {
   applyTimeoutTakeover,
@@ -203,6 +204,10 @@ export {
   resolveFlashCrash,
   resolvePendingDisruptionCard,
 } from "./engine/disruptionEvents.js";
+export {
+  applyForeclosureAuctionProceeds,
+  startForeclosureSequence,
+} from "./engine/foreclosure.js";
 export { collectFreeMarketPool } from "./engine/freeMarket.js";
 export type {
   ApplyGameActionContext,

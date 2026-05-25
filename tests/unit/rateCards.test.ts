@@ -70,7 +70,7 @@ describe("rateCards", () => {
           sectorId: "emerging_tech",
           syndicateId: "s1",
           multiplier: 1.5,
-          roundsWithoutOpposingLanding: 2,
+          roundsWithoutLanding: 2,
         },
       ],
       settings: {},
@@ -81,13 +81,13 @@ describe("rateCards", () => {
       "p1",
       "emerging_tech",
     );
-    expect(afterMember.rateCards?.[0].roundsWithoutOpposingLanding).toBe(2);
+    expect(afterMember.rateCards?.[0].roundsWithoutLanding).toBe(2);
 
     const afterOpponent = recordOpposingSectorLanding(
       state,
       "p3",
       "emerging_tech",
     );
-    expect(afterOpponent.rateCards?.[0].roundsWithoutOpposingLanding).toBe(0);
+    expect(afterOpponent.rateCards?.[0].roundsWithoutLanding).toBe(0);
   });
 });
