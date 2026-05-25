@@ -1,3 +1,4 @@
+import { isOptionalRuleEnabled } from "@oligopoly/shared";
 import type {
   GameNegotiationThread,
   GameState,
@@ -86,9 +87,7 @@ function redactPendingAuction(
 function isOpenNegotiationRuleEnabled(
   settings: PersistedGameState["settings"],
 ): boolean {
-  return Array.isArray(settings?.optionalRuleIds)
-    ? settings.optionalRuleIds.includes("open_negotiation")
-    : false;
+  return isOptionalRuleEnabled(settings, "open_negotiation");
 }
 
 function buildClientGameStateBase(

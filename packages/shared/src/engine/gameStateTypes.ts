@@ -180,6 +180,7 @@ export interface GameActionInput {
 export interface ApplyActionResult {
   state: InternalGameState;
   logEntries: LogEntry[];
+  primaryLogIndex?: number;
 }
 
 export interface LogEntry {

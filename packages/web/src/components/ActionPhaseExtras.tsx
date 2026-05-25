@@ -1,3 +1,4 @@
+import { isOptionalRuleEnabled } from "@oligopoly/shared";
 import type { GameAction, GameState } from "@oligopoly/validation";
 import {
   isDisruptionNullifyPhase,
@@ -30,7 +31,6 @@ export function ActionPhaseExtras({
   const me = myPlayerId ? playerById(state, myPlayerId) : undefined;
   const others = otherHumanPlayers(state, myPlayerId);
   const affinityId = state.myAffinityCardId ?? null;
-  const optionalRules = state.settings?.optionalRuleIds ?? [];
   const handshakes = state.handshakeAgreements ?? [];
 
   if (isDisruptionNullifyPhase(state) && myPlayerId) {
@@ -103,7 +103,7 @@ export function ActionPhaseExtras({
         onAction={onAction}
       />
 
-      {optionalRules.includes("hostile_takeover") &&
+      {isOptionalRuleEnabled(state.settings, "hostile_takeover") &&
         others.length > 0 &&
         !me?.hostileTakeoverUsed && (
           <OpponentTileActionForm
@@ -125,25 +125,26 @@ export function ActionPhaseExtras({
           />
         )}
 
-      {optionalRules.includes("market_manipulation") && others.length > 0 && (
-        <OpponentTileActionForm
-          className="manipulationForm"
-          state={state}
-          opponents={others}
-          tileNames={tileNames}
-          busy={busy}
-          targetLabel="Freeze tile owned by"
-          tileLabelText="Tile"
-          submitLabel="Freeze tile (¤50)"
-          onSubmit={(targetPlayerId, tilePosition) =>
-            onAction("Market manipulation", {
-              type: "market_manipulation",
-              targetPlayerId,
-              tilePosition,
-            })
-          }
-        />
-      )}
+      {isOptionalRuleEnabled(state.settings, "market_manipulation") &&
+        others.length > 0 && (
+          <OpponentTileActionForm
+            className="manipulationForm"
+            state={state}
+            opponents={others}
+            tileNames={tileNames}
+            busy={busy}
+            targetLabel="Freeze tile owned by"
+            tileLabelText="Tile"
+            submitLabel="Freeze tile (¤50)"
+            onSubmit={(targetPlayerId, tilePosition) =>
+              onAction("Market manipulation", {
+                type: "market_manipulation",
+                targetPlayerId,
+                tilePosition,
+              })
+            }
+          />
+        )}
       <AuctionAffinityActionsPanel
         state={state}
         myPlayerId={myPlayerId}

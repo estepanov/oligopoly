@@ -126,11 +126,10 @@ function applyViaAuthoritativeStateMachine(
   try {
     const internal = toInternalState(state);
     const result = applyAction(internal, ctx.actorId, actionInput);
-    const primary = selectPrimaryLogEntry(
-      ctx.actorId,
-      action.type,
-      result.logEntries,
-    );
+    const primary =
+      result.primaryLogIndex !== undefined
+        ? result.logEntries[result.primaryLogIndex]
+        : selectPrimaryLogEntry(ctx.actorId, action.type, result.logEntries);
     return {
       ok: true,
       state: toEngineState(result.state),

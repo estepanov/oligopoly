@@ -26,6 +26,9 @@ export type OptionalMarketEventContext = {
   logs: LogEntry[];
   trigger?: MarketEventTrigger;
 };
+export type OptionalMarketEventHandler = (
+  ctx: OptionalMarketEventContext,
+) => boolean;
 
 function auctionResumePhaseForTrigger(
   trigger: MarketEventTrigger | undefined,
@@ -135,9 +138,9 @@ function pickSeededOwnedTile(
   return positions[index] ?? null;
 }
 
-const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
+export const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
   string,
-  (ctx: OptionalMarketEventContext) => boolean
+  OptionalMarketEventHandler
 > = {
   optional_leveraged_buyout: ({ state, drawingPlayerId, logs, trigger }) => {
     const target = playerWithFewestTiles(state);

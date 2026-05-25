@@ -13,12 +13,16 @@ import type {
   LogEntry,
 } from "./gameStateTypes.js";
 import { activePlayers, adjustCapital } from "./marketEventPrimitives.js";
-import { resolveOptionalMarketEventEffect } from "./optionalMarketEventEffects.js";
+import {
+  OPTIONAL_MARKET_EVENT_HANDLERS,
+  type OptionalMarketEventContext,
+} from "./optionalMarketEventEffects.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
 import { enterWaitingForRoll } from "./turnPhase.js";
 
 export type MarketEventTrigger = "round_start" | "tile";
+type MarketEventHandler = (ctx: OptionalMarketEventContext) => boolean;
 
 function isKnownMarketEventCardId(cardId: string): boolean {
   return (
@@ -162,6 +166,102 @@ function resolveCategoryEffect(
   }
 }
 
+const STANDARD_MARKET_EVENT_HANDLERS: Record<string, MarketEventHandler> = {
+  stimulus_package: ({ state, cardId, logs }) => {
+    applyToAllPlayers(state, 100, logs, cardId);
+    return true;
+  },
+  tech_boom: ({ state, cardId, logs }) => {
+    applyToAllPlayers(state, 75, logs, cardId);
+    return true;
+  },
+  bull_market: ({ state, cardId, logs }) => {
+    applyToAllPlayers(state, 75, logs, cardId);
+    return true;
+  },
+  innovation_grant: ({ state, cardId, drawingPlayerId, logs }) => {
+    const player = getPlayer(state, drawingPlayerId);
+    if (!player) return true;
+    const delta = adjustCapital(player, 150);
+    logs.push({
+      playerId: drawingPlayerId,
+      actionType: "market_event_capital_change",
+      payload: { cardId, delta, capital: player.capital },
+    });
+    return true;
+  },
+  ipo_windfall: ({ state, cardId, drawingPlayerId, logs }) => {
+    const player = getPlayer(state, drawingPlayerId);
+    if (!player) return true;
+    const delta = adjustCapital(player, 150);
+    logs.push({
+      playerId: drawingPlayerId,
+      actionType: "market_event_capital_change",
+      payload: { cardId, delta, capital: player.capital },
+    });
+    return true;
+  },
+  market_crash: ({ state, cardId, logs }) => {
+    for (const player of activePlayers(state)) {
+      const loss = Math.floor(player.capital * 0.1);
+      const delta = adjustCapital(player, -loss);
+      logs.push({
+        playerId: player.playerId,
+        actionType: "market_event_capital_change",
+        payload: { cardId, delta, capital: player.capital },
+      });
+    }
+    return true;
+  },
+  financial_meltdown: ({ state, cardId, logs }) => {
+    for (const player of activePlayers(state)) {
+      const loss = Math.floor(player.capital * 0.1);
+      const delta = adjustCapital(player, -loss);
+      logs.push({
+        playerId: player.playerId,
+        actionType: "market_event_capital_change",
+        payload: { cardId, delta, capital: player.capital },
+      });
+    }
+    return true;
+  },
+  recession: ({ state, cardId, logs }) => {
+    applyToAllPlayers(state, -75, logs, cardId);
+    return true;
+  },
+  windfall_tax: ({ state, cardId, logs }) => {
+    const targetId = richestPlayerId(state);
+    if (!targetId) return true;
+    const player = getPlayer(state, targetId);
+    if (!player) return true;
+    const payment = Math.min(player.capital, 100);
+    player.capital -= payment;
+    state.freeMarketPool += payment;
+    logs.push({
+      playerId: targetId,
+      actionType: "market_event_capital_change",
+      payload: { cardId, delta: -payment, capital: player.capital },
+    });
+    return true;
+  },
+  whistleblower: ({ state, cardId, drawingPlayerId, logs }) => {
+    const player = getPlayer(state, drawingPlayerId);
+    if (!player) return true;
+    const delta = adjustCapital(player, -50);
+    logs.push({
+      playerId: drawingPlayerId,
+      actionType: "market_event_capital_change",
+      payload: { cardId, delta, capital: player.capital },
+    });
+    return true;
+  },
+};
+
+const MARKET_EVENT_HANDLERS: Record<string, MarketEventHandler> = {
+  ...STANDARD_MARKET_EVENT_HANDLERS,
+  ...OPTIONAL_MARKET_EVENT_HANDLERS,
+};
+
 function resolveSpecificEffect(
   state: InternalGameState,
   cardId: string,
@@ -169,83 +269,11 @@ function resolveSpecificEffect(
   logs: LogEntry[],
   trigger?: MarketEventTrigger,
 ): boolean {
-  if (
-    resolveOptionalMarketEventEffect(
-      state,
-      cardId,
-      drawingPlayerId,
-      logs,
-      trigger,
-    )
-  ) {
-    return true;
+  const handler = MARKET_EVENT_HANDLERS[cardId];
+  if (!handler) {
+    return false;
   }
-
-  switch (cardId) {
-    case "stimulus_package":
-      applyToAllPlayers(state, 100, logs, cardId);
-      return true;
-    case "tech_boom":
-    case "bull_market":
-      applyToAllPlayers(state, 75, logs, cardId);
-      return true;
-    case "innovation_grant":
-    case "ipo_windfall": {
-      const player = getPlayer(state, drawingPlayerId);
-      if (!player) return true;
-      const delta = adjustCapital(player, 150);
-      logs.push({
-        playerId: drawingPlayerId,
-        actionType: "market_event_capital_change",
-        payload: { cardId, delta, capital: player.capital },
-      });
-      return true;
-    }
-    case "market_crash":
-    case "financial_meltdown": {
-      for (const player of activePlayers(state)) {
-        const loss = Math.floor(player.capital * 0.1);
-        const delta = adjustCapital(player, -loss);
-        logs.push({
-          playerId: player.playerId,
-          actionType: "market_event_capital_change",
-          payload: { cardId, delta, capital: player.capital },
-        });
-      }
-      return true;
-    }
-    case "recession":
-      applyToAllPlayers(state, -75, logs, cardId);
-      return true;
-    case "windfall_tax": {
-      const targetId = richestPlayerId(state);
-      if (!targetId) return true;
-      const player = getPlayer(state, targetId);
-      if (!player) return true;
-      const payment = Math.min(player.capital, 100);
-      player.capital -= payment;
-      state.freeMarketPool += payment;
-      logs.push({
-        playerId: targetId,
-        actionType: "market_event_capital_change",
-        payload: { cardId, delta: -payment, capital: player.capital },
-      });
-      return true;
-    }
-    case "whistleblower": {
-      const player = getPlayer(state, drawingPlayerId);
-      if (!player) return true;
-      const delta = adjustCapital(player, -50);
-      logs.push({
-        playerId: drawingPlayerId,
-        actionType: "market_event_capital_change",
-        payload: { cardId, delta, capital: player.capital },
-      });
-      return true;
-    }
-    default:
-      return false;
-  }
+  return handler({ state, cardId, drawingPlayerId, logs, trigger });
 }
 
 export function shouldOfferInsiderPeek(
@@ -260,21 +288,38 @@ export function shouldOfferInsiderPeek(
   );
 }
 
-export function handleInsiderKeepMarketEvent(
+type ValidatedInsiderPeekContext = {
+  newState: InternalGameState;
+  peek: NonNullable<InternalGameState["pendingInsiderPeek"]>;
+  deck: string[];
+};
+
+function withValidatedInsiderPeek(
   state: InternalGameState,
   playerId: string,
-): ApplyActionResult {
+): ValidatedInsiderPeekContext {
   if (state.phase !== "waiting_for_insider_peek" || !state.pendingInsiderPeek) {
     throw "game.invalid_phase";
   }
   const peek = state.pendingInsiderPeek;
-  if (peek.drawingPlayerId !== playerId) throw "game.not_your_turn";
+  if (peek.drawingPlayerId !== playerId) {
+    throw "game.not_your_turn";
+  }
 
   const newState = deepClone(state);
   const deck = newState.marketEventDeckRemaining ?? [];
   if (deck.length === 0 || deck[0] !== peek.cardId) {
     throw "game.invalid_action";
   }
+
+  return { newState, peek, deck };
+}
+
+export function handleInsiderKeepMarketEvent(
+  state: InternalGameState,
+  playerId: string,
+): ApplyActionResult {
+  const { newState, peek, deck } = withValidatedInsiderPeek(state, playerId);
 
   const [cardId, ...remaining] = deck;
   newState.marketEventDeckRemaining = remaining;
@@ -308,17 +353,7 @@ export function handleInsiderDiscardMarketEvent(
   state: InternalGameState,
   playerId: string,
 ): ApplyActionResult {
-  if (state.phase !== "waiting_for_insider_peek" || !state.pendingInsiderPeek) {
-    throw "game.invalid_phase";
-  }
-  const peek = state.pendingInsiderPeek;
-  if (peek.drawingPlayerId !== playerId) throw "game.not_your_turn";
-
-  const newState = deepClone(state);
-  const deck = newState.marketEventDeckRemaining ?? [];
-  if (deck.length === 0 || deck[0] !== peek.cardId) {
-    throw "game.invalid_action";
-  }
+  const { newState, peek, deck } = withValidatedInsiderPeek(state, playerId);
 
   const [discarded, ...remaining] = deck;
   newState.marketEventDeckRemaining = [...remaining, discarded];
