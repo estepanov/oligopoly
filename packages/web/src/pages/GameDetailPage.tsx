@@ -115,7 +115,9 @@ export function GameDetailPage() {
               <dt className="muted">Your turn</dt>
               <dd>{myTurn ? "Yes" : "No"}</dd>
               <dt className="muted">
-                {timerKind === "auction_bids" ? "Auction closes" : "Turn deadline"}
+                {timerKind === "auction_bids"
+                  ? "Auction closes"
+                  : "Turn deadline"}
               </dt>
               <dd>
                 {turnDeadline
