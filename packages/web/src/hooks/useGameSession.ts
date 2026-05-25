@@ -17,6 +17,16 @@ import { buildTileNameMap } from "../lib/boardDisplay";
 import { currentActorId, isMyTurn } from "../lib/gameUi";
 import { type GameSessionUpdate, useGameRealtime } from "./useGameRealtime";
 
+function appendLogEntries(
+  current: GameLogEntry[],
+  incoming: GameLogEntry[] | undefined,
+): GameLogEntry[] {
+  if (!incoming?.length) return current;
+  const seen = new Set(current.map((entry) => entry.id));
+  const novel = incoming.filter((entry) => !seen.has(entry.id));
+  return novel.length ? [...current, ...novel] : current;
+}
+
 async function loadGameLog(gameId: string): Promise<GameLogEntry[]> {
   try {
     const response = await fetchGameLog(gameId);
@@ -48,8 +58,7 @@ export function useGameSession(
   const applySessionUpdate = useCallback((update: GameSessionUpdate) => {
     setState(update.state);
     if (update.logEntries?.length) {
-      const appended = update.logEntries;
-      setLogEntries((current) => [...current, ...appended]);
+      setLogEntries((current) => appendLogEntries(current, update.logEntries));
     }
     setStatusLine(update.source);
   }, []);
@@ -136,8 +145,9 @@ export function useGameSession(
         setState(next);
         setStatusLine(label);
         if (next.logEntries?.length) {
-          const appended = next.logEntries;
-          setLogEntries((current) => [...current, ...appended]);
+          setLogEntries((current) =>
+            appendLogEntries(current, next.logEntries),
+          );
         }
       } catch (e) {
         setError(e instanceof ApiError ? e.message : "Action failed");
