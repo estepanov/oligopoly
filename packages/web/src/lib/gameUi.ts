@@ -56,6 +56,38 @@ export function hasSubmittedAuction(
   return state.pendingAuction.mySubmission !== undefined;
 }
 
+/**
+ * Broadcast WS snapshots omit viewer-specific auction fields. Preserve the
+ * local player's sealed submission until settlement or a tie-break reset.
+ */
+export function mergeAuctionClientView(
+  previous: GameState | null,
+  incoming: GameState,
+): GameState {
+  const prevAuction = previous?.pendingAuction;
+  const nextAuction = incoming.pendingAuction;
+  if (!prevAuction?.mySubmission || !nextAuction) {
+    return incoming;
+  }
+  if (nextAuction.mySubmission !== undefined) {
+    return incoming;
+  }
+  if (
+    String(prevAuction.tilePosition) !== String(nextAuction.tilePosition) ||
+    (prevAuction.tieBreakRound ?? 0) !== (nextAuction.tieBreakRound ?? 0)
+  ) {
+    return incoming;
+  }
+
+  return {
+    ...incoming,
+    pendingAuction: {
+      ...nextAuction,
+      mySubmission: prevAuction.mySubmission,
+    },
+  };
+}
+
 export function ownedTilesForPlayer(
   state: GameState,
   playerId: string,

@@ -11,6 +11,17 @@ type ClientPendingAuction = PendingAuction & {
   mySubmission?: number | "pass";
 };
 
+export function redactPendingAuctionForBroadcast(
+  auction: PendingAuction,
+): PendingAuction & { submissionCount: number } {
+  const { submissions: _submissions, ...rest } = auction;
+  return {
+    ...rest,
+    submissions: {},
+    submissionCount: Object.keys(auction.submissions).length,
+  };
+}
+
 function redactPendingAuction(
   auction: PendingAuction,
   viewerId: string,

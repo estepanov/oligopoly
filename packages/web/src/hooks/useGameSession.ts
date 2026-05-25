@@ -14,7 +14,11 @@ import {
 } from "../api/games";
 import { ApiError } from "../api/http";
 import { buildTileNameMap } from "../lib/boardDisplay";
-import { currentActorId, isMyTurn } from "../lib/gameUi";
+import {
+  currentActorId,
+  isMyTurn,
+  mergeAuctionClientView,
+} from "../lib/gameUi";
 import { type GameSessionUpdate, useGameRealtime } from "./useGameRealtime";
 
 function appendLogEntries(
@@ -56,7 +60,7 @@ export function useGameSession(
   const [statusLine, setStatusLine] = useState<string | null>(null);
 
   const applySessionUpdate = useCallback((update: GameSessionUpdate) => {
-    setState(update.state);
+    setState((current) => mergeAuctionClientView(current, update.state));
     if (update.logEntries?.length) {
       setLogEntries((current) => appendLogEntries(current, update.logEntries));
     }

@@ -2,6 +2,7 @@ import type { ApplyActionResult } from "@oligopoly/shared";
 import type { AiPersonality, GameAction } from "@oligopoly/validation";
 import {
   type PersistedGameState,
+  redactPendingAuctionForBroadcast,
   toClientGameState,
 } from "../gameStateView.js";
 import { broadcastGameEvent } from "../realtime/notify.js";
@@ -93,11 +94,7 @@ function publicStateForBroadcast(state: ApplyActionResult["state"]) {
 
   return {
     ...rest,
-    pendingAuction: {
-      ...pendingAuction,
-      submissions: {},
-      submissionCount: Object.keys(pendingAuction.submissions).length,
-    },
+    pendingAuction: redactPendingAuctionForBroadcast(pendingAuction),
   };
 }
 
