@@ -4,10 +4,6 @@ import {
   clampTrustworthiness,
   HANDSHAKE_BREACH_PENALTY,
 } from "../index.js";
-import {
-  validateContributionWeights,
-  validateRevenueSplit,
-} from "./charter.js";
 import { createNegotiationThread } from "./coordinationPhase.js";
 import type {
   ApplyActionResult,
