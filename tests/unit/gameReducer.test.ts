@@ -3,7 +3,7 @@ import { GameEngineErrorKeys } from "@oligopoly/validation";
 import { describe, expect, it } from "vitest";
 
 function minimalTwoPlayerState(
-  phase: "market_event" | "action",
+  phase: "waiting_for_roll" | "action",
 ): EngineGameState {
   return {
     gameId: "g1",
@@ -54,8 +54,8 @@ describe("applyGameAction", () => {
     }
   });
 
-  it("rolls from market_event using ctx.rollDice and moves on the perimeter", () => {
-    const state = minimalTwoPlayerState("market_event");
+  it("rolls from waiting_for_roll using ctx.rollDice and moves on the perimeter", () => {
+    const state = minimalTwoPlayerState("waiting_for_roll");
     const r = applyGameAction(
       state,
       { type: "roll_dice" },
@@ -100,7 +100,7 @@ describe("applyGameAction", () => {
   });
 
   it("advances turn on end_turn and increments round after a full cycle", () => {
-    const state = minimalTwoPlayerState("market_event");
+    const state = minimalTwoPlayerState("waiting_for_roll");
     const rolled = applyGameAction(
       state,
       { type: "roll_dice", result: [2, 3] },
@@ -151,7 +151,7 @@ describe("applyGameAction", () => {
   });
 
   it("rejects end_turn before rolling", () => {
-    const state = minimalTwoPlayerState("market_event");
+    const state = minimalTwoPlayerState("waiting_for_roll");
     const r = applyGameAction(
       state,
       { type: "end_turn" },
@@ -164,7 +164,7 @@ describe("applyGameAction", () => {
   });
 
   it("allows a second roll_dice after doubles", () => {
-    const state = minimalTwoPlayerState("market_event");
+    const state = minimalTwoPlayerState("waiting_for_roll");
     const first = applyGameAction(
       state,
       { type: "roll_dice", result: [4, 4] },

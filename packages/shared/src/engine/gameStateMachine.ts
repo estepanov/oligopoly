@@ -133,21 +133,49 @@ export function normalizeGameState(
   return state;
 }
 
-function applyInsiderPeekPhaseAction(
+type PhaseActionHandler = (
+  state: InternalGameState,
+  playerId: string,
+  action: GameActionInput,
+): ApplyActionResult;
+
+const PHASE_ACTION_ROUTES: Record<
+  string,
+  Record<string, PhaseActionHandler>
+> = {
+  waiting_for_disruption_nullify: {
+    use_affinity: (state, playerId, action) =>
+      handleDisruptionNullifyResponse(state, playerId, action),
+    accept_disruption: (state, playerId, action) =>
+      handleDisruptionNullifyResponse(state, playerId, action),
+  },
+  waiting_for_insider_peek: {
+    insider_keep_market_event: (state, playerId) =>
+      handleInsiderKeepMarketEvent(state, playerId),
+    insider_discard_market_event: (state, playerId) =>
+      handleInsiderDiscardMarketEvent(state, playerId),
+  },
+  syndicate_coordination: {
+    set_rate_card: (state, playerId, action) =>
+      handleSetRateCard(state, playerId, action),
+    end_coordination: (state, playerId) => handleEndCoordination(state, playerId),
+  },
+};
+
+function applyPhaseActionRoute(
   state: InternalGameState,
   playerId: string,
   action: GameActionInput,
 ): ApplyActionResult | null {
-  if (state.phase !== "waiting_for_insider_peek") {
+  const phaseRoutes = PHASE_ACTION_ROUTES[state.phase];
+  if (!phaseRoutes) {
     return null;
   }
-  if (action.type === "insider_keep_market_event") {
-    return handleInsiderKeepMarketEvent(state, playerId);
+  const handler = phaseRoutes[action.type];
+  if (!handler) {
+    throw "game.invalid_phase";
   }
-  if (action.type === "insider_discard_market_event") {
-    return handleInsiderDiscardMarketEvent(state, playerId);
-  }
-  throw "game.invalid_phase";
+  return handler(state, playerId, action);
 }
 
 export function applyAction(
@@ -159,13 +187,6 @@ export function applyAction(
     throw "game.completed";
   }
 
-  if (state.phase === "waiting_for_disruption_nullify") {
-    if (action.type === "use_affinity" || action.type === "accept_disruption") {
-      return handleDisruptionNullifyResponse(state, playerId, action);
-    }
-    throw "game.invalid_phase";
-  }
-
   if (action.type === "auction_bid") {
     return handleAuctionBid(state, playerId, action);
   }
@@ -173,24 +194,9 @@ export function applyAction(
     return handleAuctionPass(state, playerId, action);
   }
 
-  const insiderPeekResult = applyInsiderPeekPhaseAction(
-    state,
-    playerId,
-    action,
-  );
-  if (insiderPeekResult !== null) {
-    return insiderPeekResult;
-  }
-
-  if (state.phase === "syndicate_coordination") {
-    switch (action.type) {
-      case "set_rate_card":
-        return handleSetRateCard(state, playerId, action);
-      case "end_coordination":
-        return handleEndCoordination(state, playerId);
-      default:
-        throw "game.invalid_phase";
-    }
+  const phaseResult = applyPhaseActionRoute(state, playerId, action);
+  if (phaseResult !== null) {
+    return phaseResult;
   }
 
   const currentPid = state.turnOrder[state.currentPlayerIndex];

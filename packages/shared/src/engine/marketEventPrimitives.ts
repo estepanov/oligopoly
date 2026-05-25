@@ -17,3 +17,17 @@ export function adjustCapital(
   player.capital = Math.max(0, player.capital + delta);
   return player.capital - before;
 }
+
+export function transferCapital(
+  payer: InternalPlayerState,
+  receiver: InternalPlayerState,
+  amount: number,
+): number {
+  if (amount <= 0) {
+    return 0;
+  }
+  const payerDelta = adjustCapital(payer, -amount);
+  const paid = Math.max(0, -payerDelta);
+  adjustCapital(receiver, paid);
+  return payerDelta;
+}

@@ -54,10 +54,9 @@ export const GameEngineErrorKeys = {
   CANNOT_END_TURN: "game.cannot_end_turn",
 } as const;
 
-/** Any stable `game.*` error key thrown by the engine. */
+/** Stable game error keys surfaced by shared reducer adapters. */
 export type GameEngineErrorKey =
-  | (typeof GameEngineErrorKeys)[keyof typeof GameEngineErrorKeys]
-  | `game.${string}`;
+  (typeof GameEngineErrorKeys)[keyof typeof GameEngineErrorKeys];
 
 export const HealthResponseSchema = z.object({
   status: z.literal("ok"),

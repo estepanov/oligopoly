@@ -11,7 +11,11 @@ import type {
   InternalPlayerState,
   LogEntry,
 } from "./gameStateTypes.js";
-import { activePlayers, adjustCapital } from "./marketEventPrimitives.js";
+import {
+  activePlayers,
+  adjustCapital,
+  transferCapital,
+} from "./marketEventPrimitives.js";
 import type { MarketEventTrigger } from "./marketEvents.js";
 import { getPlayer } from "./stateUtils.js";
 
@@ -180,13 +184,12 @@ const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
     if (!leader) return true;
     const { playerId: leaderId, sectorId, count } = leader;
     const paymentEach = count * 30;
+    const receiver = getPlayer(state, leaderId);
     for (const player of activePlayers(state)) {
       if (player.playerId === leaderId) continue;
-      const delta = adjustCapital(player, -paymentEach);
-      const receiver = getPlayer(state, leaderId);
-      if (receiver) {
-        receiver.capital += -delta;
-      }
+      const delta = receiver
+        ? transferCapital(player, receiver, paymentEach)
+        : adjustCapital(player, -paymentEach);
       logs.push({
         playerId: player.playerId,
         actionType: "market_event_capital_change",

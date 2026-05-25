@@ -1,31 +1,17 @@
-import type { GameState, PendingAuction } from "@oligopoly/validation";
+import type {
+  GameNegotiationThread,
+  GameState,
+  InGameHandshakeAgreement,
+  PendingAuction,
+  PendingInsiderPeek,
+} from "@oligopoly/validation";
 
 /** Persisted `state_json` may include server-only affinity assignments. */
 export type PersistedGameState = GameState & {
   affinityAssignments?: Record<string, string>;
-  negotiationThreads?: Array<{
-    id: string;
-    partyIds: string[];
-    status: string;
-    visibility?: string;
-  }>;
-  handshakeAgreements?: Array<{
-    id: string;
-    partyA: string;
-    partyB: string;
-    summary: string;
-    status: string;
-    partySignatures?: Record<string, boolean>;
-  }>;
-  pendingInsiderPeek?: {
-    cardId: string;
-    drawingPlayerId: string;
-  };
-  settings?: {
-    spectatorMode?: string;
-    optionalRuleIds?: string[];
-    [key: string]: unknown;
-  };
+  negotiationThreads?: GameNegotiationThread[];
+  handshakeAgreements?: InGameHandshakeAgreement[];
+  pendingInsiderPeek?: PendingInsiderPeek | null;
 };
 
 type ClientPendingAuction = PendingAuction & {
