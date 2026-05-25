@@ -6,10 +6,12 @@ import {
   toClientGameState,
 } from "../gameStateView.js";
 import { broadcastGameEvent } from "../realtime/notify.js";
+import { processGameCompletion } from "./gameCompletion.js";
 
 type PersistOptions = {
   gameRoom?: DurableObjectNamespace;
   actorId?: string;
+  kv?: KVNamespace;
   aiMeta?: {
     aiPlayerId: string;
     personality: AiPersonality;
@@ -73,6 +75,16 @@ export async function persistGameActionResult(
   }
 
   await db.batch(statements);
+
+  if (result.state.phase === "game_over" && result.state.winnerId) {
+    await processGameCompletion(
+      db,
+      options.kv,
+      gameId,
+      result.state,
+      now,
+    );
+  }
 
   const publicState = publicStateForBroadcast(result.state);
   await broadcastGameEvent(options.gameRoom, gameId, {

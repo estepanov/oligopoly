@@ -4,6 +4,7 @@ import type {
   InternalGameState,
   LogEntry,
 } from "./gameStateMachine.js";
+import { applyWinIfThresholdCrossed } from "./winResolution.js";
 import { formSyndicateApCost, getSyndicateForPlayer } from "./syndicate.js";
 
 function deepClone<T>(obj: T): T {
@@ -68,6 +69,8 @@ export function handleFormSyndicate(
       payload: { syndicateId, memberIds },
     },
   ];
+
+  applyWinIfThresholdCrossed(newState, logs);
 
   return { state: newState, logEntries: logs };
 }

@@ -407,6 +407,7 @@ gameRoutes.post("/:id/action", async (c) => {
     await persistGameActionResult(db, id, result, {
       gameRoom: c.env?.GAME_ROOM,
       actorId: subject,
+      kv: c.env?.KV,
     });
 
     return c.json(toActionResponse(result, subject));

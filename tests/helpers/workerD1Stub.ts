@@ -17,6 +17,8 @@ export function createWorkerD1Stub(): WorkerD1Stub {
     games: [],
     game_log: [],
     user_ranks: [],
+    user_stats: [],
+    achievements: [],
   };
 
   const execSql = (sql: string, binds: unknown[]) => {
@@ -367,6 +369,121 @@ export function createWorkerD1Stub(): WorkerD1Stub {
     if (trimmed.startsWith("SELECT id, role FROM users WHERE id = ?")) {
       const row = tables.users.find((r) => r.id === binds[0]) ?? null;
       return { results: row ? [row] : [], first: row };
+    }
+
+    if (trimmed.startsWith("SELECT username FROM users WHERE id = ?")) {
+      const row = tables.users.find((r) => r.id === binds[0]) ?? null;
+      return {
+        results: row ? [row] : [],
+        first: row ? { username: row.username } : null,
+      };
+    }
+
+    if (
+      trimmed.startsWith(
+        "SELECT games_played, wins, trades_completed, auctions_won, recent_games_json FROM user_stats WHERE user_id = ?",
+      )
+    ) {
+      const row =
+        tables.user_stats.find((r) => r.user_id === binds[0]) ?? null;
+      return { results: row ? [row] : [], first: row };
+    }
+
+    if (
+      trimmed.startsWith(
+        "INSERT INTO user_stats (user_id, games_played, wins, trades_completed, auctions_won, recent_games_json) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+    ) {
+      const [user_id, games_played, wins, trades_completed, auctions_won, recent_games_json] =
+        binds as [string, number, number, number, number, string];
+      tables.user_stats.push({
+        user_id,
+        games_played,
+        wins,
+        trades_completed,
+        auctions_won,
+        recent_games_json,
+      });
+      return { results: [], success: true };
+    }
+
+    if (
+      trimmed.startsWith(
+        "UPDATE user_stats SET games_played = ?, wins = ?, recent_games_json = ? WHERE user_id = ?",
+      )
+    ) {
+      const row = tables.user_stats.find((r) => r.user_id === binds[3]);
+      if (row) {
+        row.games_played = binds[0];
+        row.wins = binds[1];
+        row.recent_games_json = binds[2];
+      }
+      return { results: [], success: true };
+    }
+
+    if (
+      trimmed.startsWith(
+        "SELECT id FROM achievements WHERE user_id = ? AND id = ?",
+      )
+    ) {
+      const row =
+        tables.achievements.find(
+          (r) => r.user_id === binds[0] && r.id === binds[1],
+        ) ?? null;
+      return { results: row ? [row] : [], first: row };
+    }
+
+    if (
+      trimmed.startsWith(
+        "INSERT INTO achievements (id, user_id, unlocked_at) VALUES (?, ?, ?)",
+      )
+    ) {
+      const [id, user_id, unlocked_at] = binds as [string, string, number];
+      tables.achievements.push({ id, user_id, unlocked_at });
+      return { results: [], success: true };
+    }
+
+    if (trimmed.startsWith("SELECT rank_points FROM user_ranks WHERE user_id = ?")) {
+      const row = tables.user_ranks.find((r) => r.user_id === binds[0]) ?? null;
+      return {
+        results: row ? [row] : [],
+        first: row ? { rank_points: row.rank_points } : null,
+      };
+    }
+
+    if (
+      trimmed.startsWith(
+        "UPDATE user_ranks SET rank_points = ?, tier = ?, title = ? WHERE user_id = ?",
+      )
+    ) {
+      const row = tables.user_ranks.find((r) => r.user_id === binds[3]);
+      if (row) {
+        row.rank_points = binds[0];
+        row.tier = binds[1];
+        row.title = binds[2];
+      } else {
+        tables.user_ranks.push({
+          user_id: binds[3],
+          rank_points: binds[0],
+          tier: binds[1],
+          title: binds[2],
+        });
+      }
+      return { results: [], success: true };
+    }
+
+    if (
+      trimmed.startsWith(
+        "INSERT INTO user_ranks (user_id, tier, title, rank_points) VALUES (?, ?, ?, ?)",
+      )
+    ) {
+      tables.user_ranks.push({
+        user_id: binds[0],
+        tier: binds[1],
+        title: binds[2],
+        rank_points: binds[3],
+      });
+      return { results: [], success: true };
     }
 
     if (

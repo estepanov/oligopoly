@@ -21,6 +21,7 @@ import type {
   InternalPlayerState,
   LogEntry,
 } from "./gameStateMachine.js";
+import { applyWinIfThresholdCrossed } from "./winResolution.js";
 
 export type { DeclineAuctionType } from "./auctionMode.js";
 
@@ -184,6 +185,8 @@ function awardTileToWinner(
       submissions: auction.submissions,
     },
   });
+
+  applyWinIfThresholdCrossed(newState, logs);
 
   return { state: newState, logEntries: logs };
 }

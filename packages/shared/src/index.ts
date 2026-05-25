@@ -290,6 +290,7 @@ export {
   controllingPlayerIds,
   findSyndicateWinnerId,
   getSyndicateForPlayer,
+  hasSectorControl,
   type SyndicateState,
   syndicateMarketValue,
   tileOwnedByController,
@@ -307,3 +308,9 @@ export {
   SOLO_WIN_THRESHOLD,
   SYNDICATE_WIN_THRESHOLD,
 } from "./engine/winCondition.js";
+export {
+  applyWinIfThresholdCrossed,
+  checkWinConditions,
+  playerMarketValue,
+  winTypeForPlayer,
+} from "./engine/winResolution.js";

@@ -10,7 +10,6 @@ import {
   CORNER_POSITIONS,
   DIAGONAL_TILES,
   getTileByPosition,
-  TOTAL_BOARD_MARKET_VALUE,
 } from "../config/board.js";
 import {
   AFFINITY_IDS,
@@ -71,13 +70,11 @@ import {
 } from "./setup.js";
 import {
   areSameSyndicate,
-  findSyndicateWinnerId,
   getSyndicateForPlayer,
   type SyndicateState,
-  sumOwnedTileMarketValue,
 } from "./syndicate.js";
 import { handleFormSyndicate } from "./syndicateActions.js";
-import { checkSoloWin } from "./winCondition.js";
+import { applyWinIfThresholdCrossed } from "./winResolution.js";
 
 // ---------------------------------------------------------------------------
 // Deep clone helper (deepClone unavailable in target lib)
@@ -238,36 +235,6 @@ function isTilePurchasable(position: number | string): boolean {
     tile.type === "sector_hub" ||
     tile.type === "utility"
   );
-}
-
-function playerMarketValue(state: InternalGameState, playerId: string): number {
-  return sumOwnedTileMarketValue(state, [playerId]);
-}
-
-function checkWinConditions(state: InternalGameState): string | null {
-  const syndicateWinner = findSyndicateWinnerId(
-    state,
-    TOTAL_BOARD_MARKET_VALUE,
-  );
-  if (syndicateWinner) {
-    return syndicateWinner;
-  }
-
-  for (const p of state.players) {
-    if (state.eliminatedPlayerIds.includes(p.playerId)) continue;
-    if (getSyndicateForPlayer(state, p.playerId)) continue;
-    const mv = playerMarketValue(state, p.playerId);
-    if (checkSoloWin(mv, TOTAL_BOARD_MARKET_VALUE)) {
-      return p.playerId;
-    }
-  }
-  const activePlayers = state.players.filter(
-    (p) => !state.eliminatedPlayerIds.includes(p.playerId),
-  );
-  if (activePlayers.length === 1) {
-    return activePlayers[0].playerId;
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -825,21 +792,7 @@ function handleBuyTile(
   ];
 
   // Check win
-  const winner = checkWinConditions(newState);
-  if (winner) {
-    newState.winnerId = winner;
-    newState.phase = "game_over";
-    logs.push({
-      playerId: winner,
-      actionType: "game_won",
-      payload: {
-        winnerId: winner,
-        type: "solo",
-        marketValue: playerMarketValue(newState, winner),
-        totalMarketValue: TOTAL_BOARD_MARKET_VALUE,
-      },
-    });
-  }
+  applyWinIfThresholdCrossed(newState, logs);
 
   return { state: newState, logEntries: logs };
 }
