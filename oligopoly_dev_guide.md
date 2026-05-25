@@ -389,6 +389,8 @@ Local guardrail:
 
 Example release sequence:
 
+Keep release verification aligned with workflow by running build once, then verify checks, then publish.
+
 ```bash
 pnpm run build
 pnpm run ci:verify
