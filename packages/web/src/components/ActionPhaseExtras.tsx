@@ -1,6 +1,6 @@
 import type { GameAction, GameState } from "@oligopoly/validation";
 import { useState } from "react";
-import { tileLabel } from "../lib/boardDisplay";
+import { parseTilePosition, tileLabel } from "../lib/boardDisplay";
 import {
   isDisruptionNullifyPhase,
   isMyTurn,
@@ -308,7 +308,7 @@ export function ActionPhaseExtras({
             onClick={() =>
               void onAction("Initiated auction", {
                 type: "initiate_auction",
-                tilePosition: auctionTile,
+                tilePosition: parseTilePosition(auctionTile),
               })
             }
           >
