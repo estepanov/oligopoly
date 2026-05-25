@@ -235,6 +235,8 @@ AI player protocol:
 - `DELETE /api/lobbies/:id/player/:uid` during `in_game` replaces the kicked human seat with a permanent AI replacement in the active game state via `kickInGamePlayerToAi`.
 - `POST /api/games/:id/ai/step` remains available for manual/debug stepping only on `/dev`; the play UI does not expose AI stepping and the client does not auto-step AI turns.
 - `GameDetailPage` loads board names from `GET /api/game-config`, shows live board/turn state over WebSocket, and exposes the core turn loop (roll, buy/decline, path choice, develop/mortgage/redeem, end turn) for the signed-in participant.
+- `GameDetailPage` uses `useGameSession` (HTTP load + `useGameRealtime` for state, log entries, and timers) and renders a perimeter board grid plus player table.
+- All lobby JSON responses route through `buildLobbyResponse`, which attaches optional `gameId` when status is `in_game`.
 - Lobby start navigates directly to `/games/:id` when a game is created.
 - AI cost tracking uses KV keys shaped as `ai_cost:daily:{date}` and feeds admin analytics.
 

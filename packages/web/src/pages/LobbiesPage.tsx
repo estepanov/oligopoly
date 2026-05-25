@@ -1101,10 +1101,17 @@ export function LobbiesPage() {
       {selectedLobby?.status === "in_game" && (
         <div className="card">
           <h2>Next step</h2>
-          <p className="muted">
-            Lobby started. Open <Link to="/games">Games</Link> to inspect active
-            games.
-          </p>
+          {selectedLobby.gameId ? (
+            <p>
+              Lobby started.{" "}
+              <Link to={`/games/${selectedLobby.gameId}`}>Return to game</Link>
+            </p>
+          ) : (
+            <p className="muted">
+              Lobby started. Open <Link to="/games">Games</Link> to inspect
+              active games.
+            </p>
+          )}
         </div>
       )}
 

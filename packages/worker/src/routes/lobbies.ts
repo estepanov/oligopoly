@@ -27,6 +27,12 @@ import {
   validateCreateAiSlots,
   validateSeatCapacity,
 } from "../services/lobbyAi.js";
+import {
+  buildLobbyResponse,
+  type LobbyPlayerRow,
+  type LobbyResponsePayload,
+  type LobbyRow,
+} from "../services/lobbyResponses.js";
 
 type Bindings = {
   DB?: D1Database;
@@ -37,37 +43,6 @@ type Bindings = {
 
 type Variables = {
   userId?: string;
-};
-
-type LobbyRow = {
-  id: string;
-  name: string;
-  host_id: string;
-  status: string;
-  max_players: number;
-  is_private: number;
-  optional_rule_ids_json: string | null;
-  created_at: number;
-  // Enhanced settings
-  turn_timeout: string;
-  auction_bid_window: string;
-  auction_settle_delay: string;
-  auction_type: string;
-  voice_video_enabled: number;
-  spectator_mode: string;
-  market_event_deck_json: string | null;
-  optional_event_card_ids_json: string | null;
-  currency_name: string;
-  currency_symbol: string;
-  currency_multiplier: string;
-  ai_slots_json: string | null;
-};
-
-type LobbyPlayerRow = {
-  lobby_id: string;
-  user_id: string;
-  is_admin: number;
-  joined_at: number;
 };
 
 const generateId = () => crypto.randomUUID();
@@ -123,45 +98,10 @@ const getSubject = (c: {
   return c.get("userId") ?? null;
 };
 
-const toLobbyResponse = (row: LobbyRow, players: LobbyPlayerRow[] = []) => ({
-  id: row.id,
-  name: row.name,
-  hostId: row.host_id,
-  status: row.status,
-  maxPlayers: row.max_players,
-  isPrivate: row.is_private === 1,
-  optionalRuleIds: row.optional_rule_ids_json
-    ? JSON.parse(row.optional_rule_ids_json)
-    : [],
-  createdAt: row.created_at,
-  players: players.map((p) => ({
-    userId: p.user_id,
-    isAdmin: p.is_admin === 1,
-    joinedAt: p.joined_at,
-  })),
-  // Enhanced settings
-  turnTimeout: row.turn_timeout ?? "5min",
-  auctionBidWindow: row.auction_bid_window ?? "1min",
-  auctionSettleDelay: row.auction_settle_delay ?? "30s",
-  auctionType: row.auction_type ?? "sealed_bids",
-  voiceVideoEnabled: (row.voice_video_enabled ?? 0) === 1,
-  spectatorMode: row.spectator_mode ?? "disabled",
-  marketEventDeckCardIds: row.market_event_deck_json
-    ? JSON.parse(row.market_event_deck_json)
-    : null,
-  optionalMarketEventCardIds: row.optional_event_card_ids_json
-    ? JSON.parse(row.optional_event_card_ids_json)
-    : [],
-  currencyName: row.currency_name ?? "Capital",
-  currencySymbol: row.currency_symbol ?? "¤",
-  currencyMultiplier: row.currency_multiplier ?? "1",
-  aiSlots: parseAiSlots(row.ai_slots_json),
-});
-
 type LeaveLobbyResponse = {
   lobbyId: string;
   deleted: boolean;
-  lobby?: ReturnType<typeof toLobbyResponse>;
+  lobby?: LobbyResponsePayload;
 };
 
 const publishLobbyUpdate = async (
@@ -316,7 +256,7 @@ const leaveLobby = async (
   return {
     lobbyId: lobby.id,
     deleted: false,
-    lobby: toLobbyResponse(updatedLobby, updatedPlayers),
+    lobby: await buildLobbyResponse(db, updatedLobby, updatedPlayers),
   };
 };
 
@@ -436,7 +376,7 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
     { lobby_id: id, user_id: subject, is_admin: 1, joined_at: now },
   ];
 
-  return c.json(toLobbyResponse(lobby, players), 201);
+  return c.json(await buildLobbyResponse(db, lobby, players), 201);
 });
 
 // GET /mine — List the current user's waiting lobbies
@@ -456,7 +396,7 @@ lobbyRoutes.get("/mine", async (c) => {
     memberships
       .filter(({ lobby }) => isWaitingLobbyStatus(lobby.status))
       .map(async ({ lobby }) =>
-        toLobbyResponse(lobby, await listLobbyPlayers(db, lobby.id)),
+        buildLobbyResponse(db, lobby, await listLobbyPlayers(db, lobby.id)),
       ),
   );
 
@@ -504,7 +444,7 @@ lobbyRoutes.get("/", async (c) => {
   const nextCursor = hasMore ? `${lastItem.created_at}:${lastItem.id}` : null;
 
   return c.json({
-    lobbies: items.map((row) => toLobbyResponse(row)),
+    lobbies: await Promise.all(items.map((row) => buildLobbyResponse(db, row))),
     nextCursor,
   });
 });
@@ -531,7 +471,7 @@ lobbyRoutes.get("/:id", async (c) => {
     .bind(id)
     .all<LobbyPlayerRow>();
 
-  return c.json(toLobbyResponse(lobby, playersResult.results));
+  return c.json(await buildLobbyResponse(db, lobby, playersResult.results));
 });
 
 // POST /:id/join — Join a public lobby
@@ -603,7 +543,7 @@ lobbyRoutes.post("/:id/join", async (c) => {
     { lobby_id: id, user_id: subject, is_admin: 0, joined_at: now },
   ];
 
-  const joinResponse = toLobbyResponse(lobby, updatedPlayers);
+  const joinResponse = await buildLobbyResponse(db, lobby, updatedPlayers);
   await publishLobbyUpdate(c.env, id, joinResponse);
   return c.json(joinResponse);
 });
@@ -685,7 +625,7 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
     { lobby_id: id, user_id: subject, is_admin: 0, joined_at: now },
   ];
 
-  const tokenJoinResponse = toLobbyResponse(lobby, updatedPlayers);
+  const tokenJoinResponse = await buildLobbyResponse(db, lobby, updatedPlayers);
   await publishLobbyUpdate(c.env, id, tokenJoinResponse);
   return c.json(tokenJoinResponse);
 });
@@ -955,7 +895,9 @@ lobbyRoutes.put(
       .bind(id)
       .all<LobbyPlayerRow>();
 
-    return c.json(toLobbyResponse(updated as LobbyRow, playersResult.results));
+    return c.json(
+      await buildLobbyResponse(db, updated as LobbyRow, playersResult.results),
+    );
   },
 );
 
@@ -1008,7 +950,7 @@ lobbyRoutes.post("/:id/admin/:uid", async (c) => {
     .bind(id)
     .all<LobbyPlayerRow>();
 
-  return c.json(toLobbyResponse(lobby, playersResult.results));
+  return c.json(await buildLobbyResponse(db, lobby, playersResult.results));
 });
 
 // DELETE /:id/player/:uid — Remove player from lobby (admin only)
@@ -1071,7 +1013,11 @@ lobbyRoutes.delete("/:id/player/:uid", async (c) => {
     .bind(id)
     .all<LobbyPlayerRow>();
 
-  const kickResponse = toLobbyResponse(lobby, playersResult.results);
+  const kickResponse = await buildLobbyResponse(
+    db,
+    lobby,
+    playersResult.results,
+  );
   await publishLobbyUpdate(c.env, id, kickResponse);
   return c.json(kickResponse);
 });
@@ -1253,10 +1199,7 @@ lobbyRoutes.post("/:id/start", async (c) => {
     status: "in_game",
   };
 
-  const startResponse = {
-    ...toLobbyResponse(updated, lobbyPlayers),
-    gameId,
-  };
+  const startResponse = await buildLobbyResponse(db, updated, lobbyPlayers);
   await publishLobbyUpdate(c.env, id, startResponse);
 
   const { affinityAssignments: _affinity, ...publicInitialState } =

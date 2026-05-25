@@ -243,6 +243,11 @@ export const GameLogEntrySchema = z.object({
 });
 export type GameLogEntry = z.infer<typeof GameLogEntrySchema>;
 
+export const GameLogListResponseSchema = z.object({
+  log: z.array(GameLogEntrySchema),
+});
+export type GameLogListResponse = z.infer<typeof GameLogListResponseSchema>;
+
 // ---------------------------------------------------------------------------
 // Lobby schemas
 // ---------------------------------------------------------------------------

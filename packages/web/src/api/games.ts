@@ -2,6 +2,7 @@ import {
   AiStepResponseSchema,
   GameActionResponseSchema,
   type GameActionSchema,
+  GameLogListResponseSchema,
   GameStateSchema,
   GameSummarySchema,
 } from "@oligopoly/validation";
@@ -35,6 +36,14 @@ export function fetchGameState(id: string) {
   return requestJson(
     `${env.apiUrl}/api/games/${encodeURIComponent(id)}/state`,
     GameStateSchema,
+    { headers: authHeaders() },
+  );
+}
+
+export function fetchGameLog(id: string) {
+  return requestJson(
+    `${env.apiUrl}/api/games/${encodeURIComponent(id)}/log`,
+    GameLogListResponseSchema,
     { headers: authHeaders() },
   );
 }
