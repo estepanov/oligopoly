@@ -226,13 +226,13 @@ const STANDARD_MARKET_EVENT_HANDLERS: Record<string, MarketEventHandler> = {
     if (!targetId) return true;
     const player = getPlayer(state, targetId);
     if (!player) return true;
-    const payment = Math.min(player.capital, 100);
-    player.capital -= payment;
+    const delta = adjustCapital(player, -100);
+    const payment = Math.max(0, -delta);
     state.freeMarketPool += payment;
     logs.push({
       playerId: targetId,
       actionType: "market_event_capital_change",
-      payload: { cardId, delta: -payment, capital: player.capital },
+      payload: { cardId, delta, capital: player.capital },
     });
     return true;
   },
@@ -368,19 +368,34 @@ export function handleInsiderDiscardMarketEvent(
   return resolved;
 }
 
-const AUCTION_PHASES = new Set([
+const MARKET_EVENT_BLOCKING_PHASES = new Set([
   "waiting_for_auction_bids",
   "waiting_for_auction_settle",
 ]);
+const MARKET_EVENT_BLOCKING_PENDING_FIELDS = [
+  "pendingAuction",
+  "pendingInsiderPeek",
+  "pendingDisruptionNullify",
+  "pendingForeclosure",
+] as const;
 
-function marketEventLeftPendingWork(state: InternalGameState): boolean {
+function hasBlockingWorkAfterMarketEventDraw(
+  state: InternalGameState,
+): boolean {
   return (
-    Boolean(state.pendingAuction) ||
-    Boolean(state.pendingInsiderPeek) ||
-    Boolean(state.pendingDisruptionNullify) ||
-    Boolean(state.pendingForeclosure) ||
-    AUCTION_PHASES.has(state.phase)
+    MARKET_EVENT_BLOCKING_PHASES.has(state.phase) ||
+    MARKET_EVENT_BLOCKING_PENDING_FIELDS.some((field) => Boolean(state[field]))
   );
+}
+
+function advanceAfterMarketEventDraw(
+  state: InternalGameState,
+  drawingPlayerId: string,
+  trigger: MarketEventTrigger,
+): void {
+  if (trigger !== "round_start") return;
+  if (hasBlockingWorkAfterMarketEventDraw(state)) return;
+  enterWaitingForRoll(state, drawingPlayerId);
 }
 
 function finishMarketEventDraw(
@@ -390,9 +405,7 @@ function finishMarketEventDraw(
   tilePosition: number | string | undefined,
   logs: LogEntry[],
 ): void {
-  if (trigger === "round_start" && !marketEventLeftPendingWork(state)) {
-    enterWaitingForRoll(state, drawingPlayerId);
-  }
+  advanceAfterMarketEventDraw(state, drawingPlayerId, trigger);
   logs.push({
     playerId: drawingPlayerId,
     actionType: "market_event_draw_complete",
@@ -429,8 +442,6 @@ export function drawAndResolveMarketEvent(
   tilePosition?: number | string,
   options?: { skipInsiderPeek?: boolean },
 ): ApplyActionResult {
-  normalizeMarketEventDeck(state);
-
   const logs: LogEntry[] = [];
   const newState = deepClone(state);
   normalizeMarketEventDeck(newState);
@@ -461,9 +472,7 @@ export function drawAndResolveMarketEvent(
       actionType: "market_event_deck_empty",
       payload: { trigger, tilePosition },
     });
-    if (trigger === "round_start" && !marketEventLeftPendingWork(newState)) {
-      enterWaitingForRoll(newState, drawingPlayerId);
-    }
+    advanceAfterMarketEventDraw(newState, drawingPlayerId, trigger);
     return { state: newState, logEntries: logs };
   }
 

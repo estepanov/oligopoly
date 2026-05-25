@@ -483,10 +483,10 @@ describe("NegotiationThreadSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts open_negotiation_rule visibility", () => {
+  it("accepts open visibility", () => {
     const result = NegotiationThreadSchema.safeParse({
       ...validThread,
-      visibility: "open_negotiation_rule",
+      visibility: "open",
     });
     expect(result.success).toBe(true);
   });

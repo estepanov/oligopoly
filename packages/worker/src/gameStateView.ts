@@ -1,4 +1,3 @@
-import { isOptionalRuleEnabled } from "@oligopoly/shared";
 import type {
   GameNegotiationThread,
   GameState,
@@ -84,12 +83,6 @@ function redactPendingAuction(
   };
 }
 
-function isOpenNegotiationRuleEnabled(
-  settings: PersistedGameState["settings"],
-): boolean {
-  return isOptionalRuleEnabled(settings, "open_negotiation");
-}
-
 function buildClientGameStateBase(
   state: PersistedGameState,
   extras: {
@@ -133,13 +126,10 @@ export function toClientGameState(
     ? redactPendingAuction(state.pendingAuction, playerId, mode)
     : undefined;
 
-  const openNegotiation = isOpenNegotiationRuleEnabled(state.settings);
-
   const negotiationThreads = filterNegotiationThreadsForViewer(
     state.negotiationThreads,
     playerId,
     mode,
-    openNegotiation,
   );
 
   const handshakeAgreements = filterHandshakesForViewer(
@@ -172,11 +162,13 @@ function filterNegotiationThreadsForViewer(
   threads: PersistedGameState["negotiationThreads"],
   viewerId: string,
   mode: "spectator" | "player",
-  openNegotiation: boolean,
 ) {
   if (!threads?.length) return threads;
-  if (openNegotiation || mode === "spectator") return threads;
-  return threads.filter((thread) => thread.partyIds.includes(viewerId));
+  if (mode === "spectator") return threads;
+  return threads.filter(
+    (thread) =>
+      thread.visibility === "open" || thread.partyIds.includes(viewerId),
+  );
 }
 
 function filterHandshakesForViewer(

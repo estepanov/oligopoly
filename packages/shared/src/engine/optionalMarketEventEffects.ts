@@ -350,7 +350,7 @@ export const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
       });
     }
     if (poorest) {
-      poorest.capital += totalLost;
+      adjustCapital(poorest, totalLost);
       logs.push({
         playerId: poorest.playerId,
         actionType: "black_swan_windfall",

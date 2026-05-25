@@ -136,10 +136,20 @@ type PhaseActionHandler = (
   playerId: string,
   action: GameActionInput,
 ) => ApplyActionResult;
+type GameActionType = GameActionInput["type"];
+type NonTurnActionType =
+  | "accept_disruption"
+  | "auction_bid"
+  | "auction_pass"
+  | "end_coordination"
+  | "insider_discard_market_event"
+  | "insider_keep_market_event"
+  | "set_rate_card";
+type TurnActionType = Exclude<GameActionType, NonTurnActionType>;
 
 const PHASE_ACTION_ROUTES: Record<
   string,
-  Record<string, PhaseActionHandler>
+  Partial<Record<GameActionType, PhaseActionHandler>>
 > = {
   waiting_for_disruption_nullify: {
     use_affinity: (state, playerId, action) =>
@@ -161,14 +171,17 @@ const PHASE_ACTION_ROUTES: Record<
   },
 };
 
-const GLOBAL_ACTION_ROUTES: Record<string, PhaseActionHandler> = {
+const GLOBAL_ACTION_ROUTES = {
   auction_bid: (state, playerId, action) =>
     handleAuctionBid(state, playerId, action),
   auction_pass: (state, playerId, action) =>
     handleAuctionPass(state, playerId, action),
-};
+} satisfies Record<"auction_bid" | "auction_pass", PhaseActionHandler>;
+const GLOBAL_ACTION_ROUTES_BY_TYPE: Partial<
+  Record<GameActionType, PhaseActionHandler>
+> = GLOBAL_ACTION_ROUTES;
 
-const TURN_ACTION_ROUTES: Record<string, PhaseActionHandler> = {
+const TURN_ACTION_ROUTES = {
   roll_dice: (state, playerId, action) =>
     handleRollDice(state, playerId, action),
   buy_tile: (state, playerId, action) => handleBuyTile(state, playerId, action),
@@ -210,7 +223,10 @@ const TURN_ACTION_ROUTES: Record<string, PhaseActionHandler> = {
   initiate_auction: (state, playerId, action) =>
     handleInitiateAuction(state, playerId, action),
   pay_debt: (state, playerId, action) => handlePayDebt(state, playerId, action),
-};
+} satisfies Record<TurnActionType, PhaseActionHandler>;
+const TURN_ACTION_ROUTES_BY_TYPE: Partial<
+  Record<GameActionType, PhaseActionHandler>
+> = TURN_ACTION_ROUTES;
 
 function applySpecialActionRoute(
   state: InternalGameState,
@@ -226,7 +242,7 @@ function applySpecialActionRoute(
     throw "game.invalid_phase";
   }
 
-  const globalHandler = GLOBAL_ACTION_ROUTES[action.type];
+  const globalHandler = GLOBAL_ACTION_ROUTES_BY_TYPE[action.type];
   if (!globalHandler) {
     return null;
   }
@@ -256,9 +272,13 @@ function withPrimaryLogIndex(
     return { ...result, primaryLogIndex: matchingTypeIndex };
   }
 
-  return result.logEntries.length > 0
-    ? { ...result, primaryLogIndex: 0 }
-    : result;
+  if (result.logEntries.length === 0) {
+    return result;
+  }
+  if (result.logEntries.length === 1) {
+    return { ...result, primaryLogIndex: 0 };
+  }
+  throw "game.action_not_implemented";
 }
 
 export function applyAction(
@@ -280,7 +300,7 @@ export function applyAction(
     throw "game.not_your_turn";
   }
 
-  const turnHandler = TURN_ACTION_ROUTES[action.type];
+  const turnHandler = TURN_ACTION_ROUTES_BY_TYPE[action.type];
   if (!turnHandler) {
     throw "game.invalid_action";
   }

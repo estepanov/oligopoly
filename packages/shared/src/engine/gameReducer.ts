@@ -84,7 +84,7 @@ function mapEngineThrow(err: unknown): GameEngineErrorKey {
   if (typeof err === "string" && KNOWN_ENGINE_ERROR_KEYS.has(err)) {
     return err as GameEngineErrorKey;
   }
-  return GameEngineErrorKeys.INVALID_ACTION;
+  return GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED;
 }
 
 function toInternalState(state: EngineGameState) {
@@ -94,7 +94,7 @@ function toInternalState(state: EngineGameState) {
 function toEngineState(
   state: ReturnType<typeof toInternalState>,
 ): EngineGameState {
-  return deepClone(state) as EngineGameState;
+  return state as EngineGameState;
 }
 
 function applyViaAuthoritativeStateMachine(

@@ -370,7 +370,7 @@ export interface NegotiationThread {
   status: "open" | "agreed" | "expired" | "cancelled";
   startedRound: number;
   expiresAfterRound: number; // startedRound + 3
-  visibility: "private" | "open_negotiation_rule";
+  visibility: "private" | "open";
   messages: NegotiationMessage[];
   proposedContract?: BindingContract;
   handshakeRecord?: HandshakeAgreement;

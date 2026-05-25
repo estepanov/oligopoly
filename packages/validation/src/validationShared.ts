@@ -133,10 +133,7 @@ export type NegotiationThreadStatus = z.infer<
   typeof NegotiationThreadStatusSchema
 >;
 
-export const NegotiationThreadVisibilitySchema = z.enum([
-  "private",
-  "open_negotiation_rule",
-]);
+export const NegotiationThreadVisibilitySchema = z.enum(["private", "open"]);
 export type NegotiationThreadVisibility = z.infer<
   typeof NegotiationThreadVisibilitySchema
 >;
