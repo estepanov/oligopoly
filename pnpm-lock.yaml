@@ -35,6 +35,9 @@ importers:
 
   packages/web:
     dependencies:
+      '@oligopoly/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@oligopoly/validation':
         specifier: workspace:*
         version: link:../validation

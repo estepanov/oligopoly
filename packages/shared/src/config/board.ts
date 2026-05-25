@@ -40,6 +40,17 @@ export interface BoardTile {
 // Sectors
 // ---------------------------------------------------------------------------
 
+export const SECTOR_IDS = [
+  "emerging_tech",
+  "big_tech",
+  "finance",
+  "healthcare",
+  "energy",
+  "defense_media",
+  "elite_tech",
+  "fast_track",
+] as const satisfies readonly SectorId[];
+
 export const SECTORS: Record<SectorId, Sector> = {
   emerging_tech: {
     id: "emerging_tech",

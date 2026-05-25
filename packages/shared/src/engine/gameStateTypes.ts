@@ -4,7 +4,7 @@ import type {
   PendingAuctionState,
 } from "./auctionTypes.js";
 import type { SyndicateCharterState, SyndicateState } from "./syndicate.js";
-import type { BindingContract } from "./types.js";
+import type { BindingContract, BindingContractTerm } from "./types.js";
 
 export interface RateCardState {
   sectorId: string;
@@ -129,6 +129,9 @@ export interface GameActionInput {
   multiplier?: number;
   charter?: SyndicateCharterState;
   contractId?: string;
+  partyB?: string;
+  terms?: BindingContractTerm[];
+  expiresRound?: number;
   handshakeId?: string;
   voteType?: string;
 }

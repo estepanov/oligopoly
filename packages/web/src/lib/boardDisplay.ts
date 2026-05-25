@@ -18,6 +18,17 @@ export function buildTileNameMap(
   return map;
 }
 
+/**
+ * HTML selects stringify values. Perimeter tiles must be sent as numbers so
+ * `getTileByPosition` resolves the perimeter track, not diagonal IDs.
+ */
+export function parseTilePosition(value: string): number | string {
+  if (/^\d+$/.test(value)) {
+    return Number.parseInt(value, 10);
+  }
+  return value;
+}
+
 export function tileLabel(
   position: number | string | null | undefined,
   tileNames: Map<string, string>,
