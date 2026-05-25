@@ -11,5 +11,10 @@ if [[ "${CI:-}" == "true" ]]; then
 	exit 0
 fi
 
+existing_hooks_path="$(git config --local --get core.hooksPath || true)"
+if [[ -n "$existing_hooks_path" && "$existing_hooks_path" != ".githooks" ]]; then
+	echo "Overriding existing core.hooksPath ($existing_hooks_path) with .githooks."
+fi
+
 git config --local core.hooksPath .githooks
-echo "Configured git hooks path to .githooks"
+echo "Configured git hooks path to .githooks (replaces default .git/hooks lookup)."

@@ -391,6 +391,7 @@ Example release sequence:
 
 ```bash
 pnpm run build
+pnpm run ci:verify
 pnpm -r --filter "@oligopoly/*" publish --access public --provenance --no-git-checks
 ```
 

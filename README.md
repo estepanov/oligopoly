@@ -53,4 +53,6 @@ pnpm dev:web      # Web app only
 
 ## Push guardrail
 
-This repo installs a `pre-push` hook (via `pnpm install`/`pnpm prepare`) that runs `pnpm ci:local`. A push is blocked until local CI checks pass.
+This repo installs a `pre-push` hook (via `pnpm install`/`pnpm prepare`) that runs `pnpm ci:local`. The hook is a policy guardrail and can still be bypassed with `git push --no-verify` (or `SKIP_LOCAL_CI_GUARDRAIL=1`), so agents and contributors should treat running local CI as mandatory workflow, not optional.
+
+`pnpm prepare` configures `core.hooksPath=.githooks`, which means Git uses this repo's managed hooks directory instead of `.git/hooks`.
