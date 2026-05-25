@@ -9,7 +9,6 @@ import {
   markAffinityUsed,
 } from "./affinity.js";
 import { shuffleDeterministic } from "./deckShuffle.js";
-import { TRIPLE_DOUBLES_LIMIT } from "./dice.js";
 import type {
   ApplyActionResult,
   InternalGameState,
@@ -17,6 +16,7 @@ import type {
   LogEntry,
 } from "./gameStateMachine.js";
 import { regulationPenaltiesEnabled } from "./optionalRulesEngine.js";
+import { resolvePostMovePhase } from "./phaseHelpers.js";
 import { FLASH_CRASH_LOSS_PCT, FLASH_CRASH_WINDFALL_PCT } from "./setup.js";
 
 export type DisruptionTrigger =
@@ -445,21 +445,6 @@ export function drawAndResolveDisruptionCards(
   return { state: newState, logEntries: logs };
 }
 
-function resumePhaseAfterDisruption(
-  state: InternalGameState,
-  playerId: string,
-): string {
-  const player = getPlayer(state, playerId);
-  if (
-    player &&
-    player.doublesCount > 0 &&
-    player.doublesCount < TRIPLE_DOUBLES_LIMIT
-  ) {
-    return "rolling_doubles";
-  }
-  return "action";
-}
-
 export function resolvePendingDisruptionCard(
   state: InternalGameState,
   nullified: boolean,
@@ -512,10 +497,7 @@ export function resolvePendingDisruptionCard(
     };
   }
 
-  newState.phase = resumePhaseAfterDisruption(
-    newState,
-    pending.drawingPlayerId,
-  );
+  newState.phase = resolvePostMovePhase(newState, pending.drawingPlayerId);
   return { state: newState, logEntries: logs };
 }
 

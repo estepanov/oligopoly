@@ -155,15 +155,6 @@ export function spectrumHolderUtilityMultiplier(
   return undefined;
 }
 
-export function formSyndicateApCost(
-  state: AffinityContext,
-  playerId: string,
-): number {
-  return hasPlayerAffinity(state, playerId, AFFINITY_IDS.founding_partner)
-    ? 0
-    : 1;
-}
-
 export function applyLastMileLogisticsTraverseBonus(
   state: AffinityEffectContext,
   playerId: string,

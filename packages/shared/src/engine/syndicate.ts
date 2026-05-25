@@ -1,4 +1,9 @@
-import { getTileByPosition } from "../config/board.js";
+import {
+  ALL_TILES,
+  getTileByPosition,
+  HUB_ADJACENT_SECTORS,
+  SECTOR_HUB_POSITIONS,
+} from "../config/board.js";
 import { checkSyndicateWin } from "./winCondition.js";
 
 export interface SyndicateState {
@@ -55,17 +60,74 @@ export function tileOwnedByController(
   return areSameSyndicate(state, controllerId, ownerId);
 }
 
-export function syndicateMarketValue(
+export function hasSectorControl(
   state: SyndicateGameContext,
-  memberIds: readonly string[],
+  playerId: string,
+  sectorId: string,
+): boolean {
+  const controllers = controllingPlayerIds(state, playerId);
+  const sectorTiles = ALL_TILES.filter(
+    (tile) => tile.sectorId === sectorId && tile.type === "sector_tile",
+  );
+  return sectorTiles.every((tile) => {
+    const tileState = state.tiles.find(
+      (entry) => String(entry.position) === String(tile.position),
+    );
+    return (
+      tileState?.ownerId &&
+      controllers.includes(tileState.ownerId) &&
+      !tileState.mortgaged
+    );
+  });
+}
+
+export function ownsHubForSector(
+  state: SyndicateGameContext,
+  playerId: string,
+  sectorId: string,
+): boolean {
+  for (const [hubKey, adjacentSector] of Object.entries(HUB_ADJACENT_SECTORS)) {
+    if (adjacentSector !== sectorId) continue;
+    const hubPos =
+      SECTOR_HUB_POSITIONS[hubKey as keyof typeof SECTOR_HUB_POSITIONS];
+    const tileState = state.tiles.find((tile) => tile.position === hubPos);
+    if (
+      tileState?.ownerId &&
+      tileOwnedByController(state, playerId, tileState.ownerId) &&
+      !tileState.mortgaged
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function visitorControlsSector(
+  state: SyndicateGameContext,
+  visitorId: string,
+  sectorId: string,
+): boolean {
+  return hasSectorControl(state, visitorId, sectorId);
+}
+
+export function sumOwnedTileMarketValue(
+  state: SyndicateGameContext,
+  ownerIds: readonly string[],
 ): number {
-  const members = new Set(memberIds);
+  const owners = new Set(ownerIds);
   return state.tiles
-    .filter((tile) => tile.ownerId && members.has(tile.ownerId))
+    .filter((tile) => tile.ownerId && owners.has(tile.ownerId))
     .reduce((sum, tile) => {
       const config = getTileByPosition(tile.position);
       return sum + (config?.cost ?? 0);
     }, 0);
+}
+
+export function syndicateMarketValue(
+  state: SyndicateGameContext,
+  memberIds: readonly string[],
+): number {
+  return sumOwnedTileMarketValue(state, memberIds);
 }
 
 export function findSyndicateWinnerId(
@@ -79,4 +141,11 @@ export function findSyndicateWinnerId(
     }
   }
   return null;
+}
+
+export function formSyndicateApCost(
+  state: { affinityAssignments?: Record<string, string> },
+  playerId: string,
+): number {
+  return state.affinityAssignments?.[playerId] === "founding_partner" ? 0 : 1;
 }
