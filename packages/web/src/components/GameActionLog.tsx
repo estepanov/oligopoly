@@ -1,40 +1,10 @@
 import type { GameLogEntry } from "@oligopoly/validation";
-import { tileLabel } from "../lib/boardDisplay";
+import { formatGameLogEntry } from "../lib/gameLogDisplay";
 
 type GameActionLogProps = {
   entries: GameLogEntry[];
   tileNames: Map<string, string>;
 };
-
-function formatPayload(
-  actionType: string,
-  payload: unknown,
-  tileNames: Map<string, string>,
-): string {
-  if (payload === null || payload === undefined) {
-    return actionType.replaceAll("_", " ");
-  }
-
-  if (typeof payload !== "object") {
-    return `${actionType}: ${String(payload)}`;
-  }
-
-  const record = payload as Record<string, unknown>;
-  if (
-    typeof record.position === "number" ||
-    typeof record.position === "string"
-  ) {
-    return `${actionType.replaceAll("_", " ")} · ${tileLabel(record.position, tileNames)}`;
-  }
-  if (typeof record.choice === "string") {
-    return `${actionType.replaceAll("_", " ")} · ${record.choice}`;
-  }
-  if (typeof record.reason === "string") {
-    return `${actionType.replaceAll("_", " ")} · ${record.reason}`;
-  }
-
-  return actionType.replaceAll("_", " ");
-}
 
 export function GameActionLog({ entries, tileNames }: GameActionLogProps) {
   if (entries.length === 0) {
@@ -48,9 +18,7 @@ export function GameActionLog({ entries, tileNames }: GameActionLogProps) {
           <span className="gameActionLogMeta">
             {new Date(entry.createdAt).toLocaleTimeString()} · R{entry.round}
           </span>
-          <strong>
-            {formatPayload(entry.actionType, entry.payload, tileNames)}
-          </strong>
+          <strong>{formatGameLogEntry(entry, tileNames)}</strong>
           {entry.playerId && (
             <span className="muted">
               {" "}

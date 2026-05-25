@@ -1,58 +1,25 @@
 import type { GameState } from "@oligopoly/validation";
 import { tileLabel } from "../lib/boardDisplay";
-import { currentActorId, playerById } from "../lib/gameUi";
+import { playerById } from "../lib/gameUi";
 
 type GameBoardPanelProps = {
   state: GameState;
   tileNames: Map<string, string>;
   myPlayerId: string | null;
+  actorId: string | null;
 };
 
 export function GameBoardPanel({
   state,
   tileNames,
   myPlayerId,
+  actorId,
 }: GameBoardPanelProps) {
-  const actorId = currentActorId(state);
-  const actor = actorId ? playerById(state, actorId) : undefined;
   const me = myPlayerId ? playerById(state, myPlayerId) : undefined;
   const currency = state.settings?.currencySymbol ?? "¤";
 
   return (
     <div className="gameBoardPanel">
-      <div className="gameBoardStats">
-        <div>
-          <span className="muted">Current actor</span>
-          <strong>
-            {actor?.displayName ?? actorId ?? "—"}
-            {actor?.kind === "ai" ? " (AI)" : ""}
-          </strong>
-        </div>
-        <div>
-          <span className="muted">Position</span>
-          <strong>{tileLabel(actor?.position, tileNames)}</strong>
-        </div>
-        <div>
-          <span className="muted">Dice</span>
-          <strong>
-            {state.lastDiceRoll
-              ? `${state.lastDiceRoll[0]} + ${state.lastDiceRoll[1]}`
-              : "—"}
-          </strong>
-        </div>
-        <div>
-          <span className="muted">Action points</span>
-          <strong>{actor?.actionPointsRemaining ?? "—"}</strong>
-        </div>
-        <div>
-          <span className="muted">Free market pool</span>
-          <strong>
-            {currency}
-            {state.freeMarketPool ?? 0}
-          </strong>
-        </div>
-      </div>
-
       {state.pendingBuyTilePosition !== null &&
         state.pendingBuyTilePosition !== undefined && (
           <p className="gameBoardHighlight">
@@ -94,6 +61,7 @@ export function GameBoardPanel({
               >
                 <td>
                   {player.displayName ?? player.playerId}
+                  {player.kind === "ai" ? " (AI)" : ""}
                   {player.playerId === myPlayerId ? " (you)" : ""}
                 </td>
                 <td>{tileLabel(player.position, tileNames)}</td>

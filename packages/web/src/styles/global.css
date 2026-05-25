@@ -365,7 +365,10 @@ code.inline {
 }
 
 .boardGridMiddle {
-  grid-template-columns: minmax(72px, 1fr) minmax(120px, 1.4fr) minmax(72px, 1fr);
+  grid-template-columns: minmax(72px, 1fr) minmax(120px, 1.4fr) minmax(
+      72px,
+      1fr
+    );
 }
 
 .boardGridColumn {
@@ -418,6 +421,13 @@ code.inline {
 .boardGridOccupants {
   font-size: 0.68rem;
   color: var(--color-accent-start);
+}
+
+.boardGridDiagonalList {
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
 }
 
 .gameActionLog {

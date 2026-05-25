@@ -1,6 +1,6 @@
 import type { HealthResponse } from "@oligopoly/validation";
 import { useCallback, useEffect, useState } from "react";
-import { fetchGameConfig } from "../api/game-config";
+import { fetchGameConfig, type GameConfig } from "../api/gameConfig";
 import { stepAiTurn } from "../api/games";
 import { fetchHealth } from "../api/health";
 import { ApiError } from "../api/http";
@@ -15,7 +15,7 @@ export function DevPage() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
 
   const [configState, setConfigState] = useState<LoadState>({ kind: "idle" });
-  const [config, setConfig] = useState<Record<string, unknown> | null>(null);
+  const [config, setConfig] = useState<GameConfig | null>(null);
   const [debugGameId, setDebugGameId] = useState("");
   const [aiStepMessage, setAiStepMessage] = useState<string | null>(null);
   const [aiStepBusy, setAiStepBusy] = useState(false);
@@ -89,12 +89,18 @@ export function DevPage() {
         )}
         {config && (
           <div className="configGrid">
-            {Object.entries(config).map(([k, v]) => (
-              <div key={k} className="configRow">
-                <strong>{k}:</strong>{" "}
-                <code className="inline">{JSON.stringify(v)}</code>
-              </div>
-            ))}
+            <div className="configRow">
+              <strong>perimeterTiles:</strong>{" "}
+              <code className="inline">
+                {config.perimeterTiles.length} tiles
+              </code>
+            </div>
+            <div className="configRow">
+              <strong>diagonalTiles:</strong>{" "}
+              <code className="inline">
+                {config.diagonalTiles.length} tiles
+              </code>
+            </div>
           </div>
         )}
         <p style={{ marginTop: "1rem" }}>
