@@ -2324,6 +2324,9 @@ describe("applyAction — diagonal overflow", () => {
     const p = result.state.players.find((p) => p.playerId === "player-1")!;
     expect(p.isOnDiagonal).toBe(false);
     expect(p.capital).toBe(1500 + 200);
+    expect(
+      result.logEntries.some((entry) => entry.actionType === "affinity_bonus"),
+    ).toBe(false);
     expect(result.state.freeMarketPool).toBe(0);
     const fmLogs = result.logEntries.filter(
       (e) => e.actionType === "collected_free_market",
@@ -2345,6 +2348,30 @@ describe("applyAction — diagonal overflow", () => {
     });
     const p = result.state.players.find((p) => p.playerId === "player-1")!;
     expect(p.capital).toBe(1500 + 200 + DIAGONAL_TRAVERSE_BONUS);
+    expect(
+      result.logEntries.some((entry) => entry.actionType === "affinity_bonus"),
+    ).toBe(true);
+  });
+
+  it("awards Last Mile Logistics bonus when passing START onto diagonal overflow", () => {
+    const state = makeTestGameState({
+      affinityAssignments: { "player-1": "last_mile_logistics" },
+      marketEventDeckRemaining: [],
+      marketEventDiscard: [],
+    });
+    state.players[0].position = 39;
+    state.freeMarketPool = 50;
+
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [3, 4],
+      pathChoiceDie: 2,
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.isOnDiagonal).toBe(false);
+    expect(p.capital).toBe(
+      1500 + PASS_START_BONUS + 100 + DIAGONAL_TRAVERSE_BONUS,
+    );
     expect(
       result.logEntries.some((entry) => entry.actionType === "affinity_bonus"),
     ).toBe(true);

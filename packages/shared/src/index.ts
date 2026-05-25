@@ -108,14 +108,17 @@ export {
   RANK_POINT_RULES,
   RANK_THRESHOLDS,
 } from "./config/ranks.js";
-export {
-  type AffinityContext,
-  getPlayerAffinityId,
-  hasPlayerAffinity,
-} from "./engine/affinity.js";
 // ---------------------------------------------------------------------------
 // Engine — negotiation, charter, trustworthiness
 // ---------------------------------------------------------------------------
+export {
+  AFFINITY_IDS,
+  type AffinityContext,
+  type AffinityEffectContext,
+  applyLastMileLogisticsTraverseBonus,
+  getPlayerAffinityId,
+  hasPlayerAffinity,
+} from "./engine/affinity.js";
 export type { AiDecision } from "./engine/ai.js";
 export {
   chooseAiAction,

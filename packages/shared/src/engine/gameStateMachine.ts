@@ -12,7 +12,11 @@ import {
   getTileByPosition,
   TOTAL_BOARD_MARKET_VALUE,
 } from "../config/board.js";
-import { hasPlayerAffinity } from "./affinity.js";
+import {
+  AFFINITY_IDS,
+  applyLastMileLogisticsTraverseBonus,
+  hasPlayerAffinity,
+} from "./affinity.js";
 import {
   type PendingAuctionState,
   recordAuctionSubmission,
@@ -53,7 +57,6 @@ import {
   ACTION_POINTS_PER_TURN,
   CORPORATE_TAX_I,
   CORPORATE_TAX_II,
-  DIAGONAL_TRAVERSE_BONUS,
   FREE_MARKET_MINIMUM,
   GOVERNMENT_GRANT,
   PASS_START_BONUS,
@@ -161,26 +164,36 @@ function getPlayer(
   return state.players.find((p) => p.playerId === playerId);
 }
 
-function awardLastMileDiagonalBonus(
+function exitDiagonalAtFreeMarket(
   state: InternalGameState,
+  player: InternalPlayerState,
   playerId: string,
   logs: LogEntry[],
-): void {
-  if (!hasPlayerAffinity(state, playerId, "last_mile_logistics")) return;
+  overflowSteps: number,
+): { skipLandingResolve: boolean } {
+  player.isOnDiagonal = false;
+  applyLastMileLogisticsTraverseBonus(state, playerId, logs);
 
-  const player = getPlayer(state, playerId);
-  if (!player) return;
-
-  player.capital += DIAGONAL_TRAVERSE_BONUS;
+  const pool = Math.max(state.freeMarketPool, FREE_MARKET_MINIMUM);
+  player.capital += pool;
+  state.freeMarketPool = 0;
   logs.push({
     playerId,
-    actionType: "affinity_bonus",
-    payload: {
-      affinityId: "last_mile_logistics",
-      amount: DIAGONAL_TRAVERSE_BONUS,
-      reason: "diagonal_traverse",
-    },
+    actionType: "collected_free_market",
+    payload: { amount: pool },
   });
+
+  if (overflowSteps > 0) {
+    const { newPosition } = moveOnPerimeter(
+      CORNER_POSITIONS.FREE_MARKET,
+      overflowSteps,
+    );
+    player.position = newPosition;
+    return { skipLandingResolve: false };
+  }
+
+  player.position = CORNER_POSITIONS.FREE_MARKET;
+  return { skipLandingResolve: true };
 }
 
 function getCurrentPlayer(state: InternalGameState): InternalPlayerState {
@@ -469,30 +482,15 @@ function handleRollDice(
     const newDiagIndex = currentDiagIndex + total;
 
     if (newDiagIndex >= DIAGONAL_TILES.length) {
-      // Roll off diagonal -> arrive at FREE MARKET, collect pool,
-      // then continue remaining steps on the perimeter from position 20.
-      p.isOnDiagonal = false;
-      awardLastMileDiagonalBonus(newState, playerId, logs);
-      const pool = Math.max(newState.freeMarketPool, FREE_MARKET_MINIMUM);
-      p.capital += pool;
-      newState.freeMarketPool = 0;
-      logs.push({
-        playerId,
-        actionType: "collected_free_market",
-        payload: { amount: pool },
-      });
-
       const remainingSteps = newDiagIndex - DIAGONAL_TILES.length;
-      if (remainingSteps > 0) {
-        const { newPosition } = moveOnPerimeter(
-          CORNER_POSITIONS.FREE_MARKET,
-          remainingSteps,
-        );
-        p.position = newPosition;
-      } else {
-        p.position = CORNER_POSITIONS.FREE_MARKET;
-        skipLandingResolve = true;
-      }
+      const exitResult = exitDiagonalAtFreeMarket(
+        newState,
+        p,
+        playerId,
+        logs,
+        remainingSteps,
+      );
+      skipLandingResolve = exitResult.skipLandingResolve;
     } else {
       p.position = DIAGONAL_TILES[newDiagIndex].position;
     }
@@ -526,28 +524,15 @@ function handleRollDice(
           if (stepsFromStart <= DIAGONAL_TILES.length) {
             p.position = DIAGONAL_TILES[stepsFromStart - 1].position;
           } else {
-            // Overran the diagonal — arrive at FREE MARKET + continue
-            p.isOnDiagonal = false;
-            awardLastMileDiagonalBonus(newState, playerId, logs);
-            const pool = Math.max(newState.freeMarketPool, FREE_MARKET_MINIMUM);
-            p.capital += pool;
-            newState.freeMarketPool = 0;
-            logs.push({
-              playerId,
-              actionType: "collected_free_market",
-              payload: { amount: pool },
-            });
             const overflow = stepsFromStart - DIAGONAL_TILES.length;
-            if (overflow > 0) {
-              const { newPosition: overflowPos } = moveOnPerimeter(
-                CORNER_POSITIONS.FREE_MARKET,
-                overflow,
-              );
-              p.position = overflowPos;
-            } else {
-              p.position = CORNER_POSITIONS.FREE_MARKET;
-              skipLandingResolve = true;
-            }
+            const exitResult = exitDiagonalAtFreeMarket(
+              newState,
+              p,
+              playerId,
+              logs,
+              overflow,
+            );
+            skipLandingResolve = exitResult.skipLandingResolve;
           }
           logs.push({
             playerId,
@@ -1084,7 +1069,7 @@ function handleDevelopTile(
   const cost = calculateDevelopmentCost(
     tile.cost!,
     tokenNum,
-    hasPlayerAffinity(state, playerId, "lean_manufacturing"),
+    hasPlayerAffinity(state, playerId, AFFINITY_IDS.lean_manufacturing),
   );
   if (p.capital < cost) throw "game.insufficient_capital";
 
@@ -1174,7 +1159,7 @@ function handleRedeemTile(
 
   const redemptionCost = calculateRedemptionCost(
     tile.cost,
-    hasPlayerAffinity(state, playerId, "proptech_pioneer"),
+    hasPlayerAffinity(state, playerId, AFFINITY_IDS.proptech_pioneer),
   );
   const p = getPlayer(state, playerId)!;
   if (p.capital < redemptionCost) throw "game.insufficient_capital";
