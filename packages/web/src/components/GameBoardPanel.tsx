@@ -1,5 +1,5 @@
 import type { GameState } from "@oligopoly/validation";
-import { tileLabel } from "../api/gameConfig";
+import { tileLabel } from "../lib/boardDisplay";
 import { currentActorId, playerById } from "../lib/gameUi";
 
 type GameBoardPanelProps = {

@@ -1,5 +1,5 @@
 import type { GameAction, GameState } from "@oligopoly/validation";
-import { tileLabel } from "../api/gameConfig";
+import { tileLabel } from "../lib/boardDisplay";
 import { isMyTurn, ownedTilesForPlayer } from "../lib/gameUi";
 
 type GamePlayControlsProps = {
@@ -8,7 +8,6 @@ type GamePlayControlsProps = {
   tileNames: Map<string, string>;
   busy: boolean;
   onAction: (label: string, action: GameAction) => Promise<void>;
-  onAiStep?: () => Promise<void>;
 };
 
 export function GamePlayControls({
@@ -17,7 +16,6 @@ export function GamePlayControls({
   tileNames,
   busy,
   onAction,
-  onAiStep,
 }: GamePlayControlsProps) {
   const myTurn = isMyTurn(state, myPlayerId);
   const pendingTile = state.pendingBuyTilePosition ?? null;
@@ -136,17 +134,6 @@ export function GamePlayControls({
         >
           End turn
         </button>
-
-        {onAiStep && (
-          <button
-            type="button"
-            className="button buttonSecondary"
-            disabled={busy}
-            onClick={() => void onAiStep()}
-          >
-            Step AI (debug)
-          </button>
-        )}
       </div>
 
       {myTurn && ownedTiles.length > 0 && state.phase === "action" && (

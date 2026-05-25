@@ -5,18 +5,18 @@ import {
 } from "@oligopoly/validation";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { buildTileNameMap, fetchGameConfig } from "../api/gameConfig";
+import { fetchGameConfig } from "../api/gameConfig";
 import {
   fetchGameState,
   fetchGameSummary,
   gameWebSocketUrl,
-  stepAiTurn,
   submitGameAction,
 } from "../api/games";
 import { ApiError } from "../api/http";
 import { useAuth } from "../components/AuthContext";
 import { GameBoardPanel } from "../components/GameBoardPanel";
 import { GamePlayControls } from "../components/GamePlayControls";
+import { buildTileNameMap } from "../lib/boardDisplay";
 import { currentActorId, isMyTurn } from "../lib/gameUi";
 
 export function GameDetailPage() {
@@ -149,25 +149,6 @@ export function GameDetailPage() {
     }
   };
 
-  const runAiStep = async () => {
-    if (!id) return;
-    setBusyAction(true);
-    setError(null);
-    try {
-      const next = await stepAiTurn(id);
-      setState(next);
-      setLastAction(
-        next.aiAction
-          ? `AI ${next.aiPlayerId} chose ${next.aiAction.type}`
-          : "AI step complete",
-      );
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "AI step failed");
-    } finally {
-      setBusyAction(false);
-    }
-  };
-
   const refreshState = async () => {
     if (!id) return;
     setState(await fetchGameState(id));
@@ -269,7 +250,6 @@ export function GameDetailPage() {
               tileNames={tileNames}
               busy={busyAction}
               onAction={runAction}
-              onAiStep={runAiStep}
             />
 
             <div className="buttonRow" style={{ marginTop: "1rem" }}>
