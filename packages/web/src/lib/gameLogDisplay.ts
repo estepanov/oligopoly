@@ -14,6 +14,12 @@ const ACTION_LABELS: Record<string, string> = {
   pay_rent: "Paid rent",
   pass_start: "Passed start",
   timeout_takeover: "Timeout takeover",
+  auction_started: "Auction started",
+  auction_bid: "Auction bid",
+  auction_pass: "Passed auction",
+  auction_settled: "Auction settled",
+  auction_no_bids: "Auction ended with no bids",
+  auction_tie_break: "Auction tie-break round",
 };
 
 function payloadSuffix(

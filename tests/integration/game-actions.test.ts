@@ -197,11 +197,10 @@ describe("POST /api/games/:id/action — buy_tile / decline_tile", () => {
     expect(buyer.ownedTilePositions).toContain(3);
   });
 
-  it("can decline a tile and proceed to action phase", async () => {
+  it("starts a sealed auction when a tile is declined", async () => {
     const db = createD1Stub();
     const { gameId, currentPlayer } = await createAndStartGame(db);
 
-    // Roll to unowned tile
     await requestWithEnv(`/api/games/${gameId}/action`, {
       method: "POST",
       headers: { "x-subject": currentPlayer },
@@ -209,7 +208,6 @@ describe("POST /api/games/:id/action — buy_tile / decline_tile", () => {
       db,
     });
 
-    // Decline the tile
     const declineRes = await requestWithEnv(`/api/games/${gameId}/action`, {
       method: "POST",
       headers: { "x-subject": currentPlayer },
@@ -218,8 +216,53 @@ describe("POST /api/games/:id/action — buy_tile / decline_tile", () => {
     });
     expect(declineRes.status).toBe(200);
     const declineBody = (await declineRes.json()) as Record<string, unknown>;
-    expect(declineBody.phase).toBe("action");
-    expect(declineBody.pendingBuyTilePosition).toBeNull();
+    expect(declineBody.phase).toBe("waiting_for_auction_bids");
+    expect(declineBody.pendingAuction).toBeDefined();
+  });
+
+  it("settles sealed auction bids and awards the tile", async () => {
+    const db = createD1Stub();
+    const { gameId, currentPlayer, otherPlayer } = await createAndStartGame(db);
+
+    await requestWithEnv(`/api/games/${gameId}/action`, {
+      method: "POST",
+      headers: { "x-subject": currentPlayer },
+      body: { type: "roll_dice", result: [1, 2] },
+      db,
+    });
+
+    await requestWithEnv(`/api/games/${gameId}/action`, {
+      method: "POST",
+      headers: { "x-subject": currentPlayer },
+      body: { type: "decline_tile", tilePosition: 3 },
+      db,
+    });
+
+    const bidRes = await requestWithEnv(`/api/games/${gameId}/action`, {
+      method: "POST",
+      headers: { "x-subject": currentPlayer },
+      body: { type: "auction_bid", tilePosition: 3, amount: 90 },
+      db,
+    });
+    expect(bidRes.status).toBe(200);
+
+    const settleRes = await requestWithEnv(`/api/games/${gameId}/action`, {
+      method: "POST",
+      headers: { "x-subject": otherPlayer },
+      body: { type: "auction_bid", tilePosition: 3, amount: 50 },
+      db,
+    });
+    expect(settleRes.status).toBe(200);
+    const settleBody = (await settleRes.json()) as Record<string, unknown>;
+    expect(settleBody.phase).toBe("action");
+    expect(settleBody.pendingAuction).toBeUndefined();
+
+    const players = settleBody.players as Array<{
+      playerId: string;
+      ownedTilePositions: number[];
+    }>;
+    const winner = players.find((player) => player.playerId === currentPlayer)!;
+    expect(winner.ownedTilePositions).toContain(3);
   });
 });
 
@@ -335,7 +378,7 @@ describe("POST /api/games/:id/action — rent payment", () => {
 describe("POST /api/games/:id/action — doubles", () => {
   it("allows rolling again after doubles", async () => {
     const db = createD1Stub();
-    const { gameId, currentPlayer } = await createAndStartGame(db);
+    const { gameId, currentPlayer, otherPlayer } = await createAndStartGame(db);
 
     // Roll doubles [3, 3] = 6 -> pos 6 (Search Engine Corp.)
     const rollRes = await requestWithEnv(`/api/games/${gameId}/action`, {
@@ -348,12 +391,40 @@ describe("POST /api/games/:id/action — doubles", () => {
 
     // If landed on purchasable tile, need to buy or decline first
     if (rollBody.phase === "waiting_for_buy") {
-      await requestWithEnv(`/api/games/${gameId}/action`, {
+      const declineRes = await requestWithEnv(`/api/games/${gameId}/action`, {
         method: "POST",
         headers: { "x-subject": currentPlayer },
         body: {
           type: "decline_tile",
           tilePosition: rollBody.pendingBuyTilePosition,
+        },
+        db,
+      });
+      const declineBody = (await declineRes.json()) as Record<string, unknown>;
+      expect(declineBody.phase).toBe("waiting_for_auction_bids");
+      const auctionTile =
+        (
+          declineBody.pendingAuction as
+            | { tilePosition: number | string }
+            | undefined
+        )?.tilePosition ?? rollBody.pendingBuyTilePosition;
+
+      await requestWithEnv(`/api/games/${gameId}/action`, {
+        method: "POST",
+        headers: { "x-subject": currentPlayer },
+        body: {
+          type: "auction_pass",
+          tilePosition: auctionTile,
+        },
+        db,
+      });
+
+      await requestWithEnv(`/api/games/${gameId}/action`, {
+        method: "POST",
+        headers: { "x-subject": otherPlayer },
+        body: {
+          type: "auction_pass",
+          tilePosition: auctionTile,
         },
         db,
       });

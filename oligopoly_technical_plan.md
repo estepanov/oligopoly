@@ -234,7 +234,7 @@ AI player protocol:
 - Lobby start and kick replacement persist canonical state and emit `game.schedule` / `game.action_applied`; they do not call `runAiTurnLoop` directly.
 - `DELETE /api/lobbies/:id/player/:uid` during `in_game` replaces the kicked human seat with a permanent AI replacement in the active game state via `kickInGamePlayerToAi`.
 - `POST /api/games/:id/ai/step` remains available for manual/debug stepping only on `/dev`; the play UI does not expose AI stepping and the client does not auto-step AI turns.
-- `GameDetailPage` loads board names from `GET /api/game-config`, shows live board/turn state over WebSocket, and exposes the core turn loop (roll, buy/decline, path choice, develop/mortgage/redeem, end turn) for the signed-in participant.
+- `GameDetailPage` loads board names from `GET /api/game-config`, shows live board/turn state over WebSocket, and exposes the core turn loop (roll, buy/decline, sealed auction bid/pass, path choice, develop/mortgage/redeem, end turn) for the signed-in participant.
 - `GameDetailPage` uses `useGameSession` (HTTP load + `useGameRealtime` for state, log entries, and timers) and renders a perimeter board grid plus player table.
 - All lobby JSON responses route through `buildLobbyResponse`, which attaches optional `gameId` when status is `in_game`.
 - Lobby start navigates directly to `/games/:id` when a game is created.
@@ -598,6 +598,9 @@ No deployment-specific delivery or session keys are defined in this plan.
 - **`applyAction`** in `@oligopoly/shared` (`gameStateMachine`) is the primary transition for **`POST /api/games/:id/action`**. Typed game errors use **`GameErrorKeys`** in `@oligopoly/validation`.
 - A slimmer **`applyGameAction`** helper (`gameReducer`) remains exported for incremental roll/end-turn style transitions and tests; HTTP routes use **`applyAction`** unless otherwise noted.
 - **`roll_dice`** may omit **`result`** on the wire; the worker injects **`pathChoiceDie`** where required by the state machine before applying the action.
+- **Declined tile purchase** enters **`waiting_for_auction_bids`** with **`pendingAuction`** (sealed bids only in this slice). All non-eliminated players in turn order are eligible; **`auction_bid`** / **`auction_pass`** bypass the current-turn check. The auction auto-settles when every eligible player has submitted; highest bid wins, ties trigger additional sealed rounds with **`tieBreakMinBid`**, and all-pass leaves the tile unowned. **`resumePhase`** restores **`action`** or **`rolling_doubles`** when the decline happened during a doubles chain.
+- Sealed bid amounts are redacted in HTTP/WS player views (`toClientGameState`) and stripped from broadcast snapshots (`publicStateForBroadcast`); only the viewer's own **`mySubmission`** is returned until settlement reveals all bids in the action log.
+- **`GameRoom`** AI loop uses **`findNextAiAuctionActor`** / **`chooseAiActionForPlayer`** to submit bids for AI seats without a submission. Auction bid-window timers are deferred; settlement is submission-driven for now.
 
 ---
 

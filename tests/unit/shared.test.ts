@@ -1633,7 +1633,7 @@ describe("applyAction — buy_tile / decline_tile", () => {
     ).toThrow("game.insufficient_capital");
   });
 
-  it("declines tile and enters action phase", () => {
+  it("declines tile and starts a sealed auction", () => {
     const state = makeTestGameState({
       phase: "waiting_for_buy",
       pendingBuyTilePosition: 3,
@@ -1642,8 +1642,119 @@ describe("applyAction — buy_tile / decline_tile", () => {
       type: "decline_tile",
       tilePosition: 3,
     });
-    expect(result.state.phase).toBe("action");
+    expect(result.state.phase).toBe("waiting_for_auction_bids");
     expect(result.state.pendingBuyTilePosition).toBeNull();
+    expect(result.state.pendingAuction?.tilePosition).toBe(3);
+    expect(result.state.pendingAuction?.auctionType).toBe("sealed_bids");
+    expect(result.state.pendingAuction?.eligiblePlayerIds).toEqual([
+      "player-1",
+      "player-2",
+    ]);
+  });
+});
+
+describe("applyAction — auction_bid / auction_pass", () => {
+  function makeAuctionState(
+    overrides?: Partial<InternalGameState>,
+  ): InternalGameState {
+    return makeTestGameState({
+      phase: "waiting_for_auction_bids",
+      pendingBuyTilePosition: null,
+      pendingAuction: {
+        tilePosition: 3,
+        trigger: "decline",
+        auctionType: "sealed_bids",
+        submissions: {},
+        eligiblePlayerIds: ["player-1", "player-2"],
+        tieBreakRound: 0,
+        resumePhase: "action",
+      },
+      ...overrides,
+    });
+  }
+
+  it("awards tile to highest bidder when all eligible players submit", () => {
+    const state = makeAuctionState();
+    const first = applyAction(state, "player-1", {
+      type: "auction_bid",
+      tilePosition: 3,
+      amount: 90,
+    });
+    expect(first.state.phase).toBe("waiting_for_auction_bids");
+
+    const settled = applyAction(first.state, "player-2", {
+      type: "auction_bid",
+      tilePosition: 3,
+      amount: 50,
+    });
+    expect(settled.state.phase).toBe("action");
+    expect(settled.state.pendingAuction).toBeUndefined();
+
+    const winner = settled.state.players.find(
+      (p) => p.playerId === "player-1",
+    )!;
+    expect(winner.capital).toBe(1500 - 90);
+    expect(winner.ownedTilePositions).toContain(3);
+  });
+
+  it("leaves tile unowned when every eligible player passes", () => {
+    const state = makeAuctionState();
+    const afterFirst = applyAction(state, "player-1", {
+      type: "auction_pass",
+      tilePosition: 3,
+    });
+    const settled = applyAction(afterFirst.state, "player-2", {
+      type: "auction_pass",
+      tilePosition: 3,
+    });
+    expect(settled.state.phase).toBe("action");
+    expect(settled.state.pendingAuction).toBeUndefined();
+    const tile = settled.state.tiles.find((entry) => entry.position === 3);
+    expect(tile?.ownerId).toBeNull();
+  });
+
+  it("starts a tie-break round when top bids match", () => {
+    const state = makeAuctionState();
+    const afterFirst = applyAction(state, "player-1", {
+      type: "auction_bid",
+      tilePosition: 3,
+      amount: 75,
+    });
+    const tieBreak = applyAction(afterFirst.state, "player-2", {
+      type: "auction_bid",
+      tilePosition: 3,
+      amount: 75,
+    });
+    expect(tieBreak.state.phase).toBe("waiting_for_auction_bids");
+    expect(tieBreak.state.pendingAuction?.tieBreakRound).toBe(1);
+    expect(tieBreak.state.pendingAuction?.tieBreakMinBid).toBe(75);
+    expect(tieBreak.state.pendingAuction?.eligiblePlayerIds).toEqual([
+      "player-1",
+      "player-2",
+    ]);
+    expect(tieBreak.state.pendingAuction?.submissions).toEqual({});
+  });
+
+  it("rejects bids below the tie-break minimum", () => {
+    const state = makeAuctionState({
+      pendingAuction: {
+        tilePosition: 3,
+        trigger: "decline",
+        auctionType: "sealed_bids",
+        submissions: {},
+        eligiblePlayerIds: ["player-1", "player-2"],
+        tieBreakMinBid: 75,
+        tieBreakRound: 1,
+        resumePhase: "action",
+      },
+    });
+    expect(() =>
+      applyAction(state, "player-1", {
+        type: "auction_bid",
+        tilePosition: 3,
+        amount: 74,
+      }),
+    ).toThrow("game.auction_bid_too_low");
   });
 });
 

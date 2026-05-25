@@ -26,6 +26,31 @@ export function isMyTurn(state: GameState, myPlayerId: string | null): boolean {
   return currentActorId(state) === myPlayerId;
 }
 
+export function isAuctionPhase(state: GameState): boolean {
+  return (
+    state.phase === "waiting_for_auction_bids" && Boolean(state.pendingAuction)
+  );
+}
+
+export function canParticipateInAuction(
+  state: GameState,
+  myPlayerId: string | null,
+): boolean {
+  if (!myPlayerId || !state.pendingAuction) return false;
+  return state.pendingAuction.eligiblePlayerIds.includes(myPlayerId);
+}
+
+export function hasSubmittedAuction(
+  state: GameState,
+  myPlayerId: string | null,
+): boolean {
+  if (!myPlayerId || !state.pendingAuction) return false;
+  const auction = state.pendingAuction as typeof state.pendingAuction & {
+    mySubmission?: number | "pass";
+  };
+  return auction.mySubmission !== undefined;
+}
+
 export function ownedTilesForPlayer(
   state: GameState,
   playerId: string,

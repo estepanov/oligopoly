@@ -1,6 +1,7 @@
 import type { GameAction, GameState } from "@oligopoly/validation";
 import { tileLabel } from "../lib/boardDisplay";
-import { isMyTurn, ownedTilesForPlayer } from "../lib/gameUi";
+import { isAuctionPhase, isMyTurn, ownedTilesForPlayer } from "../lib/gameUi";
+import { AuctionPanel } from "./AuctionPanel";
 
 type GamePlayControlsProps = {
   state: GameState;
@@ -19,6 +20,7 @@ export function GamePlayControls({
 }: GamePlayControlsProps) {
   const myTurn = isMyTurn(state, myPlayerId);
   const pendingTile = state.pendingBuyTilePosition ?? null;
+  const auctionActive = isAuctionPhase(state);
   const ownedTiles = myPlayerId ? ownedTilesForPlayer(state, myPlayerId) : [];
   const currency = state.settings?.currencySymbol ?? "¤";
   const gameOver = state.phase === "game_over";
@@ -46,9 +48,17 @@ export function GamePlayControls({
         </p>
       )}
 
-      {myPlayerId && !myTurn && (
+      {myPlayerId && !myTurn && !auctionActive && (
         <p className="muted">Waiting for the current player to act…</p>
       )}
+
+      <AuctionPanel
+        state={state}
+        myPlayerId={myPlayerId}
+        tileNames={tileNames}
+        busy={busy}
+        onAction={onAction}
+      />
 
       <div className="buttonRow">
         <button
