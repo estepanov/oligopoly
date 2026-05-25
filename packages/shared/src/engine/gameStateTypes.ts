@@ -1,4 +1,4 @@
-import type { AiPersonality } from "@oligopoly/validation";
+import type { AiPersonality, GameAction } from "@oligopoly/validation";
 import type {
   AuctionResumePhase,
   PendingAuctionState,
@@ -153,14 +153,14 @@ export interface InternalTileState {
 }
 
 export interface GameActionInput {
-  type: string;
+  type: GameAction["type"];
   result?: [number, number];
   tilePosition?: number | string;
   tokenNumber?: number;
   choice?: "perimeter" | "diagonal";
   amount?: number;
+  /** Server-generated when rolling through START to choose perimeter vs diagonal. */
   pathChoiceDie?: number;
-  pass?: true;
   memberIds?: string[];
   affinityId?: string;
   targetPlayerId?: string;

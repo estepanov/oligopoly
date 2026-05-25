@@ -6,7 +6,8 @@ import type {
   InternalGameState,
   LogEntry,
 } from "./gameStateTypes.js";
-import { deepClone, getPlayer } from "./stateUtils.js";
+import { deepClone, getPlayer, transferTileOwnership } from "./stateUtils.js";
+import { enterWaitingForRollForCurrentTurn } from "./turnPhase.js";
 import { applyWinIfThresholdCrossed } from "./winResolution.js";
 
 function clearPendingAuction(state: InternalGameState): InternalGameState {
@@ -21,32 +22,15 @@ function transferTileToWinner(
   winnerId: string,
   options: { removeFromSellerId?: string; clearMortgage: boolean },
 ): InternalGameState {
-  const winner = getPlayer(state, winnerId);
-  if (!winner) {
-    throw "game.invalid_player_state";
-  }
-
-  if (options.removeFromSellerId) {
-    const seller = getPlayer(state, options.removeFromSellerId);
-    if (seller) {
-      seller.ownedTilePositions = seller.ownedTilePositions.filter(
-        (pos) => String(pos) !== String(auction.tilePosition),
-      );
-      seller.mortgagedTilePositions = seller.mortgagedTilePositions.filter(
-        (pos) => String(pos) !== String(auction.tilePosition),
-      );
-    }
-  }
-
-  winner.ownedTilePositions.push(auction.tilePosition);
-  const tileState = state.tiles.find(
-    (entry) => String(entry.position) === String(auction.tilePosition),
+  const transferred = transferTileOwnership(
+    state,
+    options.removeFromSellerId ?? null,
+    winnerId,
+    auction.tilePosition,
+    { clearMortgage: options.clearMortgage },
   );
-  if (tileState) {
-    tileState.ownerId = winnerId;
-    if (options.clearMortgage) {
-      tileState.mortgaged = false;
-    }
+  if (!transferred) {
+    throw "game.invalid_player_state";
   }
 
   return state;
@@ -92,13 +76,24 @@ function logAuctionSettled(
   });
 }
 
+function applyAuctionResumePhase(
+  state: InternalGameState,
+  resumePhase: PendingAuctionState["resumePhase"],
+): void {
+  if (resumePhase === "waiting_for_roll") {
+    enterWaitingForRollForCurrentTurn(state);
+    return;
+  }
+  state.phase = resumePhase;
+}
+
 function settleDeclineAuctionWithoutSale(
   state: InternalGameState,
   auction: PendingAuctionState,
   logs: LogEntry[],
 ): ApplyActionResult {
   const newState = clearPendingAuction(state);
-  newState.phase = auction.resumePhase;
+  applyAuctionResumePhase(newState, auction.resumePhase);
   return { state: newState, logEntries: logs };
 }
 
@@ -131,7 +126,7 @@ function settleDeclineAuctionWinner(
   newState = transferTileToWinner(newState, auction, winnerId, {
     clearMortgage: false,
   });
-  newState.phase = auction.resumePhase;
+  applyAuctionResumePhase(newState, auction.resumePhase);
   logAuctionSettled(logs, auction, winnerId, amount);
   applyWinIfThresholdCrossed(newState, logs);
   return { state: newState, logEntries: logs };
@@ -164,7 +159,7 @@ function settlePlayerInitiatedAuctionWinner(
     removeFromSellerId: auction.sellerId,
     clearMortgage: true,
   });
-  newState.phase = auction.resumePhase;
+  applyAuctionResumePhase(newState, auction.resumePhase);
   logAuctionSettled(logs, auction, winnerId, amount);
   applyWinIfThresholdCrossed(newState, logs);
   return { state: newState, logEntries: logs };

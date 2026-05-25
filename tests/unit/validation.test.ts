@@ -1051,6 +1051,7 @@ describe("GameStateSchema (enhanced)", () => {
           summary: "No trades",
           status: "pending",
           partySignatures: { p1: true },
+          createdRound: 2,
         },
       ],
     });

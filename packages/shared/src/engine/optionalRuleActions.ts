@@ -6,7 +6,7 @@ import type {
   LogEntry,
 } from "./gameStateTypes.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
-import { deepClone, getPlayer } from "./stateUtils.js";
+import { deepClone, getPlayer, transferTileOwnership } from "./stateUtils.js";
 import { areSameSyndicate } from "./syndicate.js";
 
 const HOSTILE_TAKEOVER_MARKUP = 1.5;
@@ -54,20 +54,24 @@ export function handleHostileTakeover(
   if (buyer.capital < price) throw "game.insufficient_capital";
 
   const newState = deepClone(state);
-  const buyerState = getPlayer(newState, playerId)!;
-  const sellerState = getPlayer(newState, targetId)!;
+  const buyerState = getPlayer(newState, playerId);
+  const sellerState = getPlayer(newState, targetId);
+  if (!buyerState || !sellerState) {
+    throw "game.invalid_action";
+  }
   buyerState.capital -= price;
   sellerState.capital += price;
   buyerState.hostileTakeoverUsed = true;
 
-  const updatedTile = newState.tiles.find(
-    (entry) => String(entry.position) === String(tilePosition),
-  )!;
-  updatedTile.ownerId = playerId;
-  sellerState.ownedTilePositions = sellerState.ownedTilePositions.filter(
-    (pos) => String(pos) !== String(tilePosition),
+  const transferred = transferTileOwnership(
+    newState,
+    targetId,
+    playerId,
+    tilePosition,
   );
-  buyerState.ownedTilePositions.push(tilePosition);
+  if (!transferred) {
+    throw "game.invalid_action";
+  }
 
   const logs: LogEntry[] = [
     {
@@ -114,7 +118,10 @@ export function handleMarketManipulation(
   }
 
   const newState = deepClone(state);
-  const actorState = getPlayer(newState, playerId)!;
+  const actorState = getPlayer(newState, playerId);
+  if (!actorState) {
+    throw "game.invalid_action";
+  }
   actorState.capital -= MARKET_MANIPULATION_COST;
   actorState.marketManipulationUsedThisRound = true;
   if (!newState.frozenTilePositions) {

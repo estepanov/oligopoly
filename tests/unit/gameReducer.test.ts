@@ -1,5 +1,5 @@
 import { applyGameAction, type EngineGameState } from "@oligopoly/shared";
-import { GameEngineErrorKeys } from "@oligopoly/validation";
+import { GameEngineErrorKeys, GameErrorKeys } from "@oligopoly/validation";
 import { describe, expect, it } from "vitest";
 
 function minimalTwoPlayerState(
@@ -215,5 +215,18 @@ describe("applyGameAction", () => {
     }
     expect(r.state.handshakeAgreements?.length).toBe(1);
     expect(r.logActionType).toBe("handshake_proposed");
+  });
+
+  it("preserves specific engine error keys from applyAction", () => {
+    const state = minimalTwoPlayerState("action");
+    const result = applyGameAction(
+      state,
+      { type: "start_negotiation", targetPlayerIds: ["bob"] },
+      { actorId: "alice" },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errorKey).toBe(GameErrorKeys.INSUFFICIENT_AP);
+    }
   });
 });

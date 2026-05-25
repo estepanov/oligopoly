@@ -81,9 +81,7 @@ export function initTileStates(): InternalTileState[] {
   }));
 }
 
-export function normalizeGameState(
-  raw: Record<string, unknown>,
-): InternalGameState {
+export function normalizeGameState(raw: unknown): InternalGameState {
   const state = raw as unknown as InternalGameState;
   if (!state.tiles || state.tiles.length === 0) {
     state.tiles = initTileStates();

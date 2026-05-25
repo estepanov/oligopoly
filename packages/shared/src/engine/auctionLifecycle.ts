@@ -46,9 +46,16 @@ export function startDeclineAuction(
   tilePosition: number | string,
   resumePhase: AuctionResumePhase,
   nowMs: number = Date.now(),
+  overrides: Partial<
+    Pick<
+      PendingAuctionState,
+      "sellerId" | "reservePrice" | "tieBreakMinBid" | "eligiblePlayerIds"
+    >
+  > = {},
 ): InternalGameState {
   return createPendingAuction(state, tilePosition, resumePhase, nowMs, {
     trigger: "decline",
+    ...overrides,
   });
 }
 

@@ -25,7 +25,7 @@ export function handleProposeHandshake(
 ): ApplyActionResult {
   if (state.phase !== "action") throw "game.invalid_action";
 
-  const partyB = action.partyB ?? action.targetPlayerId;
+  const partyB = action.partyB;
   const summary = action.summary?.trim();
   if (!partyB || partyB === playerId || !summary) throw "game.invalid_action";
 

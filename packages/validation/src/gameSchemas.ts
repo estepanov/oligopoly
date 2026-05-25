@@ -196,7 +196,7 @@ export const InGameHandshakeAgreementSchema = z.object({
   summary: z.string(),
   partySignatures: z.record(z.string(), z.boolean()).optional(),
   status: z.enum(["pending", "active", "broken"]),
-  createdRound: z.number().int().optional(),
+  createdRound: z.number().int(),
 });
 export type InGameHandshakeAgreement = z.infer<
   typeof InGameHandshakeAgreementSchema

@@ -13,7 +13,7 @@ import type {
   GameEngineErrorKey,
   GameState,
 } from "@oligopoly/validation";
-import { GameEngineErrorKeys } from "@oligopoly/validation";
+import { GameEngineErrorKeys, GameErrorKeys } from "@oligopoly/validation";
 import { applyAction, normalizeGameState } from "./gameStateMachine.js";
 import type { GameActionInput } from "./gameStateTypes.js";
 import { deepClone } from "./stateUtils.js";
@@ -70,20 +70,47 @@ function toEngineActionInput(
   ctx: ApplyGameActionContext,
 ): GameActionInput | ApplyGameActionFailure {
   if (action.type !== "roll_dice") {
-    return action as GameActionInput;
+    return action;
   }
   return resolveRollInput(action, ctx);
 }
 
-const KNOWN_ENGINE_ERROR_KEYS = new Set<string>(
-  Object.values(GameEngineErrorKeys),
-);
+const KNOWN_ENGINE_ERROR_KEYS = new Set<string>([
+  ...Object.values(GameEngineErrorKeys),
+  ...Object.values(GameErrorKeys),
+]);
 
 function mapEngineThrow(err: unknown): GameEngineErrorKey {
   if (typeof err === "string" && KNOWN_ENGINE_ERROR_KEYS.has(err)) {
     return err as GameEngineErrorKey;
   }
   return GameEngineErrorKeys.INVALID_ACTION;
+}
+
+function toInternalState(state: EngineGameState) {
+  return normalizeGameState(deepClone(state));
+}
+
+function toEngineState(
+  state: ReturnType<typeof toInternalState>,
+): EngineGameState {
+  return deepClone(state) as EngineGameState;
+}
+
+function selectPrimaryLogEntry(
+  actorId: string,
+  actionType: GameAction["type"],
+  entries: Array<{
+    playerId: string | null;
+    actionType: string;
+    payload: unknown;
+  }>,
+) {
+  return (
+    entries.find((entry) => entry.playerId === actorId) ??
+    entries.find((entry) => entry.actionType === actionType) ??
+    entries[0]
+  );
 }
 
 function applyViaAuthoritativeStateMachine(
@@ -97,16 +124,16 @@ function applyViaAuthoritativeStateMachine(
   }
 
   try {
-    const internal = normalizeGameState(
-      deepClone(state) as unknown as Record<string, unknown>,
-    );
+    const internal = toInternalState(state);
     const result = applyAction(internal, ctx.actorId, actionInput);
-    const primary =
-      result.logEntries.find((entry) => entry.playerId === ctx.actorId) ??
-      result.logEntries[result.logEntries.length - 1];
+    const primary = selectPrimaryLogEntry(
+      ctx.actorId,
+      action.type,
+      result.logEntries,
+    );
     return {
       ok: true,
-      state: result.state as unknown as EngineGameState,
+      state: toEngineState(result.state),
       logActionType: primary?.actionType ?? action.type,
       logPayload: (primary?.payload ?? {}) as Record<string, unknown>,
     };

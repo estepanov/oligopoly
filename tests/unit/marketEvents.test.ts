@@ -4,6 +4,7 @@ import {
   type InternalGameState,
   initTileStates,
   MARKET_EVENT_DECK_IDS,
+  recordAuctionSubmission,
   resolveMarketEventCard,
 } from "@oligopoly/shared";
 import { describe, expect, it } from "vitest";
@@ -201,6 +202,54 @@ describe("drawAndResolveMarketEvent", () => {
     expect(result.state.pendingAuction?.tilePosition).toBe(6);
     expect(result.state.pendingAuction?.sellerId).toBe("player-2");
     expect(result.state.pendingAuction?.resumePhase).toBe("waiting_for_roll");
+  });
+
+  it("grants AP when leveraged-buyout auction settles back to waiting_for_roll", () => {
+    const state = makeMarketEventState({
+      settings: { auctionType: "open_bids" },
+      marketEventDeckRemaining: ["optional_leveraged_buyout", "market_crash"],
+      players: [
+        {
+          playerId: "player-1",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [1, 3],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 0,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+        {
+          playerId: "player-2",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [6],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 0,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+      ],
+    });
+    state.tiles.find((tile) => tile.position === 1)!.ownerId = "player-1";
+    state.tiles.find((tile) => tile.position === 3)!.ownerId = "player-1";
+    state.tiles.find((tile) => tile.position === 6)!.ownerId = "player-2";
+
+    const drawn = drawAndResolveMarketEvent(state, "player-1", "round_start");
+    expect(drawn.state.phase).toBe("waiting_for_auction_bids");
+
+    const settled = recordAuctionSubmission(drawn.state, "player-1", 1);
+    expect(settled.state.phase).toBe("waiting_for_roll");
+    expect(
+      settled.state.players.find((player) => player.playerId === "player-1")
+        ?.actionPointsRemaining,
+    ).toBe(2);
   });
 
   it("optional_dark_pool_transfer moves a seeded owned tile, not always the first", () => {

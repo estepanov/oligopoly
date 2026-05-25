@@ -17,7 +17,7 @@ import {
   transferCapital,
 } from "./marketEventPrimitives.js";
 import type { MarketEventTrigger } from "./marketEvents.js";
-import { getPlayer } from "./stateUtils.js";
+import { getPlayer, transferTileOwnership } from "./stateUtils.js";
 
 export type OptionalMarketEventContext = {
   state: InternalGameState;
@@ -43,21 +43,24 @@ function seededD6(
   );
 }
 
-function sumOpponentDevelopmentTokens(
+function ownDevelopmentTokensByPlayer(
   state: InternalGameState,
-  playerId: string,
-): number {
-  let tokens = 0;
-  for (const other of activePlayers(state)) {
-    if (other.playerId === playerId) continue;
-    for (const pos of other.ownedTilePositions) {
-      const tileState = state.tiles.find(
-        (entry) => String(entry.position) === String(pos),
-      );
-      tokens += tileState?.developmentTokens ?? 0;
+): Map<string, number> {
+  const developmentByPosition = new Map<string, number>(
+    state.tiles.map((tile) => [
+      String(tile.position),
+      tile.developmentTokens ?? 0,
+    ]),
+  );
+  const totals = new Map<string, number>();
+  for (const player of activePlayers(state)) {
+    let total = 0;
+    for (const position of player.ownedTilePositions) {
+      total += developmentByPosition.get(String(position)) ?? 0;
     }
+    totals.set(player.playerId, total);
   }
-  return tokens;
+  return totals;
 }
 
 function playerWithFewestTiles(
@@ -145,15 +148,18 @@ const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
       state,
       expensive,
       auctionResumePhaseForTrigger(trigger),
+      Date.now(),
+      {
+        reservePrice: 1,
+        tieBreakMinBid: 1,
+        sellerId: target.playerId,
+        eligiblePlayerIds: state.turnOrder.filter(
+          (id) =>
+            id !== target.playerId && !state.eliminatedPlayerIds.includes(id),
+        ),
+      },
     );
     if (auctionState.pendingAuction) {
-      auctionState.pendingAuction.reservePrice = 1;
-      auctionState.pendingAuction.tieBreakMinBid = 1;
-      auctionState.pendingAuction.sellerId = target.playerId;
-      auctionState.pendingAuction.eligiblePlayerIds = state.turnOrder.filter(
-        (id) =>
-          id !== target.playerId && !state.eliminatedPlayerIds.includes(id),
-      );
       state.phase = auctionState.phase;
       state.pendingAuction = auctionState.pendingAuction;
     }
@@ -165,8 +171,13 @@ const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
     return true;
   },
   optional_corporate_espionage: ({ state, cardId, logs }) => {
+    const ownTotals = ownDevelopmentTokensByPlayer(state);
+    const totalDevelopment = Array.from(ownTotals.values()).reduce(
+      (sum, value) => sum + value,
+      0,
+    );
     for (const player of activePlayers(state)) {
-      const tokens = sumOpponentDevelopmentTokens(state, player.playerId);
+      const tokens = totalDevelopment - (ownTotals.get(player.playerId) ?? 0);
       if (tokens > 0) {
         const payment = tokens * 10;
         const delta = adjustCapital(player, -payment);
@@ -289,15 +300,15 @@ const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
       ];
     const tilePosition = pickSeededOwnedTile(state, donor, cardId);
     if (tilePosition === null) return true;
-    const tileState = state.tiles.find(
-      (entry) => String(entry.position) === String(tilePosition),
+    const transferred = transferTileOwnership(
+      state,
+      donor.playerId,
+      recipient.playerId,
+      tilePosition,
     );
-    if (!tileState) return true;
-    tileState.ownerId = recipient.playerId;
-    donor.ownedTilePositions = donor.ownedTilePositions.filter(
-      (pos) => String(pos) !== String(tilePosition),
-    );
-    recipient.ownedTilePositions.push(tilePosition);
+    if (!transferred) {
+      return true;
+    }
     logs.push({
       playerId: drawingPlayerId,
       actionType: "dark_pool_transfer",

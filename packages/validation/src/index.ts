@@ -56,7 +56,8 @@ export const GameEngineErrorKeys = {
 
 /** Stable game error keys surfaced by shared reducer adapters. */
 export type GameEngineErrorKey =
-  (typeof GameEngineErrorKeys)[keyof typeof GameEngineErrorKeys];
+  | (typeof GameEngineErrorKeys)[keyof typeof GameEngineErrorKeys]
+  | (typeof GameErrorKeys)[keyof typeof GameErrorKeys];
 
 export const HealthResponseSchema = z.object({
   status: z.literal("ok"),
@@ -72,6 +73,7 @@ import { GameActionSchema, GameStateSchema } from "./gameSchemas.js";
 import {
   AiPersonalitySchema,
   AuctionTypeSchema,
+  type GameErrorKeys,
   GameLogEntrySchema,
   LobbyAiSlotSchema,
   LobbyPlayerSchema,

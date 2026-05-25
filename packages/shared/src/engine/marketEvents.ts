@@ -15,8 +15,8 @@ import type {
 import { activePlayers, adjustCapital } from "./marketEventPrimitives.js";
 import { resolveOptionalMarketEventEffect } from "./optionalMarketEventEffects.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
-import { ACTION_POINTS_PER_TURN } from "./setup.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
+import { enterWaitingForRoll } from "./turnPhase.js";
 
 export type MarketEventTrigger = "round_start" | "tile";
 
@@ -364,13 +364,7 @@ function finishMarketEventDraw(
   logs: LogEntry[],
 ): void {
   if (trigger === "round_start" && !marketEventLeftPendingWork(state)) {
-    state.phase = "waiting_for_roll";
-    const actor = getPlayer(state, drawingPlayerId);
-    if (actor) {
-      actor.actionPointsRemaining = actor.inRegulation
-        ? 0
-        : ACTION_POINTS_PER_TURN;
-    }
+    enterWaitingForRoll(state, drawingPlayerId);
   }
   logs.push({
     playerId: drawingPlayerId,
@@ -441,13 +435,7 @@ export function drawAndResolveMarketEvent(
       payload: { trigger, tilePosition },
     });
     if (trigger === "round_start" && !marketEventLeftPendingWork(newState)) {
-      newState.phase = "waiting_for_roll";
-      const actor = getPlayer(newState, drawingPlayerId);
-      if (actor) {
-        actor.actionPointsRemaining = actor.inRegulation
-          ? 0
-          : ACTION_POINTS_PER_TURN;
-      }
+      enterWaitingForRoll(newState, drawingPlayerId);
     }
     return { state: newState, logEntries: logs };
   }
