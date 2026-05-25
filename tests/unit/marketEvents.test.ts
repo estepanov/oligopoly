@@ -83,6 +83,39 @@ describe("buildMarketEventDeck", () => {
     );
     expect(deck.sort()).toEqual(["recession", "stimulus_package"].sort());
   });
+
+  it("includes enabled optional cards in the default deck", () => {
+    const deck = buildMarketEventDeck(
+      {
+        optionalMarketEventCardIds: [
+          "optional_leveraged_buyout",
+          "optional_black_swan_event",
+        ],
+      },
+      "optional-game",
+    );
+
+    expect(deck).toHaveLength(MARKET_EVENT_DECK_IDS.length + 2);
+    expect(deck).toContain("optional_leveraged_buyout");
+    expect(deck).toContain("optional_black_swan_event");
+  });
+
+  it("accepts optional card ids in custom deck selections", () => {
+    const deck = buildMarketEventDeck(
+      {
+        marketEventDeckCardIds: [
+          "stimulus_package",
+          "optional_sovereign_wealth_fund",
+          "unknown_card",
+        ],
+      },
+      "custom-optional-game",
+    );
+
+    expect(deck.sort()).toEqual(
+      ["optional_sovereign_wealth_fund", "stimulus_package"].sort(),
+    );
+  });
 });
 
 describe("drawAndResolveMarketEvent", () => {
@@ -175,5 +208,58 @@ describe("resolveMarketEventCard", () => {
     expect(
       logs.some((entry) => entry.actionType === "market_event_capital_change"),
     ).toBe(true);
+  });
+
+  it("logs the applied capital delta when balance is floored at zero", () => {
+    const state = makeMarketEventState({
+      players: [
+        {
+          playerId: "player-1",
+          position: 0,
+          capital: 20,
+          ownedTilePositions: [],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 2,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+        {
+          playerId: "player-2",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 0,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+      ],
+      marketEventDeckRemaining: ["recession"],
+    });
+    const logs: Array<{
+      actionType: string;
+      playerId: string | null;
+      payload: Record<string, unknown> | null;
+    }> = [];
+
+    resolveMarketEventCard(state, "recession", "player-1", logs);
+
+    const player = state.players.find(
+      (entry) => entry.playerId === "player-1",
+    )!;
+    expect(player.capital).toBe(0);
+    const changeLog = logs.find(
+      (entry) =>
+        entry.actionType === "market_event_capital_change" &&
+        entry.playerId === "player-1",
+    );
+    expect(changeLog?.payload?.delta).toBe(-20);
+    expect(changeLog?.payload?.capital).toBe(0);
   });
 });

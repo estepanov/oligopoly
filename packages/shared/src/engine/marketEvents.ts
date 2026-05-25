@@ -1,3 +1,4 @@
+import { OPTIONAL_MARKET_EVENT_CARDS_REGISTRY } from "../config/marketEventCards.js";
 import {
   MARKET_EVENT_DECK,
   MARKET_EVENT_DECK_IDS,
@@ -39,6 +40,26 @@ function shuffleDeterministic(deck: string[], seed: string): string[] {
   return shuffled;
 }
 
+function isKnownMarketEventCardId(cardId: string): boolean {
+  return (
+    cardId in MARKET_EVENT_DECK ||
+    cardId in OPTIONAL_MARKET_EVENT_CARDS_REGISTRY
+  );
+}
+
+function optionalCardsFromSettings(
+  settings: Record<string, unknown> | undefined,
+): string[] {
+  const optional = settings?.optionalMarketEventCardIds;
+  if (!Array.isArray(optional)) return [];
+
+  return optional.filter(
+    (cardId): cardId is string =>
+      typeof cardId === "string" &&
+      cardId in OPTIONAL_MARKET_EVENT_CARDS_REGISTRY,
+  );
+}
+
 export function buildMarketEventDeck(
   settings: Record<string, unknown> | undefined,
   gameId: string,
@@ -48,9 +69,15 @@ export function buildMarketEventDeck(
     Array.isArray(customDeck) && customDeck.length > 0
       ? customDeck.filter(
           (cardId): cardId is string =>
-            typeof cardId === "string" && cardId in MARKET_EVENT_DECK,
+            typeof cardId === "string" && isKnownMarketEventCardId(cardId),
         )
       : [...MARKET_EVENT_DECK_IDS];
+
+  for (const cardId of optionalCardsFromSettings(settings)) {
+    if (!baseDeck.includes(cardId)) {
+      baseDeck.push(cardId);
+    }
+  }
 
   return shuffleDeterministic(baseDeck, gameId);
 }
@@ -81,8 +108,9 @@ function activePlayers(state: InternalGameState): InternalPlayerState[] {
 }
 
 function adjustCapital(player: InternalPlayerState, delta: number): number {
+  const before = player.capital;
   player.capital = Math.max(0, player.capital + delta);
-  return delta;
+  return player.capital - before;
 }
 
 function richestPlayerId(state: InternalGameState): string | null {
@@ -96,13 +124,26 @@ function richestPlayerId(state: InternalGameState): string | null {
 }
 
 function cardMeta(cardId: string): MarketEventCard {
-  return (
-    MARKET_EVENT_DECK[cardId] ?? {
-      id: cardId,
-      name: cardId,
+  const standard = MARKET_EVENT_DECK[cardId];
+  if (standard) return standard;
+
+  const optional =
+    OPTIONAL_MARKET_EVENT_CARDS_REGISTRY[
+      cardId as keyof typeof OPTIONAL_MARKET_EVENT_CARDS_REGISTRY
+    ];
+  if (optional) {
+    return {
+      id: optional.id,
+      name: optional.name,
       category: "variable",
-    }
-  );
+    };
+  }
+
+  return {
+    id: cardId,
+    name: cardId,
+    category: "variable",
+  };
 }
 
 function applyToAllPlayers(
