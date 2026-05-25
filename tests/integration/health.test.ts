@@ -54,6 +54,9 @@ describe("GET /api/game-config", () => {
     // Disruption deck (15 cards)
     expect(Object.keys(body.disruptionDeck)).toHaveLength(15);
     expect(body.disruptionDeck.disruption_patent_troll).toBeDefined();
+    expect(body.disruptionDeck.disruption_patent_troll.description).toContain(
+      "50 Capital",
+    );
 
     // Affinity cards (12 cards)
     expect(Object.keys(body.affinityCards)).toHaveLength(12);

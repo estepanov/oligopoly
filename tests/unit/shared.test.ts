@@ -28,6 +28,7 @@ import {
   closeAuctionBidWindowIfReady,
   DEFAULT_CONTRIBUTION_WEIGHTS,
   DEFAULT_PROFILE_VISIBILITY,
+  DIAGONAL_TRAVERSE_BONUS,
   FLASH_CRASH_LOSS_PCT,
   FLASH_CRASH_WINDFALL_PCT,
   type FullUserProfile,
@@ -2231,6 +2232,48 @@ describe("applyAction — mortgage / redeem", () => {
     const ts = result.state.tiles.find((t) => t.position === 3)!;
     expect(ts.mortgaged).toBe(false);
   });
+
+  it("applies PropTech Pioneer redemption discount", () => {
+    const state = makeTestGameState({
+      phase: "action",
+      affinityAssignments: { "player-1": "proptech_pioneer" },
+    });
+    state.players[0].ownedTilePositions = [3];
+    state.players[0].mortgagedTilePositions = [3];
+    const tile = state.tiles.find((t) => t.position === 3)!;
+    tile.ownerId = "player-1";
+    tile.mortgaged = true;
+
+    const result = applyAction(state, "player-1", {
+      type: "redeem_tile",
+      tilePosition: 3,
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.capital).toBe(1500 - 42);
+  });
+});
+
+describe("applyAction — develop tile affinity", () => {
+  it("applies Lean Manufacturing development discount", () => {
+    const state = makeTestGameState({
+      phase: "action",
+      affinityAssignments: { "player-1": "lean_manufacturing" },
+    });
+    state.players[0].ownedTilePositions = [3];
+    state.players[0].actionPointsRemaining = 2;
+    const tile = state.tiles.find((t) => t.position === 3)!;
+    tile.ownerId = "player-1";
+
+    const result = applyAction(state, "player-1", {
+      type: "develop_tile",
+      tilePosition: 3,
+      tokenNumber: 1,
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.capital).toBe(1500 - 64);
+    const developedTile = result.state.tiles.find((t) => t.position === 3)!;
+    expect(developedTile.developmentTokens).toBe(1);
+  });
 });
 
 describe("applyAction — rent payment", () => {
@@ -2281,11 +2324,57 @@ describe("applyAction — diagonal overflow", () => {
     const p = result.state.players.find((p) => p.playerId === "player-1")!;
     expect(p.isOnDiagonal).toBe(false);
     expect(p.capital).toBe(1500 + 200);
+    expect(
+      result.logEntries.some((entry) => entry.actionType === "affinity_bonus"),
+    ).toBe(false);
     expect(result.state.freeMarketPool).toBe(0);
     const fmLogs = result.logEntries.filter(
       (e) => e.actionType === "collected_free_market",
     );
     expect(fmLogs).toHaveLength(1);
+  });
+
+  it("awards Last Mile Logistics bonus when exiting the diagonal", () => {
+    const state = makeTestGameState({
+      affinityAssignments: { "player-1": "last_mile_logistics" },
+    });
+    state.players[0].isOnDiagonal = true;
+    state.players[0].position = "D5";
+    state.freeMarketPool = 200;
+
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [1, 1],
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.capital).toBe(1500 + 200 + DIAGONAL_TRAVERSE_BONUS);
+    expect(
+      result.logEntries.some((entry) => entry.actionType === "affinity_bonus"),
+    ).toBe(true);
+  });
+
+  it("awards Last Mile Logistics bonus when passing START onto diagonal overflow", () => {
+    const state = makeTestGameState({
+      affinityAssignments: { "player-1": "last_mile_logistics" },
+      marketEventDeckRemaining: [],
+      marketEventDiscard: [],
+    });
+    state.players[0].position = 39;
+    state.freeMarketPool = 50;
+
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [3, 4],
+      pathChoiceDie: 2,
+    });
+    const p = result.state.players.find((p) => p.playerId === "player-1")!;
+    expect(p.isOnDiagonal).toBe(false);
+    expect(p.capital).toBe(
+      1500 + PASS_START_BONUS + 100 + DIAGONAL_TRAVERSE_BONUS,
+    );
+    expect(
+      result.logEntries.some((entry) => entry.actionType === "affinity_bonus"),
+    ).toBe(true);
   });
 
   it("continues remaining movement on perimeter after reaching FREE MARKET", () => {

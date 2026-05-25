@@ -108,10 +108,15 @@ export {
   RANK_POINT_RULES,
   RANK_THRESHOLDS,
 } from "./config/ranks.js";
-
 // ---------------------------------------------------------------------------
 // Engine — negotiation, charter, trustworthiness
 // ---------------------------------------------------------------------------
+export {
+  AFFINITY_IDS,
+  type AffinityContext,
+  getPlayerAffinityId,
+  hasPlayerAffinity,
+} from "./engine/affinity.js";
 export type { AiDecision } from "./engine/ai.js";
 export {
   chooseAiAction,
