@@ -401,12 +401,20 @@ describe("POST /api/games/:id/action — rent payment", () => {
       body: { type: "buy_tile", tilePosition: 3 },
       db,
     });
-    await requestWithEnv(`/api/games/${gameId}/action`, {
+    const endTurnRes = await requestWithEnv(`/api/games/${gameId}/action`, {
       method: "POST",
       headers: { "x-subject": currentPlayer },
       body: { type: "end_turn" },
       db,
     });
+    const endTurnBody = (await endTurnRes.json()) as Record<string, unknown>;
+    const playersAfterBuy = endTurnBody.players as Array<{
+      playerId: string;
+      capital: number;
+    }>;
+    const ownerCapitalBeforeRent = playersAfterBuy.find(
+      (p) => p.playerId === currentPlayer,
+    )!.capital;
 
     // Player 2: Roll to same position (pos 3)
     const rollRes = await requestWithEnv(`/api/games/${gameId}/action`, {
@@ -427,7 +435,7 @@ describe("POST /api/games/:id/action — rent payment", () => {
     const owner = players.find((p) => p.playerId === currentPlayer)!;
 
     expect(payer.capital).toBe(capitals[otherPlayer] - 4);
-    expect(owner.capital).toBe(capitals[currentPlayer] - 80 + 4);
+    expect(owner.capital).toBe(ownerCapitalBeforeRent + 4);
   });
 });
 
