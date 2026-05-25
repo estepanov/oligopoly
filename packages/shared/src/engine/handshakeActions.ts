@@ -82,6 +82,10 @@ export function handleSignHandshake(
   );
   if (!entry) throw "game.invalid_action";
 
+  if (entry.partySignatures?.[playerId]) {
+    throw "game.invalid_action";
+  }
+
   entry.partySignatures = { ...entry.partySignatures, [playerId]: true };
   const bothSigned =
     entry.partySignatures[entry.partyA] && entry.partySignatures[entry.partyB];

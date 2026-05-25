@@ -8,12 +8,18 @@
 //   forward-compatible passthrough where possible.
 // ---------------------------------------------------------------------------
 
-import type { GameAction, GameState, PlayerState } from "@oligopoly/validation";
+import type {
+  GameAction,
+  GameEngineErrorKey,
+  GameState,
+  PlayerState,
+} from "@oligopoly/validation";
 import { GameEngineErrorKeys } from "@oligopoly/validation";
 import { isDoubles, moveOnPerimeter, TRIPLE_DOUBLES_LIMIT } from "./dice.js";
 import { applyAction, normalizeGameState } from "./gameStateMachine.js";
 import type { GameActionInput } from "./gameStateTypes.js";
 import { ACTION_POINTS_PER_TURN, PASS_START_BONUS } from "./setup.js";
+import { deepClone } from "./stateUtils.js";
 
 /** Full row shape stored in `games.state_json` (superset of public `GameState`). */
 export type EngineGameState = GameState & {
@@ -41,7 +47,7 @@ export type ApplyGameActionSuccess = {
 
 export type ApplyGameActionFailure = {
   ok: false;
-  errorKey: (typeof GameEngineErrorKeys)[keyof typeof GameEngineErrorKeys];
+  errorKey: GameEngineErrorKey;
 };
 
 export type ApplyGameActionResult =
@@ -238,15 +244,11 @@ function applyEndTurn(
   };
 }
 
-function mapEngineThrow(err: unknown): ApplyGameActionFailure["errorKey"] {
-  if (typeof err !== "string" || !err.startsWith("game.")) {
-    return GameEngineErrorKeys.INVALID_PLAYER_STATE;
+function mapEngineThrow(err: unknown): GameEngineErrorKey {
+  if (typeof err === "string" && err.startsWith("game.")) {
+    return err as GameEngineErrorKey;
   }
-  const known = Object.values(GameEngineErrorKeys) as string[];
-  if (known.includes(err)) {
-    return err as ApplyGameActionFailure["errorKey"];
-  }
-  return GameEngineErrorKeys.INVALID_PLAYER_STATE;
+  return GameEngineErrorKeys.INVALID_ACTION;
 }
 
 /** Delegates to authoritative `applyAction` for actions not inlined here. */
@@ -257,7 +259,7 @@ function delegateToApplyAction(
 ): ApplyGameActionResult {
   try {
     const internal = normalizeGameState(
-      JSON.parse(JSON.stringify(state)) as Record<string, unknown>,
+      deepClone(state) as unknown as Record<string, unknown>,
     );
     const result = applyAction(
       internal,

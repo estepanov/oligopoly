@@ -173,7 +173,11 @@ export function applyAction(
     return handleAuctionPass(state, playerId, action);
   }
 
-  const insiderPeekResult = applyInsiderPeekPhaseAction(state, playerId, action);
+  const insiderPeekResult = applyInsiderPeekPhaseAction(
+    state,
+    playerId,
+    action,
+  );
   if (insiderPeekResult !== null) {
     return insiderPeekResult;
   }

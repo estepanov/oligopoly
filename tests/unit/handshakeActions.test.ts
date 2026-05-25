@@ -71,6 +71,13 @@ describe("handshake actions", () => {
     });
     expect(signed.state.handshakeAgreements?.[0]?.status).toBe("active");
 
+    expect(() =>
+      handleSignHandshake(signed.state, "p2", {
+        type: "sign_handshake",
+        handshakeId,
+      }),
+    ).toThrow("game.invalid_action");
+
     const broken = handleBreakHandshake(signed.state, "p1", {
       type: "break_handshake",
       handshakeId,

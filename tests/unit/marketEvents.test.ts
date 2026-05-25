@@ -200,6 +200,7 @@ describe("drawAndResolveMarketEvent", () => {
     expect(result.state.pendingAuction).toBeDefined();
     expect(result.state.pendingAuction?.tilePosition).toBe(6);
     expect(result.state.pendingAuction?.sellerId).toBe("player-2");
+    expect(result.state.pendingAuction?.resumePhase).toBe("waiting_for_roll");
   });
 
   it("optional_dark_pool_transfer moves a seeded owned tile, not always the first", () => {

@@ -12,6 +12,7 @@ import type {
   InternalPlayerState,
   LogEntry,
 } from "./gameStateTypes.js";
+import { activePlayers, adjustCapital } from "./marketEventPrimitives.js";
 import { resolveOptionalMarketEventEffect } from "./optionalMarketEventEffects.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
 import { ACTION_POINTS_PER_TURN } from "./setup.js";
@@ -71,18 +72,6 @@ export function normalizeMarketEventDeck(state: InternalGameState): void {
   if (!state.marketEventDiscard) {
     state.marketEventDiscard = [];
   }
-}
-
-function activePlayers(state: InternalGameState): InternalPlayerState[] {
-  return state.players.filter(
-    (player) => !state.eliminatedPlayerIds.includes(player.playerId),
-  );
-}
-
-function adjustCapital(player: InternalPlayerState, delta: number): number {
-  const before = player.capital;
-  player.capital = Math.max(0, player.capital + delta);
-  return player.capital - before;
 }
 
 function richestPlayerId(state: InternalGameState): string | null {
@@ -178,9 +167,16 @@ function resolveSpecificEffect(
   cardId: string,
   drawingPlayerId: string,
   logs: LogEntry[],
+  trigger?: MarketEventTrigger,
 ): boolean {
   if (
-    resolveOptionalMarketEventEffect(state, cardId, drawingPlayerId, logs)
+    resolveOptionalMarketEventEffect(
+      state,
+      cardId,
+      drawingPlayerId,
+      logs,
+      trigger,
+    )
   ) {
     return true;
   }
@@ -296,7 +292,7 @@ export function handleInsiderKeepMarketEvent(
     },
   ];
 
-  resolveMarketEventCard(newState, cardId, playerId, logs);
+  resolveMarketEventCard(newState, cardId, playerId, logs, peek.trigger);
   finishMarketEventDraw(
     newState,
     playerId,
@@ -388,9 +384,10 @@ export function resolveMarketEventCard(
   cardId: string,
   drawingPlayerId: string,
   logs: LogEntry[],
+  trigger?: MarketEventTrigger,
 ): void {
   const card = cardMeta(cardId);
-  if (!resolveSpecificEffect(state, cardId, drawingPlayerId, logs)) {
+  if (!resolveSpecificEffect(state, cardId, drawingPlayerId, logs, trigger)) {
     resolveCategoryEffect(state, card, drawingPlayerId, logs);
   }
   logs.push({
@@ -476,7 +473,7 @@ export function drawAndResolveMarketEvent(
     },
   });
 
-  resolveMarketEventCard(newState, cardId, drawingPlayerId, logs);
+  resolveMarketEventCard(newState, cardId, drawingPlayerId, logs, trigger);
   finishMarketEventDraw(newState, drawingPlayerId, trigger, tilePosition, logs);
 
   return { state: newState, logEntries: logs };

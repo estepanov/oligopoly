@@ -9,6 +9,7 @@ import {
   ownedTilesForPlayer,
   playerById,
 } from "../lib/gameUi";
+import { HandshakePhasePanel } from "./HandshakePhasePanel";
 import { OpponentTileActionForm } from "./OpponentTileActionForm";
 
 type ActionPhaseExtrasProps = {
@@ -32,8 +33,6 @@ export function ActionPhaseExtras({
   const [contractTile, setContractTile] = useState("");
   const [auctionTile, setAuctionTile] = useState<string>("");
   const [affinityTarget, setAffinityTarget] = useState("");
-  const [handshakeParty, setHandshakeParty] = useState("");
-  const [handshakeSummary, setHandshakeSummary] = useState("");
 
   const myTurn = isMyTurn(state, myPlayerId);
   const me = myPlayerId ? playerById(state, myPlayerId) : undefined;
@@ -304,94 +303,14 @@ export function ActionPhaseExtras({
         </div>
       )}
 
-      {others.length > 0 && (
-        <div className="handshakeForm">
-          <label className="muted">
-            Handshake with{" "}
-            <select
-              value={handshakeParty}
-              onChange={(e) => setHandshakeParty(e.target.value)}
-              disabled={busy}
-            >
-              <option value="">Player</option>
-              {others.map((p) => (
-                <option key={p.playerId} value={p.playerId}>
-                  {p.displayName ?? p.playerId}
-                </option>
-              ))}
-            </select>
-          </label>
-          <input
-            className="textInput"
-            value={handshakeSummary}
-            onChange={(e) => setHandshakeSummary(e.target.value)}
-            placeholder="Agreement summary"
-            disabled={busy}
-          />
-          <button
-            type="button"
-            className="button buttonSecondary"
-            disabled={busy || !handshakeParty || !handshakeSummary.trim()}
-            onClick={() =>
-              void onAction("Proposed handshake", {
-                type: "propose_handshake",
-                partyB: handshakeParty,
-                summary: handshakeSummary.trim(),
-              })
-            }
-          >
-            Propose handshake
-          </button>
-        </div>
-      )}
-
-      {handshakes.length > 0 && (
-        <ul className="contractList muted">
-          {handshakes.map((handshake) => (
-            <li key={handshake.id}>
-              {handshake.summary} ({handshake.partyA} ↔ {handshake.partyB}) —{" "}
-              {handshake.status}
-              {handshake.status === "pending" &&
-                (handshake.partyA === myPlayerId ||
-                  handshake.partyB === myPlayerId) &&
-                !handshake.partySignatures?.[myPlayerId ?? ""] && (
-                  <button
-                    type="button"
-                    className="button buttonSecondary"
-                    style={{ marginLeft: "0.5rem" }}
-                    disabled={busy}
-                    onClick={() =>
-                      void onAction("Signed handshake", {
-                        type: "sign_handshake",
-                        handshakeId: handshake.id,
-                      })
-                    }
-                  >
-                    Sign
-                  </button>
-                )}
-              {handshake.status === "active" &&
-                (handshake.partyA === myPlayerId ||
-                  handshake.partyB === myPlayerId) && (
-                  <button
-                    type="button"
-                    className="button buttonSecondary"
-                    style={{ marginLeft: "0.5rem" }}
-                    disabled={busy}
-                    onClick={() =>
-                      void onAction("Broke handshake", {
-                        type: "break_handshake",
-                        handshakeId: handshake.id,
-                      })
-                    }
-                  >
-                    Break
-                  </button>
-                )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <HandshakePhasePanel
+        state={state}
+        myPlayerId={myPlayerId}
+        others={others}
+        handshakes={handshakes}
+        busy={busy}
+        onAction={onAction}
+      />
 
       {me?.syndicateId && (
         <div className="buttonRow">

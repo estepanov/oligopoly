@@ -4,13 +4,15 @@ import {
   SECTOR_IDS,
 } from "../config/board.js";
 import { startDeclineAuction } from "./auction.js";
+import type { AuctionResumePhase } from "./auctionTypes.js";
 import { hashSeed } from "./deckShuffle.js";
-import { rollFairD6 } from "./dice.js";
 import type {
   InternalGameState,
   InternalPlayerState,
   LogEntry,
 } from "./gameStateTypes.js";
+import { activePlayers, adjustCapital } from "./marketEventPrimitives.js";
+import type { MarketEventTrigger } from "./marketEvents.js";
 import { getPlayer } from "./stateUtils.js";
 
 export type OptionalMarketEventContext = {
@@ -18,18 +20,23 @@ export type OptionalMarketEventContext = {
   cardId: string;
   drawingPlayerId: string;
   logs: LogEntry[];
+  trigger?: MarketEventTrigger;
 };
 
-function activePlayers(state: InternalGameState): InternalPlayerState[] {
-  return state.players.filter(
-    (player) => !state.eliminatedPlayerIds.includes(player.playerId),
-  );
+function auctionResumePhaseForTrigger(
+  trigger: MarketEventTrigger | undefined,
+): AuctionResumePhase {
+  return trigger === "round_start" ? "waiting_for_roll" : "action";
 }
 
-function adjustCapital(player: InternalPlayerState, delta: number): number {
-  const before = player.capital;
-  player.capital = Math.max(0, player.capital + delta);
-  return player.capital - before;
+function seededD6(
+  state: InternalGameState,
+  cardId: string,
+  playerId: string,
+): number {
+  return (
+    (hashSeed(`${state.gameId}:${state.round}:${cardId}:${playerId}`) % 6) + 1
+  );
 }
 
 function sumOpponentDevelopmentTokens(
@@ -125,12 +132,16 @@ const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
   string,
   (ctx: OptionalMarketEventContext) => boolean
 > = {
-  optional_leveraged_buyout: ({ state, cardId, drawingPlayerId, logs }) => {
+  optional_leveraged_buyout: ({ state, drawingPlayerId, logs, trigger }) => {
     const target = playerWithFewestTiles(state);
     if (!target) return true;
     const expensive = mostExpensiveOwnedTile(state, target.playerId);
     if (!expensive) return true;
-    const auctionState = startDeclineAuction(state, expensive, "action");
+    const auctionState = startDeclineAuction(
+      state,
+      expensive,
+      auctionResumePhaseForTrigger(trigger),
+    );
     if (auctionState.pendingAuction) {
       auctionState.pendingAuction.reservePrice = 1;
       auctionState.pendingAuction.tieBreakMinBid = 1;
@@ -231,7 +242,7 @@ const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
   },
   optional_algorithmic_flash_trade: ({ state, cardId, logs }) => {
     for (const player of activePlayers(state)) {
-      const roll = rollFairD6();
+      const roll = seededD6(state, cardId, player.playerId);
       const delta = adjustCapital(player, roll * 10);
       logs.push({
         playerId: player.playerId,
@@ -338,8 +349,9 @@ export function resolveOptionalMarketEventEffect(
   cardId: string,
   drawingPlayerId: string,
   logs: LogEntry[],
+  trigger?: MarketEventTrigger,
 ): boolean {
   const handler = OPTIONAL_MARKET_EVENT_HANDLERS[cardId];
   if (!handler) return false;
-  return handler({ state, cardId, drawingPlayerId, logs });
+  return handler({ state, cardId, drawingPlayerId, logs, trigger });
 }

@@ -105,6 +105,36 @@ function isOpenNegotiationRuleEnabled(
     : false;
 }
 
+function buildClientGameStateBase(
+  state: PersistedGameState,
+  extras: {
+    pendingAuction?: ClientPendingAuction;
+    negotiationThreads: PersistedGameState["negotiationThreads"];
+    handshakeAgreements: PersistedGameState["handshakeAgreements"];
+    myAffinityCardId?: string | null;
+    pendingInsiderPeek?: PersistedGameState["pendingInsiderPeek"];
+  },
+): ClientGameState {
+  const {
+    affinityAssignments: _affinity,
+    pendingAuction: _auction,
+    pendingInsiderPeek: _peek,
+    ...rest
+  } = state;
+  return {
+    ...rest,
+    ...(extras.pendingAuction ? { pendingAuction: extras.pendingAuction } : {}),
+    negotiationThreads: extras.negotiationThreads,
+    handshakeAgreements: extras.handshakeAgreements,
+    ...(extras.myAffinityCardId !== undefined
+      ? { myAffinityCardId: extras.myAffinityCardId }
+      : {}),
+    ...(extras.pendingInsiderPeek
+      ? { pendingInsiderPeek: extras.pendingInsiderPeek }
+      : {}),
+  };
+}
+
 /**
  * Strip hidden affinity data for HTTP responses.
  * Callers must enforce authZ (player vs spectator) before using this.
@@ -134,51 +164,23 @@ export function toClientGameState(
   );
 
   const insiderPeek =
-    state.pendingInsiderPeek?.drawingPlayerId === playerId
+    mode === "player" && state.pendingInsiderPeek?.drawingPlayerId === playerId
       ? state.pendingInsiderPeek
       : undefined;
 
-  if (mode === "spectator") {
-    const {
-      affinityAssignments: _a,
-      pendingAuction: _p,
-      pendingInsiderPeek: _peek,
-      ...rest
-    } = state;
-    return {
-      ...rest,
-      ...(pendingAuction ? { pendingAuction } : {}),
-      negotiationThreads,
-      handshakeAgreements,
-    };
-  }
+  const myAffinityCardId =
+    mode === "player"
+      ? (state.affinityAssignments?.[playerId] ?? null)
+      : undefined;
 
-  if (state.affinityAssignments) {
-    const myAffinity = state.affinityAssignments[playerId] ?? null;
-    const {
-      affinityAssignments: _all,
-      pendingAuction: _p,
-      pendingInsiderPeek: _peek,
-      ...rest
-    } = state;
-    return {
-      ...rest,
-      ...(pendingAuction ? { pendingAuction } : {}),
-      myAffinityCardId: myAffinity,
-      negotiationThreads,
-      handshakeAgreements,
-      ...(insiderPeek ? { pendingInsiderPeek: insiderPeek } : {}),
-    };
-  }
-
-  const { pendingAuction: _p, pendingInsiderPeek: _peek, ...rest } = state;
-  return {
-    ...rest,
-    ...(pendingAuction ? { pendingAuction } : {}),
+  return buildClientGameStateBase(state, {
+    pendingAuction,
     negotiationThreads,
     handshakeAgreements,
-    ...(insiderPeek ? { pendingInsiderPeek: insiderPeek } : {}),
-  };
+    ...(mode === "player"
+      ? { myAffinityCardId, pendingInsiderPeek: insiderPeek }
+      : {}),
+  });
 }
 
 function filterNegotiationThreadsForViewer(
