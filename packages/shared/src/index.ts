@@ -114,8 +114,6 @@ export {
 export {
   AFFINITY_IDS,
   type AffinityContext,
-  type AffinityEffectContext,
-  applyLastMileLogisticsTraverseBonus,
   getPlayerAffinityId,
   hasPlayerAffinity,
 } from "./engine/affinity.js";
