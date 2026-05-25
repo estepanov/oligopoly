@@ -10,12 +10,16 @@ import {
   GameErrorKeys,
   GameStatusSchema,
 } from "@oligopoly/validation";
-import type { Context } from "hono";
 import { Hono } from "hono";
 import {
   type PersistedGameState,
   toClientGameState,
 } from "../gameStateView.js";
+import { upgradeWebSocket } from "../realtime/upgrade.js";
+import {
+  persistGameActionResult,
+  toActionResponse,
+} from "../services/gamePersistence.js";
 
 type Bindings = {
   ALLOWED_ORIGINS?: string;
@@ -400,70 +404,12 @@ gameRoutes.post("/:id/action", async (c) => {
   try {
     const result = applyAction(gameState, subject, engineInput);
 
-    const now = Date.now();
-    const stateJson = JSON.stringify(result.state);
-
-    const statements = [
-      db
-        .prepare("UPDATE games SET state_json = ? WHERE id = ?")
-        .bind(stateJson, id),
-    ];
-
-    // If game is over, update the games row
-    if (result.state.phase === "game_over" && result.state.winnerId) {
-      statements.push(
-        db
-          .prepare(
-            "UPDATE games SET status = 'completed', winner_id = ?, ended_at = ? WHERE id = ?",
-          )
-          .bind(result.state.winnerId, now, id),
-      );
-
-      // Update lobby to finished
-      const lobbyRow = await db
-        .prepare("SELECT lobby_id FROM games WHERE id = ?")
-        .bind(id)
-        .first<{ lobby_id: string }>();
-      if (lobbyRow) {
-        statements.push(
-          db
-            .prepare("UPDATE lobbies SET status = 'finished' WHERE id = ?")
-            .bind(lobbyRow.lobby_id),
-        );
-      }
-    }
-
-    // Insert log entries
-    for (const entry of result.logEntries) {
-      const logId = crypto.randomUUID();
-      statements.push(
-        db
-          .prepare(
-            "INSERT INTO game_log (id, game_id, round, player_id, action_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-          )
-          .bind(
-            logId,
-            id,
-            result.state.round,
-            entry.playerId,
-            entry.actionType,
-            entry.payload ? JSON.stringify(entry.payload) : null,
-            now,
-          ),
-      );
-    }
-
-    await db.batch(statements);
-
-    // Return sanitized state (strip affinity assignments for privacy)
-    const { affinityAssignments, ...publicState } = result.state;
-    const myAffinity = affinityAssignments?.[subject] ?? null;
-
-    return c.json({
-      ...publicState,
-      myAffinityCardId: myAffinity,
-      logEntries: result.logEntries,
+    await persistGameActionResult(db, id, result, {
+      gameRoom: c.env?.GAME_ROOM,
+      actorId: subject,
     });
+
+    return c.json(toActionResponse(result, subject));
   } catch (err) {
     if (typeof err === "string") {
       return c.json({ error: err }, 400);
@@ -520,77 +466,52 @@ gameRoutes.post("/:id/ai/step", async (c) => {
       ? { pathChoiceDie: rollPathChoiceDie() }
       : {}),
   });
-  const now = Date.now();
-  const stateJson = JSON.stringify(result.state);
-  const statements = [
-    db
-      .prepare("UPDATE games SET state_json = ? WHERE id = ?")
-      .bind(stateJson, id),
-  ];
 
-  for (const entry of result.logEntries) {
-    statements.push(
-      db
-        .prepare(
-          "INSERT INTO game_log (id, game_id, round, player_id, action_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(
-          crypto.randomUUID(),
-          id,
-          result.state.round,
-          entry.playerId,
-          entry.actionType,
-          entry.payload ? JSON.stringify(entry.payload) : null,
-          now,
-        ),
-    );
-  }
+  await persistGameActionResult(db, id, result, {
+    gameRoom: c.env?.GAME_ROOM,
+    aiMeta: {
+      aiPlayerId: decision.actorId,
+      personality: decision.personality,
+      action: decision.action as Record<string, unknown>,
+    },
+  });
 
-  await db.batch(statements);
-  const { affinityAssignments, ...publicState } = result.state;
-  return c.json({
-    ...publicState,
-    aiAction: decision.action,
-    aiPlayerId: decision.actorId,
-    aiPersonality: decision.personality,
-    logEntries: result.logEntries,
+  return c.json(
+    toActionResponse(result, null, {
+      aiAction: decision.action,
+      aiPlayerId: decision.actorId,
+      aiPersonality: decision.personality,
+    }),
+  );
+});
+
+gameRoutes.get("/:id/ws", (c) => {
+  const id = c.req.param("id") ?? "";
+  return upgradeWebSocket(c, {
+    room: c.env?.GAME_ROOM,
+    roomId: id,
+    roomParam: "gameId",
+    roomParamValue: id,
+    fallbackEvent: {
+      type: "game.snapshot",
+      gameId: id,
+      payload: { gameId: id, spectator: false, connected: true },
+    },
   });
 });
 
-async function upgradeGameWebSocket(c: Context<AppEnv>, spectator: boolean) {
+gameRoutes.get("/:id/spectate", (c) => {
   const id = c.req.param("id") ?? "";
-  if (c.req.header("Upgrade") !== "websocket") {
-    return c.json({ error: "Expected WebSocket upgrade" }, 426);
-  }
-
-  const room = c.env.GAME_ROOM;
-  if (!room) {
-    const pair = new WebSocketPair();
-    const [client, server] = Object.values(pair);
-    server.accept();
-    server.send(
-      JSON.stringify({
-        type: "game.snapshot",
-        sentAt: Date.now(),
-        gameId: id,
-        payload: { gameId: id, spectator, connected: true },
-      }),
-    );
-    return new Response(null, { status: 101, webSocket: client });
-  }
-
-  const objectId = room.idFromName(id);
-  const stub = room.get(objectId);
-  const url = new URL(c.req.url);
-  url.searchParams.set("gameId", id);
-  if (spectator) {
-    url.searchParams.set("spectator", "1");
-  }
-  return stub.fetch(url, c.req.raw);
-}
-
-// GET /api/games/:id/ws — WebSocket upgrade for real-time game events.
-gameRoutes.get("/:id/ws", (c) => upgradeGameWebSocket(c, false));
-
-// GET /api/games/:id/spectate — WebSocket upgrade with spectator-safe marker.
-gameRoutes.get("/:id/spectate", (c) => upgradeGameWebSocket(c, true));
+  return upgradeWebSocket(c, {
+    room: c.env?.GAME_ROOM,
+    roomId: id,
+    roomParam: "gameId",
+    roomParamValue: id,
+    extraSearchParams: { spectator: "1" },
+    fallbackEvent: {
+      type: "game.snapshot",
+      gameId: id,
+      payload: { gameId: id, spectator: true, connected: true },
+    },
+  });
+});

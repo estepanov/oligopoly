@@ -1,4 +1,8 @@
 import type { GameState, GameSummary } from "@oligopoly/validation";
+import {
+  GameRealtimeEventSchema,
+  GameStateSchema,
+} from "@oligopoly/validation";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -71,6 +75,26 @@ export function GameDetailPage() {
     socket.onclose = () => setWsStatus("disconnected");
     socket.onerror = () => setWsStatus("error");
     socket.onmessage = (event) => {
+      try {
+        const parsed = GameRealtimeEventSchema.safeParse(
+          JSON.parse(String(event.data)),
+        );
+        if (parsed.success) {
+          const message = parsed.data;
+          if (message.type === "game.action_applied" && "state" in message) {
+            setState(GameStateSchema.parse(message.state));
+            setLastAction("Realtime state update");
+            return;
+          }
+          if (message.type === "game.snapshot" && "payload" in message) {
+            setState(GameStateSchema.parse(message.payload));
+            setLastAction("Realtime snapshot");
+            return;
+          }
+        }
+      } catch {
+        // Fall through to raw event logging.
+      }
       setLastAction(`Realtime event: ${event.data}`);
     };
     return () => socket.close();

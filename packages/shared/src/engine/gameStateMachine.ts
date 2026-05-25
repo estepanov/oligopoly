@@ -106,11 +106,6 @@ export interface GameActionInput {
   tokenNumber?: number;
   choice?: "perimeter" | "diagonal";
   amount?: number;
-  targetPlayerIds?: string[];
-  contractId?: string;
-  handshakeId?: string;
-  memberIds?: string[];
-  voteType?: string;
   /** Server-injected path-choice die result (1-6) for passing through START */
   pathChoiceDie?: number;
 }
@@ -311,35 +306,6 @@ export function applyAction(
       return handleMortgageTile(state, playerId, action);
     case "redeem_tile":
       return handleRedeemTile(state, playerId, action);
-    case "auction_bid":
-      return handleLoggedAction(state, playerId, "auction_bid", {
-        tilePosition: action.tilePosition,
-        amount: action.amount,
-      });
-    case "start_negotiation":
-      return handleLoggedAction(state, playerId, "start_negotiation", {
-        targetPlayerIds: action.targetPlayerIds ?? [],
-      });
-    case "sign_contract":
-      return handleLoggedAction(state, playerId, "sign_contract", {
-        contractId: action.contractId,
-      });
-    case "sign_handshake":
-      return handleLoggedAction(state, playerId, "sign_handshake", {
-        handshakeId: action.handshakeId,
-      });
-    case "break_handshake":
-      return handleLoggedAction(state, playerId, "break_handshake", {
-        handshakeId: action.handshakeId,
-      });
-    case "form_syndicate":
-      return handleLoggedAction(state, playerId, "form_syndicate", {
-        memberIds: action.memberIds ?? [],
-      });
-    case "call_vote":
-      return handleLoggedAction(state, playerId, "call_vote", {
-        voteType: action.voteType,
-      });
     default:
       throw "game.invalid_action";
   }
@@ -348,22 +314,6 @@ export function applyAction(
 // ---------------------------------------------------------------------------
 // Action Handlers
 // ---------------------------------------------------------------------------
-
-function handleLoggedAction(
-  state: InternalGameState,
-  playerId: string,
-  actionType: string,
-  payload: Record<string, unknown>,
-): ApplyActionResult {
-  if (!["action", "syndicate_coordination"].includes(state.phase)) {
-    throw "game.invalid_phase";
-  }
-
-  return {
-    state: deepClone(state),
-    logEntries: [{ playerId, actionType, payload }],
-  };
-}
 
 function handleRollDice(
   state: InternalGameState,

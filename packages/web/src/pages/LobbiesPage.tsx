@@ -1,4 +1,4 @@
-import { LobbyErrorKeys, type LobbyStatus } from "@oligopoly/validation";
+import { LobbyErrorKeys } from "@oligopoly/validation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import {
@@ -14,6 +14,8 @@ import {
   startLobby,
 } from "../api/lobbies";
 import { useAuth } from "../components/AuthContext";
+import { LobbyAiSettings } from "../components/LobbyAiSettings";
+import { canStartLobby, lobbySeatCount } from "../lib/lobbySeats";
 
 const DEFAULT_MAX_PLAYERS = 4;
 const MAX_ACTIVE_LOBBIES_PER_USER = 2;
@@ -25,12 +27,6 @@ type InviteShare = {
   url: string;
   expiresInSeconds: number;
 };
-
-const canStartLobby = (status: LobbyStatus, seatCount: number) =>
-  status === "waiting" && seatCount >= 2;
-
-const lobbySeatCount = (lobby: { players: unknown[]; aiSlots?: unknown[] }) =>
-  lobby.players.length + (lobby.aiSlots?.length ?? 0);
 
 const resolveLobbyJoinInput = (rawLobbyId: string, rawToken: string) => {
   const lobbyId = rawLobbyId.trim();
@@ -653,51 +649,13 @@ export function LobbiesPage() {
             </select>
           </div>
         </div>
-        <div className="formGrid">
-          <div>
-            <label className="fieldLabel" htmlFor="create-ai-count">
-              AI players
-            </label>
-            <select
-              id="create-ai-count"
-              className="textInput"
-              value={createAiCount}
-              onChange={(e) => setCreateAiCount(Number(e.target.value))}
-            >
-              {[0, 1, 2, 3, 4, 5].map((count) => (
-                <option
-                  key={count}
-                  value={count}
-                  disabled={count + 1 > createMaxPlayers}
-                >
-                  {count}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="fieldLabel" htmlFor="create-ai-personality">
-              AI personality
-            </label>
-            <select
-              id="create-ai-personality"
-              className="textInput"
-              value={createAiPersonality}
-              onChange={(e) =>
-                setCreateAiPersonality(
-                  e.target.value as "loyalist" | "opportunist" | "disruptor",
-                )
-              }
-            >
-              <option value="loyalist">Loyalist</option>
-              <option value="opportunist">Opportunist</option>
-              <option value="disruptor">Disruptor</option>
-            </select>
-          </div>
-        </div>
-        <p className="muted">
-          Solo vs AI is one signed-in player plus at least one AI seat.
-        </p>
+        <LobbyAiSettings
+          aiCount={createAiCount}
+          maxPlayers={createMaxPlayers}
+          personality={createAiPersonality}
+          onAiCountChange={setCreateAiCount}
+          onPersonalityChange={setCreateAiPersonality}
+        />
         <label className="checkboxRow">
           <input
             type="checkbox"

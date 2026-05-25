@@ -1,6 +1,7 @@
 import {
-  GameActionSchema,
-  type GameState,
+  AiStepResponseSchema,
+  GameActionResponseSchema,
+  type GameActionSchema,
   GameStateSchema,
   GameSummarySchema,
 } from "@oligopoly/validation";
@@ -12,21 +13,6 @@ import { getJson, requestJson } from "./http";
 const GamesListResponseSchema = z.object({
   games: z.array(GameSummarySchema),
 });
-
-type GameActionResponse = GameState & { logEntries?: unknown[] };
-type AiStepResponse = GameActionResponse & {
-  aiAction?: z.infer<typeof GameActionSchema>;
-  aiPlayerId?: string;
-  aiPersonality?: string;
-};
-
-const GameActionResponseSchema = z
-  .object({})
-  .passthrough() as unknown as z.ZodType<GameActionResponse>;
-
-const AiStepResponseSchema = z
-  .object({})
-  .passthrough() as unknown as z.ZodType<AiStepResponse>;
 
 const authHeaders = (): HeadersInit => {
   const token = getStoredToken();

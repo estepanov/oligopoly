@@ -254,6 +254,13 @@ export const LobbyStatusSchema = z.enum([
 ]);
 export type LobbyStatus = z.infer<typeof LobbyStatusSchema>;
 
+export const LobbyPlayerSchema = z.object({
+  userId: z.string(),
+  isAdmin: z.boolean(),
+  joinedAt: z.number(),
+});
+export type LobbyPlayer = z.infer<typeof LobbyPlayerSchema>;
+
 // ---------------------------------------------------------------------------
 // Leaderboard schemas
 // ---------------------------------------------------------------------------
@@ -662,6 +669,68 @@ export const GameStateSchema = z.object({
     .optional(),
 });
 export type GameState = z.infer<typeof GameStateSchema>;
+
+export const LobbyResponseSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  hostId: z.string(),
+  status: LobbyStatusSchema,
+  maxPlayers: z.number().int().min(2).max(6),
+  isPrivate: z.boolean(),
+  optionalRuleIds: z.array(z.string()),
+  createdAt: z.number(),
+  players: z.array(LobbyPlayerSchema),
+  aiSlots: z.array(LobbyAiSlotSchema).default([]),
+  gameId: z.string().optional(),
+  turnTimeout: TurnTimeoutSchema.optional(),
+  auctionBidWindow: z.string().optional(),
+  auctionSettleDelay: z.string().optional(),
+  auctionType: AuctionTypeSchema.optional(),
+  voiceVideoEnabled: z.boolean().optional(),
+  spectatorMode: SpectatorModeSchema.optional(),
+  marketEventDeckCardIds: z.array(z.string()).nullable().optional(),
+  optionalMarketEventCardIds: z.array(z.string()).optional(),
+  currencyName: z.string().optional(),
+  currencySymbol: z.string().optional(),
+  currencyMultiplier: z.string().optional(),
+});
+export type LobbyResponse = z.infer<typeof LobbyResponseSchema>;
+
+export const LobbiesListResponseSchema = z.object({
+  lobbies: z.array(LobbyResponseSchema),
+  nextCursor: z.string().nullable(),
+});
+export type LobbiesListResponse = z.infer<typeof LobbiesListResponseSchema>;
+
+export const StartLobbyResponseSchema = LobbyResponseSchema.extend({
+  gameId: z.string(),
+});
+export type StartLobbyResponse = z.infer<typeof StartLobbyResponseSchema>;
+
+export const LeaveLobbyResponseSchema = z.object({
+  lobbyId: z.string(),
+  deleted: z.boolean(),
+  lobby: LobbyResponseSchema.optional(),
+});
+export type LeaveLobbyResponse = z.infer<typeof LeaveLobbyResponseSchema>;
+
+export const LobbyInviteResponseSchema = z.object({
+  token: z.string(),
+  expiresInSeconds: z.number(),
+});
+export type LobbyInviteResponse = z.infer<typeof LobbyInviteResponseSchema>;
+
+export const GameActionResponseSchema = GameStateSchema.extend({
+  logEntries: z.array(GameLogEntrySchema).optional(),
+});
+export type GameActionResponse = z.infer<typeof GameActionResponseSchema>;
+
+export const AiStepResponseSchema = GameActionResponseSchema.extend({
+  aiAction: GameActionSchema.optional(),
+  aiPlayerId: z.string().optional(),
+  aiPersonality: AiPersonalitySchema.optional(),
+});
+export type AiStepResponse = z.infer<typeof AiStepResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // Real-time lobby/game WebSocket schemas
