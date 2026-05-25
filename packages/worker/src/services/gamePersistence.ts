@@ -1,4 +1,5 @@
 import type { ApplyActionResult } from "@oligopoly/shared";
+import type { AiPersonality, GameAction } from "@oligopoly/validation";
 import { broadcastGameEvent } from "../realtime/notify.js";
 
 type PersistOptions = {
@@ -6,8 +7,8 @@ type PersistOptions = {
   actorId?: string;
   aiMeta?: {
     aiPlayerId: string;
-    personality: string;
-    action: Record<string, unknown>;
+    personality: AiPersonality;
+    action: GameAction;
   };
 };
 

@@ -324,6 +324,7 @@ export const GameErrorKeys = {
   NOT_PLAYER: "game.not_player",
   GAME_COMPLETED: "game.completed",
   NOT_YOUR_TURN: "game.not_your_turn",
+  NOT_AI_TURN: "game.not_ai_turn",
   INVALID_ACTION: "game.invalid_action",
   MUST_ROLL_FIRST: "game.must_roll_first",
   ALREADY_ROLLED: "game.already_rolled",
@@ -652,6 +653,8 @@ export const GameStateSchema = z.object({
   winnerId: z.string().nullable().optional(),
   /** IDs of eliminated players */
   eliminatedPlayerIds: z.array(z.string()).optional(),
+  /** Human players permanently replaced by AI after an admin kick */
+  kickedPlayerIds: z.array(z.string()).optional(),
   settings: z
     .object({
       turnTimeout: TurnTimeoutSchema.optional(),
@@ -802,6 +805,12 @@ export const GameRealtimeEventSchema = z.discriminatedUnion("type", [
     aiPlayerId: z.string(),
     personality: AiPersonalitySchema,
     action: GameActionSchema,
+  }),
+  z.object({
+    type: z.literal("game.schedule"),
+    sentAt: z.number(),
+    gameId: z.string(),
+    state: GameStateSchema,
   }),
 ]);
 export type GameRealtimeEvent = z.infer<typeof GameRealtimeEventSchema>;

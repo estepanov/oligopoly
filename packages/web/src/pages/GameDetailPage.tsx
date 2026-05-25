@@ -22,6 +22,7 @@ export function GameDetailPage() {
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState(false);
   const [wsStatus, setWsStatus] = useState("disconnected");
+  const [turnDeadline, setTurnDeadline] = useState<number | null>(null);
   const [lastAction, setLastAction] = useState<string | null>(null);
 
   useEffect(() => {
@@ -89,6 +90,10 @@ export function GameDetailPage() {
           if (message.type === "game.snapshot" && "payload" in message) {
             setState(GameStateSchema.parse(message.payload));
             setLastAction("Realtime snapshot");
+            return;
+          }
+          if (message.type === "game.timer" && "deadlineAt" in message) {
+            setTurnDeadline(message.deadlineAt ?? null);
             return;
           }
         }
@@ -209,6 +214,12 @@ export function GameDetailPage() {
             <dl className="detailsGrid">
               <dt className="muted">Realtime</dt>
               <dd>{wsStatus}</dd>
+              <dt className="muted">Turn deadline</dt>
+              <dd>
+                {turnDeadline
+                  ? new Date(turnDeadline).toLocaleTimeString()
+                  : "—"}
+              </dd>
               <dt className="muted">Round</dt>
               <dd>{state.round}</dd>
               <dt className="muted">Phase</dt>

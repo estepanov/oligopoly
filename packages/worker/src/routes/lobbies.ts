@@ -16,6 +16,8 @@ import {
 import { Hono } from "hono";
 import { broadcastLobbyEvent } from "../realtime/notify.js";
 import { upgradeWebSocket } from "../realtime/upgrade.js";
+import { notifyGameSchedule } from "../services/gameAi.js";
+import { kickInGamePlayerToAi } from "../services/gameKick.js";
 import {
   buildAiPlayersFromSlots,
   countTotalSeats,
@@ -30,6 +32,7 @@ type Bindings = {
   DB?: D1Database;
   KV?: KVNamespace;
   LOBBY_ROOM?: DurableObjectNamespace;
+  GAME_ROOM?: DurableObjectNamespace;
 };
 
 type Variables = {
@@ -1054,6 +1057,10 @@ lobbyRoutes.delete("/:id/player/:uid", async (c) => {
     return c.json({ error: LobbyErrorKeys.NOT_OWNER }, 403);
   }
 
+  if (lobby.status === "in_game") {
+    await kickInGamePlayerToAi(db, id, uid, c.env?.GAME_ROOM);
+  }
+
   await db
     .prepare("DELETE FROM lobby_players WHERE lobby_id = ? AND user_id = ?")
     .bind(id, uid)
@@ -1064,7 +1071,9 @@ lobbyRoutes.delete("/:id/player/:uid", async (c) => {
     .bind(id)
     .all<LobbyPlayerRow>();
 
-  return c.json(toLobbyResponse(lobby, playersResult.results));
+  const kickResponse = toLobbyResponse(lobby, playersResult.results);
+  await publishLobbyUpdate(c.env, id, kickResponse);
+  return c.json(kickResponse);
 });
 
 // POST /:id/start — Start the game (admin only, min 2 players)
@@ -1249,6 +1258,11 @@ lobbyRoutes.post("/:id/start", async (c) => {
     gameId,
   };
   await publishLobbyUpdate(c.env, id, startResponse);
+
+  const { affinityAssignments: _affinity, ...publicInitialState } =
+    initialState;
+  await notifyGameSchedule(c.env?.GAME_ROOM, gameId, publicInitialState);
+
   return c.json(startResponse);
 });
 
