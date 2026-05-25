@@ -16,8 +16,8 @@ import {
 import { Hono } from "hono";
 import { broadcastLobbyEvent } from "../realtime/notify.js";
 import { upgradeWebSocket } from "../realtime/upgrade.js";
-import { kickInGamePlayerToAi } from "../services/gameKick.js";
 import { notifyGameSchedule } from "../services/gameAi.js";
+import { kickInGamePlayerToAi } from "../services/gameKick.js";
 import {
   buildAiPlayersFromSlots,
   countTotalSeats,
@@ -1259,7 +1259,8 @@ lobbyRoutes.post("/:id/start", async (c) => {
   };
   await publishLobbyUpdate(c.env, id, startResponse);
 
-  const { affinityAssignments: _affinity, ...publicInitialState } = initialState;
+  const { affinityAssignments: _affinity, ...publicInitialState } =
+    initialState;
   await notifyGameSchedule(c.env?.GAME_ROOM, gameId, publicInitialState);
 
   return c.json(startResponse);

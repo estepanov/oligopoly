@@ -3,7 +3,9 @@ import type { TurnTimeout } from "@oligopoly/validation";
 const MINUTE_MS = 60_000;
 
 /** Returns null when the lobby disables turn timeouts. */
-export function turnTimeoutToMs(timeout: TurnTimeout | string | undefined): number | null {
+export function turnTimeoutToMs(
+  timeout: TurnTimeout | string | undefined,
+): number | null {
   switch (timeout) {
     case "1min":
       return MINUTE_MS;
@@ -34,7 +36,12 @@ export function currentTurnActorId(state: {
 }): string | null {
   const order = state.turnOrder;
   const index = state.currentPlayerIndex;
-  if (!order?.length || index === undefined || index < 0 || index >= order.length) {
+  if (
+    !order?.length ||
+    index === undefined ||
+    index < 0 ||
+    index >= order.length
+  ) {
     return null;
   }
   return order[index] ?? null;

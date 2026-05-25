@@ -1,17 +1,17 @@
 import {
+  type ApplyActionResult,
   applyAction,
   applyTimeoutTakeover,
   chooseAiAction,
+  type InternalGameState,
   isAiControlledActor,
   normalizeGameState,
   replaceKickedPlayerWithAi,
   rollPathChoiceDie,
-  type ApplyActionResult,
-  type InternalGameState,
 } from "@oligopoly/shared";
 import type { AiPersonality, GameAction } from "@oligopoly/validation";
-import { persistGameActionResult } from "./gamePersistence.js";
 import { broadcastGameEvent } from "../realtime/notify.js";
+import { persistGameActionResult } from "./gamePersistence.js";
 
 type ActiveGameRow = {
   id: string;

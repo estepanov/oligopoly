@@ -16,7 +16,9 @@ const baseState = () =>
     turnOrder: ["human-a", "ai:bot"],
     freeMarketPool: 0,
     affinityAssignments: {},
-    aiPlayers: [{ playerId: "ai:bot", name: "Bot", personality: "opportunist" }],
+    aiPlayers: [
+      { playerId: "ai:bot", name: "Bot", personality: "opportunist" },
+    ],
     players: [
       {
         playerId: "human-a",

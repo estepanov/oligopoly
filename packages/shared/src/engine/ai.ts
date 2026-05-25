@@ -52,7 +52,8 @@ export function chooseAiAction(state: InternalGameState): AiDecision | null {
 
   if (!isAiControlledActor(state, actorId)) return null;
 
-  const personality = resolveAiPersonality(state, actorId) ?? defaultPersonality;
+  const personality =
+    resolveAiPersonality(state, actorId) ?? defaultPersonality;
 
   if (state.phase === "waiting_for_roll" || state.phase === "rolling_doubles") {
     return {

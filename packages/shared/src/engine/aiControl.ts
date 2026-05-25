@@ -1,5 +1,8 @@
 import type { AiPersonality } from "@oligopoly/validation";
-import type { InternalAiPlayerState, InternalGameState } from "./gameStateMachine.js";
+import type {
+  InternalAiPlayerState,
+  InternalGameState,
+} from "./gameStateMachine.js";
 
 const defaultKickPersonality: AiPersonality = "opportunist";
 
@@ -8,8 +11,7 @@ function aiRuntimeForActor(
   actorId: string,
 ): InternalAiPlayerState | undefined {
   return state.aiPlayers?.find(
-    (ai) =>
-      ai.playerId === actorId || ai.takeoverForPlayerId === actorId,
+    (ai) => ai.playerId === actorId || ai.takeoverForPlayerId === actorId,
   );
 }
 
@@ -34,7 +36,8 @@ export function applyTimeoutTakeover(
   if (
     aiPlayers.some(
       (ai) =>
-        ai.takeoverForPlayerId === humanId && ai.playerId.startsWith("ai:timeout:"),
+        ai.takeoverForPlayerId === humanId &&
+        ai.playerId.startsWith("ai:timeout:"),
     )
   ) {
     return next;

@@ -1,7 +1,4 @@
-import {
-  isAiControlledActor,
-  normalizeGameState,
-} from "@oligopoly/shared";
+import { isAiControlledActor, normalizeGameState } from "@oligopoly/shared";
 import {
   applyTimeoutTakeoverAndStep,
   runAiTurnLoop,
@@ -242,11 +239,8 @@ export class GameRoom extends RealtimeRoom {
       return;
     }
 
-    await syncTurnTimer(
-      this.state.storage,
-      gameId,
-      state,
-      (message) => this.broadcast(message),
+    await syncTurnTimer(this.state.storage, gameId, state, (message) =>
+      this.broadcast(message),
     );
   }
 
@@ -265,11 +259,8 @@ export class GameRoom extends RealtimeRoom {
         const latest = normalizeGameState(
           JSON.parse(row.state_json) as Record<string, unknown>,
         );
-        await syncTurnTimer(
-          this.state.storage,
-          gameId,
-          latest,
-          (message) => this.broadcast(message),
+        await syncTurnTimer(this.state.storage, gameId, latest, (message) =>
+          this.broadcast(message),
         );
       }
     } finally {
