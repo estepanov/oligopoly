@@ -133,6 +133,23 @@ export function normalizeGameState(
   return state;
 }
 
+function applyInsiderPeekPhaseAction(
+  state: InternalGameState,
+  playerId: string,
+  action: GameActionInput,
+): ApplyActionResult | null {
+  if (state.phase !== "waiting_for_insider_peek") {
+    return null;
+  }
+  if (action.type === "insider_keep_market_event") {
+    return handleInsiderKeepMarketEvent(state, playerId);
+  }
+  if (action.type === "insider_discard_market_event") {
+    return handleInsiderDiscardMarketEvent(state, playerId);
+  }
+  throw "game.invalid_phase";
+}
+
 export function applyAction(
   state: InternalGameState,
   playerId: string,
@@ -156,14 +173,9 @@ export function applyAction(
     return handleAuctionPass(state, playerId, action);
   }
 
-  if (state.phase === "waiting_for_insider_peek") {
-    if (action.type === "insider_keep_market_event") {
-      return handleInsiderKeepMarketEvent(state, playerId);
-    }
-    if (action.type === "insider_discard_market_event") {
-      return handleInsiderDiscardMarketEvent(state, playerId);
-    }
-    throw "game.invalid_phase";
+  const insiderPeekResult = applyInsiderPeekPhaseAction(state, playerId, action);
+  if (insiderPeekResult !== null) {
+    return insiderPeekResult;
   }
 
   if (state.phase === "syndicate_coordination") {

@@ -1,3 +1,4 @@
+import { buildDefaultSyndicateCharter } from "@oligopoly/shared";
 import type { GameAction, GameState } from "@oligopoly/validation";
 import { useState } from "react";
 import { parseTilePosition, tileLabel } from "../lib/boardDisplay";
@@ -8,6 +9,7 @@ import {
   ownedTilesForPlayer,
   playerById,
 } from "../lib/gameUi";
+import { OpponentTileActionForm } from "./OpponentTileActionForm";
 
 type ActionPhaseExtrasProps = {
   state: GameState;
@@ -32,10 +34,6 @@ export function ActionPhaseExtras({
   const [affinityTarget, setAffinityTarget] = useState("");
   const [handshakeParty, setHandshakeParty] = useState("");
   const [handshakeSummary, setHandshakeSummary] = useState("");
-  const [takeoverTarget, setTakeoverTarget] = useState("");
-  const [takeoverTile, setTakeoverTile] = useState("");
-  const [manipulationTarget, setManipulationTarget] = useState("");
-  const [manipulationTile, setManipulationTile] = useState("");
 
   const myTurn = isMyTurn(state, myPlayerId);
   const me = myPlayerId ? playerById(state, myPlayerId) : undefined;
@@ -102,29 +100,10 @@ export function ActionPhaseExtras({
   const formSyndicate = () => {
     const memberIds = [...new Set([myPlayerId, ...syndicateMembers])];
     if (memberIds.length < 2) return;
-    const pct = Math.floor(100 / memberIds.length);
-    const remainder = 100 - pct * memberIds.length;
     void onAction("Formed syndicate", {
       type: "form_syndicate",
       memberIds,
-      charter: {
-        governanceModel: "equal_vote",
-        deadlockResolution: "public_dice_roll",
-        revenueSplit: memberIds.map((id, index) => ({
-          playerId: id,
-          pct: pct + (index === 0 ? remainder : 0),
-        })),
-        contributionWeights: {
-          assetScorePct: 35,
-          revenueScorePct: 35,
-          negotiationCreditPct: 30,
-        },
-        dissolutionClause: {
-          trustPenaltyPerMember: -2,
-          requiresUnanimousVote: true,
-        },
-        ratifiedAt: Date.now(),
-      },
+      charter: buildDefaultSyndicateCharter(memberIds),
     });
   };
 
@@ -435,105 +414,43 @@ export function ActionPhaseExtras({
       {optionalRules.includes("hostile_takeover") &&
         others.length > 0 &&
         !me?.hostileTakeoverUsed && (
-          <div className="takeoverForm">
-            <label className="muted">
-              Hostile takeover target{" "}
-              <select
-                value={takeoverTarget}
-                onChange={(e) => setTakeoverTarget(e.target.value)}
-                disabled={busy}
-              >
-                <option value="">Player</option>
-                {others.map((p) => (
-                  <option key={p.playerId} value={p.playerId}>
-                    {p.displayName ?? p.playerId}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="muted">
-              Their tile{" "}
-              <select
-                value={takeoverTile}
-                onChange={(e) => setTakeoverTile(e.target.value)}
-                disabled={busy || !takeoverTarget}
-              >
-                <option value="">Tile</option>
-                {(state.players ?? [])
-                  .find((player) => player.playerId === takeoverTarget)
-                  ?.ownedTilePositions.map((position) => (
-                    <option key={String(position)} value={String(position)}>
-                      {tileLabel(position, tileNames)}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              className="button buttonSecondary"
-              disabled={busy || !takeoverTarget || !takeoverTile}
-              onClick={() =>
-                void onAction("Hostile takeover", {
-                  type: "hostile_takeover",
-                  targetPlayerId: takeoverTarget,
-                  tilePosition: parseTilePosition(takeoverTile),
-                })
-              }
-            >
-              Hostile takeover (once per game)
-            </button>
-          </div>
+          <OpponentTileActionForm
+            className="takeoverForm"
+            state={state}
+            opponents={others}
+            tileNames={tileNames}
+            busy={busy}
+            targetLabel="Hostile takeover target"
+            tileLabelText="Their tile"
+            submitLabel="Hostile takeover (once per game)"
+            onSubmit={(targetPlayerId, tilePosition) =>
+              onAction("Hostile takeover", {
+                type: "hostile_takeover",
+                targetPlayerId,
+                tilePosition,
+              })
+            }
+          />
         )}
 
       {optionalRules.includes("market_manipulation") && others.length > 0 && (
-        <div className="manipulationForm">
-          <label className="muted">
-            Freeze tile owned by{" "}
-            <select
-              value={manipulationTarget}
-              onChange={(e) => setManipulationTarget(e.target.value)}
-              disabled={busy}
-            >
-              <option value="">Player</option>
-              {others.map((p) => (
-                <option key={p.playerId} value={p.playerId}>
-                  {p.displayName ?? p.playerId}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="muted">
-            Tile{" "}
-            <select
-              value={manipulationTile}
-              onChange={(e) => setManipulationTile(e.target.value)}
-              disabled={busy || !manipulationTarget}
-            >
-              <option value="">Tile</option>
-              {(state.players ?? [])
-                .find((player) => player.playerId === manipulationTarget)
-                ?.ownedTilePositions.map((position) => (
-                  <option key={String(position)} value={String(position)}>
-                    {tileLabel(position, tileNames)}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            className="button buttonSecondary"
-            disabled={busy || !manipulationTarget || !manipulationTile}
-            onClick={() =>
-              void onAction("Market manipulation", {
-                type: "market_manipulation",
-                targetPlayerId: manipulationTarget,
-                tilePosition: parseTilePosition(manipulationTile),
-              })
-            }
-          >
-            Freeze tile (¤50)
-          </button>
-        </div>
+        <OpponentTileActionForm
+          className="manipulationForm"
+          state={state}
+          opponents={others}
+          tileNames={tileNames}
+          busy={busy}
+          targetLabel="Freeze tile owned by"
+          tileLabelText="Tile"
+          submitLabel="Freeze tile (¤50)"
+          onSubmit={(targetPlayerId, tilePosition) =>
+            onAction("Market manipulation", {
+              type: "market_manipulation",
+              targetPlayerId,
+              tilePosition,
+            })
+          }
+        />
       )}
 
       {affinityId === "consumer_insights" && others.length > 0 && (

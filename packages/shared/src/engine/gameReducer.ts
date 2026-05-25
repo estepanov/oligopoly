@@ -11,6 +11,8 @@
 import type { GameAction, GameState, PlayerState } from "@oligopoly/validation";
 import { GameEngineErrorKeys } from "@oligopoly/validation";
 import { isDoubles, moveOnPerimeter, TRIPLE_DOUBLES_LIMIT } from "./dice.js";
+import { applyAction, normalizeGameState } from "./gameStateMachine.js";
+import type { GameActionInput } from "./gameStateTypes.js";
 import { ACTION_POINTS_PER_TURN, PASS_START_BONUS } from "./setup.js";
 
 /** Full row shape stored in `games.state_json` (superset of public `GameState`). */
@@ -236,6 +238,46 @@ function applyEndTurn(
   };
 }
 
+function mapEngineThrow(err: unknown): ApplyGameActionFailure["errorKey"] {
+  if (typeof err !== "string" || !err.startsWith("game.")) {
+    return GameEngineErrorKeys.INVALID_PLAYER_STATE;
+  }
+  const known = Object.values(GameEngineErrorKeys) as string[];
+  if (known.includes(err)) {
+    return err as ApplyGameActionFailure["errorKey"];
+  }
+  return GameEngineErrorKeys.INVALID_PLAYER_STATE;
+}
+
+/** Delegates to authoritative `applyAction` for actions not inlined here. */
+function delegateToApplyAction(
+  state: EngineGameState,
+  action: GameAction,
+  ctx: ApplyGameActionContext,
+): ApplyGameActionResult {
+  try {
+    const internal = normalizeGameState(
+      JSON.parse(JSON.stringify(state)) as Record<string, unknown>,
+    );
+    const result = applyAction(
+      internal,
+      ctx.actorId,
+      action as GameActionInput,
+    );
+    const primary =
+      result.logEntries.find((entry) => entry.playerId === ctx.actorId) ??
+      result.logEntries[result.logEntries.length - 1];
+    return {
+      ok: true,
+      state: result.state as unknown as EngineGameState,
+      logActionType: primary?.actionType ?? action.type,
+      logPayload: (primary?.payload ?? {}) as Record<string, unknown>,
+    };
+  } catch (err) {
+    return { ok: false, errorKey: mapEngineThrow(err) };
+  }
+}
+
 /**
  * Incremental roll/end-turn helper for unit tests. HTTP routes use
  * `applyAction` in `gameStateMachine.ts` as the authoritative engine.
@@ -250,40 +292,7 @@ export function applyGameAction(
       return applyRollDice(state, action, ctx);
     case "end_turn":
       return applyEndTurn(state, action, ctx);
-    case "buy_tile":
-    case "decline_tile":
-    case "develop_tile":
-    case "mortgage_tile":
-    case "redeem_tile":
-    case "auction_bid":
-    case "auction_pass":
-    case "start_negotiation":
-    case "propose_contract":
-    case "sign_contract":
-    case "sign_handshake":
-    case "break_handshake":
-    case "form_syndicate":
-    case "call_vote":
-    case "path_choice":
-    case "draw_market_event":
-    case "use_affinity":
-    case "accept_disruption":
-    case "set_rate_card":
-    case "end_coordination":
-    case "initiate_auction":
-    case "pay_debt":
-    case "propose_handshake":
-    case "hostile_takeover":
-    case "market_manipulation":
-    case "insider_keep_market_event":
-    case "insider_discard_market_event":
-      return {
-        ok: false,
-        errorKey: GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED,
-      };
-    default: {
-      const _exhaustive: never = action;
-      return _exhaustive;
-    }
+    default:
+      return delegateToApplyAction(state, action, ctx);
   }
 }

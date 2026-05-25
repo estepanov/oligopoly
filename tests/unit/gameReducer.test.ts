@@ -190,16 +190,26 @@ describe("applyGameAction", () => {
     expect(second.state.phase).toBe("action");
   });
 
-  it("returns ACTION_NOT_IMPLEMENTED for non-core actions", () => {
+  it("delegates advanced actions to authoritative applyAction", () => {
     const state = minimalTwoPlayerState("action");
+    const players = state.players;
+    if (players?.[0]) {
+      players[0].actionPointsRemaining = 2;
+    }
     const r = applyGameAction(
       state,
-      { type: "buy_tile", tilePosition: 1 },
+      {
+        type: "propose_handshake",
+        partyB: "bob",
+        summary: "No trades this round",
+      },
       { actorId: "alice" },
     );
-    expect(r.ok).toBe(false);
+    expect(r.ok).toBe(true);
     if (!r.ok) {
-      expect(r.errorKey).toBe(GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED);
+      return;
     }
+    expect(r.state.handshakeAgreements?.length).toBe(1);
+    expect(r.logActionType).toBe("handshake_proposed");
   });
 });

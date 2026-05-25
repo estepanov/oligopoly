@@ -15,6 +15,7 @@ export type PersistedGameState = GameState & {
     partyB: string;
     summary: string;
     status: string;
+    partySignatures?: Record<string, boolean>;
   }>;
   pendingInsiderPeek?: {
     cardId: string;
@@ -30,6 +31,18 @@ export type PersistedGameState = GameState & {
 type ClientPendingAuction = PendingAuction & {
   submissionCount: number;
   mySubmission?: number | "pass";
+};
+
+/** HTTP/WS game state after affinity redaction and visibility filtering. */
+export type ClientGameState = Omit<
+  GameState,
+  "pendingAuction" | "affinityAssignments"
+> & {
+  pendingAuction?: ClientPendingAuction;
+  myAffinityCardId?: string | null;
+  negotiationThreads?: PersistedGameState["negotiationThreads"];
+  handshakeAgreements?: PersistedGameState["handshakeAgreements"];
+  pendingInsiderPeek?: PersistedGameState["pendingInsiderPeek"];
 };
 
 function withSubmissionCount(auction: PendingAuction): ClientPendingAuction {
@@ -84,6 +97,14 @@ function redactPendingAuction(
   };
 }
 
+function isOpenNegotiationRuleEnabled(
+  settings: PersistedGameState["settings"],
+): boolean {
+  return Array.isArray(settings?.optionalRuleIds)
+    ? settings.optionalRuleIds.includes("open_negotiation")
+    : false;
+}
+
 /**
  * Strip hidden affinity data for HTTP responses.
  * Callers must enforce authZ (player vs spectator) before using this.
@@ -92,14 +113,12 @@ export function toClientGameState(
   state: PersistedGameState,
   mode: "spectator" | "player",
   playerId: string,
-): Record<string, unknown> {
+): ClientGameState {
   const pendingAuction = state.pendingAuction
     ? redactPendingAuction(state.pendingAuction, playerId, mode)
     : undefined;
 
-  const openNegotiation = Array.isArray(state.settings?.optionalRuleIds)
-    ? state.settings.optionalRuleIds.includes("open_negotiation")
-    : false;
+  const openNegotiation = isOpenNegotiationRuleEnabled(state.settings);
 
   const negotiationThreads = filterNegotiationThreadsForViewer(
     state.negotiationThreads,
@@ -112,7 +131,6 @@ export function toClientGameState(
     state.handshakeAgreements,
     playerId,
     mode,
-    openNegotiation,
   );
 
   const insiderPeek =
@@ -150,7 +168,7 @@ export function toClientGameState(
       negotiationThreads,
       handshakeAgreements,
       ...(insiderPeek ? { pendingInsiderPeek: insiderPeek } : {}),
-    } as Record<string, unknown>;
+    };
   }
 
   const { pendingAuction: _p, pendingInsiderPeek: _peek, ...rest } = state;
@@ -160,7 +178,7 @@ export function toClientGameState(
     negotiationThreads,
     handshakeAgreements,
     ...(insiderPeek ? { pendingInsiderPeek: insiderPeek } : {}),
-  } as Record<string, unknown>;
+  };
 }
 
 function filterNegotiationThreadsForViewer(
@@ -178,10 +196,9 @@ function filterHandshakesForViewer(
   handshakes: PersistedGameState["handshakeAgreements"],
   viewerId: string,
   mode: "spectator" | "player",
-  openNegotiation: boolean,
 ) {
   if (!handshakes?.length) return handshakes;
-  if (openNegotiation || mode === "spectator") return handshakes;
+  if (mode === "spectator") return handshakes;
   return handshakes.filter(
     (entry) => entry.partyA === viewerId || entry.partyB === viewerId,
   );

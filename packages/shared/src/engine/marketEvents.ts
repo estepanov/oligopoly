@@ -1,16 +1,10 @@
-import {
-  getTileByPosition,
-  getTilesBySector,
-  SECTOR_IDS,
-} from "../config/board.js";
 import { OPTIONAL_MARKET_EVENT_CARDS_REGISTRY } from "../config/marketEventCards.js";
 import {
   MARKET_EVENT_DECK,
   MARKET_EVENT_DECK_IDS,
   type MarketEventCard,
 } from "../config/marketEventDeck.js";
-import { startDeclineAuction } from "./auction.js";
-import { hashSeed, shuffleDeterministic } from "./deckShuffle.js";
+import { shuffleDeterministic } from "./deckShuffle.js";
 import { rollFairD6 } from "./dice.js";
 import type {
   ApplyActionResult,
@@ -18,6 +12,7 @@ import type {
   InternalPlayerState,
   LogEntry,
 } from "./gameStateTypes.js";
+import { resolveOptionalMarketEventEffect } from "./optionalMarketEventEffects.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
 import { ACTION_POINTS_PER_TURN } from "./setup.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
@@ -184,6 +179,12 @@ function resolveSpecificEffect(
   drawingPlayerId: string,
   logs: LogEntry[],
 ): boolean {
+  if (
+    resolveOptionalMarketEventEffect(state, cardId, drawingPlayerId, logs)
+  ) {
+    return true;
+  }
+
   switch (cardId) {
     case "stimulus_package":
       applyToAllPlayers(state, 100, logs, cardId);
@@ -246,283 +247,9 @@ function resolveSpecificEffect(
       });
       return true;
     }
-    case "optional_leveraged_buyout": {
-      const target = playerWithFewestTiles(state);
-      if (!target) return true;
-      const expensive = mostExpensiveOwnedTile(state, target.playerId);
-      if (!expensive) return true;
-      const auctionState = startDeclineAuction(state, expensive, "action");
-      if (auctionState.pendingAuction) {
-        auctionState.pendingAuction.reservePrice = 1;
-        auctionState.pendingAuction.tieBreakMinBid = 1;
-        auctionState.pendingAuction.sellerId = target.playerId;
-        auctionState.pendingAuction.eligiblePlayerIds = state.turnOrder.filter(
-          (id) =>
-            id !== target.playerId && !state.eliminatedPlayerIds.includes(id),
-        );
-        state.phase = auctionState.phase;
-        state.pendingAuction = auctionState.pendingAuction;
-      }
-      logs.push({
-        playerId: drawingPlayerId,
-        actionType: "optional_leveraged_buyout",
-        payload: { targetPlayerId: target.playerId, tilePosition: expensive },
-      });
-      return true;
-    }
-    case "optional_corporate_espionage": {
-      for (const player of activePlayers(state)) {
-        let tokens = 0;
-        for (const other of activePlayers(state)) {
-          if (other.playerId === player.playerId) continue;
-          for (const pos of other.ownedTilePositions) {
-            const tileState = state.tiles.find(
-              (entry) => String(entry.position) === String(pos),
-            );
-            tokens += tileState?.developmentTokens ?? 0;
-          }
-        }
-        if (tokens > 0) {
-          const payment = tokens * 10;
-          const delta = adjustCapital(player, -payment);
-          logs.push({
-            playerId: player.playerId,
-            actionType: "market_event_capital_change",
-            payload: { cardId, delta, capital: player.capital, tokens },
-          });
-        }
-      }
-      return true;
-    }
-    case "optional_short_squeeze": {
-      const leader = playerControllingMostTilesInAnySector(state);
-      if (!leader) return true;
-      const { playerId: leaderId, sectorId, count } = leader;
-      const paymentEach = count * 30;
-      for (const player of activePlayers(state)) {
-        if (player.playerId === leaderId) continue;
-        const delta = adjustCapital(player, -paymentEach);
-        const receiver = getPlayer(state, leaderId);
-        if (receiver) {
-          receiver.capital += -delta;
-        }
-        logs.push({
-          playerId: player.playerId,
-          actionType: "market_event_capital_change",
-          payload: {
-            cardId,
-            delta,
-            capital: player.capital,
-            sectorId,
-          },
-        });
-      }
-      return true;
-    }
-    case "optional_supply_chain_crisis": {
-      if (!state.marketEventModifiers) state.marketEventModifiers = {};
-      state.marketEventModifiers.utilityRentMultiplier = 2;
-      state.marketEventModifiers.utilityRentMultiplierUntilRound =
-        state.round + 2;
-      logs.push({
-        playerId: null,
-        actionType: "supply_chain_crisis_active",
-        payload: {
-          untilRound:
-            state.marketEventModifiers.utilityRentMultiplierUntilRound,
-        },
-      });
-      return true;
-    }
-    case "optional_sovereign_wealth_fund": {
-      const players = activePlayers(state);
-      const share = players.length > 0 ? Math.floor(200 / players.length) : 0;
-      for (const player of players) {
-        const delta = adjustCapital(player, share);
-        logs.push({
-          playerId: player.playerId,
-          actionType: "market_event_capital_change",
-          payload: { cardId, delta, capital: player.capital },
-        });
-      }
-      return true;
-    }
-    case "optional_venture_capital_boom": {
-      for (const player of activePlayers(state)) {
-        if (player.ownedTilePositions.length < 3) {
-          const delta = adjustCapital(player, 100);
-          logs.push({
-            playerId: player.playerId,
-            actionType: "market_event_capital_change",
-            payload: { cardId, delta, capital: player.capital },
-          });
-        }
-      }
-      return true;
-    }
-    case "optional_algorithmic_flash_trade": {
-      for (const player of activePlayers(state)) {
-        const roll = rollFairD6();
-        const delta = adjustCapital(player, roll * 10);
-        logs.push({
-          playerId: player.playerId,
-          actionType: "market_event_roll",
-          payload: { cardId, roll, delta, capital: player.capital },
-        });
-      }
-      return true;
-    }
-    case "optional_regulatory_amnesty": {
-      for (const player of activePlayers(state)) {
-        if (player.inRegulation) {
-          player.inRegulation = false;
-          logs.push({
-            playerId: player.playerId,
-            actionType: "regulatory_amnesty",
-            payload: { cardId },
-          });
-        }
-      }
-      return true;
-    }
-    case "optional_dark_pool_transfer": {
-      const donors = activePlayers(state).filter(
-        (player) => player.ownedTilePositions.length > 0,
-      );
-      if (donors.length === 0) return true;
-      const donor =
-        donors[
-          hashSeed(`${state.gameId}:${state.round}:${cardId}:donor`) %
-            donors.length
-        ];
-      const recipients = activePlayers(state).filter(
-        (player) => player.playerId !== donor.playerId,
-      );
-      if (recipients.length === 0) return true;
-      const recipient =
-        recipients[
-          hashSeed(`${state.gameId}:${state.round}:${cardId}:recipient`) %
-            recipients.length
-        ];
-      const tilePosition = donor.ownedTilePositions[0];
-      const tileState = state.tiles.find(
-        (entry) => String(entry.position) === String(tilePosition),
-      );
-      if (!tileState) return true;
-      tileState.ownerId = recipient.playerId;
-      donor.ownedTilePositions = donor.ownedTilePositions.filter(
-        (pos) => String(pos) !== String(tilePosition),
-      );
-      recipient.ownedTilePositions.push(tilePosition);
-      logs.push({
-        playerId: drawingPlayerId,
-        actionType: "dark_pool_transfer",
-        payload: {
-          fromPlayerId: donor.playerId,
-          toPlayerId: recipient.playerId,
-          tilePosition,
-        },
-      });
-      return true;
-    }
-    case "optional_synthetic_cdo": {
-      if (!state.marketEventModifiers) state.marketEventModifiers = {};
-      state.marketEventModifiers.syntheticCdoMortgageRound = state.round;
-      logs.push({
-        playerId: null,
-        actionType: "synthetic_cdo_active",
-        payload: { round: state.round },
-      });
-      return true;
-    }
-    case "optional_black_swan_event": {
-      let totalLost = 0;
-      let poorest: InternalPlayerState | null = null;
-      for (const player of activePlayers(state)) {
-        const loss = Math.floor(player.capital * 0.25);
-        const delta = adjustCapital(player, -loss);
-        totalLost += -delta;
-        if (!poorest || player.capital < poorest.capital) {
-          poorest = player;
-        }
-        logs.push({
-          playerId: player.playerId,
-          actionType: "market_event_capital_change",
-          payload: { cardId, delta, capital: player.capital },
-        });
-      }
-      if (poorest) {
-        poorest.capital += totalLost;
-        logs.push({
-          playerId: poorest.playerId,
-          actionType: "black_swan_windfall",
-          payload: { amount: totalLost, capital: poorest.capital },
-        });
-      }
-      return true;
-    }
     default:
       return false;
   }
-}
-
-function playerWithFewestTiles(
-  state: InternalGameState,
-): InternalPlayerState | null {
-  let best: InternalPlayerState | null = null;
-  for (const player of activePlayers(state)) {
-    if (
-      !best ||
-      player.ownedTilePositions.length < best.ownedTilePositions.length
-    ) {
-      best = player;
-    }
-  }
-  return best;
-}
-
-function mostExpensiveOwnedTile(
-  state: InternalGameState,
-  playerId: string,
-): number | string | null {
-  const player = getPlayer(state, playerId);
-  if (!player) return null;
-  let bestPos: number | string | null = null;
-  let bestCost = -1;
-  for (const pos of player.ownedTilePositions) {
-    const tile = getTileByPosition(pos);
-    if (
-      tile?.cost !== null &&
-      tile?.cost !== undefined &&
-      tile.cost > bestCost
-    ) {
-      bestCost = tile.cost;
-      bestPos = pos;
-    }
-  }
-  return bestPos;
-}
-
-function playerControllingMostTilesInAnySector(state: InternalGameState): {
-  playerId: string;
-  sectorId: string;
-  count: number;
-} | null {
-  let best: { playerId: string; sectorId: string; count: number } | null = null;
-  for (const player of activePlayers(state)) {
-    for (const sectorId of SECTOR_IDS) {
-      const sectorTiles = getTilesBySector(sectorId);
-      const owned = sectorTiles.filter((tile) =>
-        player.ownedTilePositions.some(
-          (pos) => String(pos) === String(tile.position),
-        ),
-      ).length;
-      if (!best || owned > best.count) {
-        best = { playerId: player.playerId, sectorId, count: owned };
-      }
-    }
-  }
-  return best && best.count > 0 ? best : null;
 }
 
 export function shouldOfferInsiderPeek(

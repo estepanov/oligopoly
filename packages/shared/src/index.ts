@@ -297,6 +297,7 @@ export {
 export type { SyndicateCharterState } from "./engine/syndicate.js";
 export {
   areSameSyndicate,
+  buildDefaultSyndicateCharter,
   controllingPlayerIds,
   findSyndicateWinnerId,
   getSyndicateForPlayer,

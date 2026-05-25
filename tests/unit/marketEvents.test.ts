@@ -201,6 +201,55 @@ describe("drawAndResolveMarketEvent", () => {
     expect(result.state.pendingAuction?.tilePosition).toBe(6);
     expect(result.state.pendingAuction?.sellerId).toBe("player-2");
   });
+
+  it("optional_dark_pool_transfer moves a seeded owned tile, not always the first", () => {
+    const state = makeMarketEventState({
+      gameId: "dark-pool-seed",
+      marketEventDeckRemaining: ["optional_dark_pool_transfer"],
+      players: [
+        {
+          playerId: "player-1",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [1, 6],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 2,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+        {
+          playerId: "player-2",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 0,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+      ],
+    });
+    state.tiles.find((tile) => tile.position === 1)!.ownerId = "player-1";
+    state.tiles.find((tile) => tile.position === 6)!.ownerId = "player-1";
+
+    const result = drawAndResolveMarketEvent(state, "player-1", "round_start");
+    const transferLog = result.logEntries.find(
+      (entry) => entry.actionType === "dark_pool_transfer",
+    );
+    const transferred = transferLog?.payload?.tilePosition;
+    expect([1, 6].map(String)).toContain(String(transferred));
+    expect(
+      result.state.tiles.find(
+        (tile) => String(tile.position) === String(transferred),
+      )?.ownerId,
+    ).toBe("player-2");
+  });
 });
 
 describe("resolveMarketEventCard", () => {
