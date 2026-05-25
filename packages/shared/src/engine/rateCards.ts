@@ -89,7 +89,6 @@ export function recordOpposingSectorLanding(
     const syndicate = state.syndicates?.[card.syndicateId];
     if (!syndicate) continue;
     if (syndicate.memberIds.includes(visitorId)) {
-      card.roundsWithoutOpposingLanding = 0;
       continue;
     }
     card.roundsWithoutOpposingLanding = 0;

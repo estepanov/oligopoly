@@ -1030,8 +1030,15 @@ lobbyRoutes.delete("/:id/player/:uid", async (c) => {
   return c.json(kickResponse);
 });
 
-// POST /:id/ready — Mark the current player as ready
-lobbyRoutes.post("/:id/ready", async (c) => {
+async function setLobbyPlayerReady(
+  c: {
+    get: (key: string) => string | undefined;
+    req: { param: (name: string) => string };
+    env?: Bindings;
+    json: (body: unknown, status?: number) => Response;
+  },
+  ready: boolean,
+) {
   const subject = getSubject(c);
   if (!subject) {
     return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
@@ -1057,7 +1064,7 @@ lobbyRoutes.post("/:id/ready", async (c) => {
 
   const updated = await db
     .prepare(
-      "UPDATE lobby_players SET is_ready = 1 WHERE lobby_id = ? AND user_id = ?",
+      `UPDATE lobby_players SET is_ready = ${ready ? 1 : 0} WHERE lobby_id = ? AND user_id = ?`,
     )
     .bind(id, subject)
     .run();
@@ -1074,49 +1081,13 @@ lobbyRoutes.post("/:id/ready", async (c) => {
   const response = await buildLobbyResponse(db, lobby, playersResult.results);
   await publishLobbyUpdate(c.env, id, response);
   return c.json(response);
-});
+}
+
+// POST /:id/ready — Mark the current player as ready
+lobbyRoutes.post("/:id/ready", (c) => setLobbyPlayerReady(c, true));
 
 // DELETE /:id/ready — Clear ready status for the current player
-lobbyRoutes.delete("/:id/ready", async (c) => {
-  const subject = getSubject(c);
-  if (!subject) {
-    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
-  }
-
-  const db = c.env?.DB;
-  if (!db) {
-    return c.json({ error: "Database not configured" }, 500);
-  }
-
-  const id = c.req.param("id");
-  const lobby = await db
-    .prepare("SELECT * FROM lobbies WHERE id = ?")
-    .bind(id)
-    .first<LobbyRow>();
-
-  if (!lobby) {
-    return c.json({ error: LobbyErrorKeys.NOT_FOUND }, 404);
-  }
-  if (lobby.status !== "waiting") {
-    return c.json({ error: LobbyErrorKeys.ALREADY_STARTED }, 409);
-  }
-
-  await db
-    .prepare(
-      "UPDATE lobby_players SET is_ready = 0 WHERE lobby_id = ? AND user_id = ?",
-    )
-    .bind(id, subject)
-    .run();
-
-  const playersResult = await db
-    .prepare("SELECT * FROM lobby_players WHERE lobby_id = ?")
-    .bind(id)
-    .all<LobbyPlayerRow>();
-
-  const response = await buildLobbyResponse(db, lobby, playersResult.results);
-  await publishLobbyUpdate(c.env, id, response);
-  return c.json(response);
-});
+lobbyRoutes.delete("/:id/ready", (c) => setLobbyPlayerReady(c, false));
 
 // POST /:id/start — Start the game (admin only, min 2 players)
 lobbyRoutes.post("/:id/start", async (c) => {

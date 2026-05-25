@@ -266,6 +266,7 @@ export {
 } from "./engine/optionalRulesEngine.js";
 export {
   getActiveRateCardMultiplier,
+  recordOpposingSectorLanding,
   syndicateQualifiesForRateCard,
 } from "./engine/rateCards.js";
 // ---------------------------------------------------------------------------

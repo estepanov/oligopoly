@@ -306,10 +306,6 @@ export function applyAction(
       return handleInitiateAuction(state, playerId, action);
     case "pay_debt":
       return handlePayDebt(state, playerId, action);
-    case "end_coordination":
-      return handleEndCoordination(state, playerId);
-    case "set_rate_card":
-      return handleSetRateCard(state, playerId, action);
     default:
       throw "game.invalid_action";
   }
