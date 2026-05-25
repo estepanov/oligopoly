@@ -790,6 +790,18 @@ describe("Enhanced game start — proper initial state", () => {
     const game = await gameRes.json();
     expect(game.status).toBe("active");
     expect(game.playerCount).toBe(2);
+
+    const stateRes = await requestWithEnv(
+      `/api/games/${startBody.gameId}/state`,
+      {
+        method: "GET",
+        headers: { "x-subject": "user-1" },
+        db,
+      },
+    );
+    expect(stateRes.status).toBe(200);
+    const state = await stateRes.json();
+    expect(state.phase).toBe("waiting_for_market_event");
   });
 
   it("stores enriched game_started log with affinity assignments", async () => {

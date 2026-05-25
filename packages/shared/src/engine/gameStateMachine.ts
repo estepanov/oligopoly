@@ -28,6 +28,10 @@ import {
   rollPathChoiceDie,
   TRIPLE_DOUBLES_LIMIT,
 } from "./dice.js";
+import {
+  drawAndResolveMarketEvent,
+  normalizeMarketEventDeck,
+} from "./marketEvents.js";
 import { calculateMortgageValue, calculateRedemptionCost } from "./mortgage.js";
 import {
   calculateDevelopmentCost,
@@ -76,6 +80,8 @@ export interface InternalGameState {
   kickedPlayerIds?: string[];
   settings: Record<string, unknown>;
   aiPlayers?: InternalAiPlayerState[];
+  marketEventDeckRemaining?: string[];
+  marketEventDiscard?: string[];
 }
 
 export interface InternalAiPlayerState {
@@ -298,9 +304,10 @@ export function normalizeGameState(
       state.settings,
     );
   }
-  // If phase is old-style "market_event" or "action", map to new phases
+  normalizeMarketEventDeck(state);
+  // Legacy phase aliases
   if (state.phase === "market_event") {
-    state.phase = "waiting_for_roll";
+    state.phase = "waiting_for_market_event";
   }
   return state;
 }
@@ -347,6 +354,8 @@ export function applyAction(
       return handleMortgageTile(state, playerId, action);
     case "redeem_tile":
       return handleRedeemTile(state, playerId, action);
+    case "draw_market_event":
+      return handleDrawMarketEvent(state, playerId);
     default:
       throw "game.invalid_action";
   }
@@ -355,6 +364,16 @@ export function applyAction(
 // ---------------------------------------------------------------------------
 // Action Handlers
 // ---------------------------------------------------------------------------
+
+function handleDrawMarketEvent(
+  state: InternalGameState,
+  playerId: string,
+): ApplyActionResult {
+  if (state.phase !== "waiting_for_market_event") {
+    throw "game.invalid_phase";
+  }
+  return drawAndResolveMarketEvent(state, playerId, "round_start");
+}
 
 function handleRollDice(
   state: InternalGameState,
@@ -604,11 +623,22 @@ function resolveLanding(
         payload: { amount: GOVERNMENT_GRANT },
       });
     }
-    // MARKET EVENT, DISRUPTION CARD, FLASH CRASH, BLACK MARKET RELAY:
+    if (tile.name === "MARKET EVENT") {
+      const drawResult = drawAndResolveMarketEvent(
+        state,
+        playerId,
+        "tile",
+        pos,
+      );
+      return {
+        state: drawResult.state,
+        additionalLogs: [...logs, ...drawResult.logEntries],
+      };
+    }
+    // DISRUPTION CARD, FLASH CRASH, BLACK MARKET RELAY:
     // These require card deck mechanics (draw + resolve). For now, log them
     // as events. Full card resolution is a future enhancement.
     if (
-      tile.name === "MARKET EVENT" ||
       tile.name === "DISRUPTION CARD" ||
       tile.name === "FLASH CRASH" ||
       tile.name === "BLACK MARKET RELAY"
@@ -926,7 +956,10 @@ function handleEndTurn(
   nextPlayer.actionPointsRemaining = nextPlayer.inRegulation
     ? 0
     : ACTION_POINTS_PER_TURN;
-  newState.phase = "waiting_for_roll";
+  newState.phase =
+    roundWrapped && nextIndex === 0
+      ? "waiting_for_market_event"
+      : "waiting_for_roll";
   newState.lastDiceRoll = null;
   newState.pendingBuyTilePosition = null;
 

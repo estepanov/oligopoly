@@ -16,6 +16,14 @@ describe("e2e solo vs AI gameplay", () => {
 
     await ensureActorTurn(db, gameId, humanId);
 
+    const drawRes = await requestWithEnv(`/api/games/${gameId}/action`, {
+      method: "POST",
+      headers: { "x-subject": humanId },
+      body: { type: "draw_market_event" },
+      db,
+    });
+    expect(drawRes.status).toBe(200);
+
     const rollRes = await requestWithEnv(`/api/games/${gameId}/action`, {
       method: "POST",
       headers: { "x-subject": humanId },
@@ -66,6 +74,10 @@ describe("e2e solo vs AI gameplay", () => {
       16,
     );
     expect(isActorTurn(afterAi, humanId)).toBe(true);
-    expect(["waiting_for_roll", "rolling_doubles"]).toContain(afterAi.phase);
+    expect([
+      "waiting_for_roll",
+      "rolling_doubles",
+      "waiting_for_market_event",
+    ]).toContain(afterAi.phase);
   });
 });

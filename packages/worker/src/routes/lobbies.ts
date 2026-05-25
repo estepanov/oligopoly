@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import {
   ACTION_POINTS_PER_TURN,
   AFFINITY_CARD_IDS,
+  buildMarketEventDeck,
   getStartingCapital,
   initTileStates,
   OPTIONAL_MARKET_EVENT_CARDS_REGISTRY,
@@ -1115,10 +1116,28 @@ lobbyRoutes.post("/:id/start", async (c) => {
   // NOTE: affinityAssignments is stored as a separate top-level field
   // (not inside each player) so the /state endpoint can redact opponents'
   // hidden cards before returning the response.
+  const gameSettings = {
+    turnTimeout: lobby.turn_timeout ?? "5min",
+    auctionType: lobby.auction_type ?? "sealed_bids",
+    auctionBidWindow: lobby.auction_bid_window ?? "1min",
+    auctionSettleDelay: lobby.auction_settle_delay ?? "30s",
+    auctionExtensionWindow: lobby.auction_extension_window ?? "15s",
+    optionalRuleIds,
+    optionalMarketEventCardIds: lobby.optional_event_card_ids_json
+      ? JSON.parse(lobby.optional_event_card_ids_json)
+      : [],
+    marketEventDeckCardIds: lobby.market_event_deck_json
+      ? JSON.parse(lobby.market_event_deck_json)
+      : null,
+    currencyName: lobby.currency_name ?? "Capital",
+    currencySymbol: lobby.currency_symbol ?? "¤",
+    currencyMultiplier: lobby.currency_multiplier ?? "1",
+    spectatorMode: lobby.spectator_mode ?? "disabled",
+  };
   const initialState = {
     gameId,
     round: 1,
-    phase: "waiting_for_roll",
+    phase: "waiting_for_market_event",
     currentPlayerIndex: 0,
     turnOrder: playerIds,
     freeMarketPool: 0,
@@ -1148,24 +1167,9 @@ lobbyRoutes.post("/:id/start", async (c) => {
         isOnDiagonal: false,
       };
     }),
-    settings: {
-      turnTimeout: lobby.turn_timeout ?? "5min",
-      auctionType: lobby.auction_type ?? "sealed_bids",
-      auctionBidWindow: lobby.auction_bid_window ?? "1min",
-      auctionSettleDelay: lobby.auction_settle_delay ?? "30s",
-      auctionExtensionWindow: lobby.auction_extension_window ?? "15s",
-      optionalRuleIds,
-      optionalMarketEventCardIds: lobby.optional_event_card_ids_json
-        ? JSON.parse(lobby.optional_event_card_ids_json)
-        : [],
-      marketEventDeckCardIds: lobby.market_event_deck_json
-        ? JSON.parse(lobby.market_event_deck_json)
-        : null,
-      currencyName: lobby.currency_name ?? "Capital",
-      currencySymbol: lobby.currency_symbol ?? "¤",
-      currencyMultiplier: lobby.currency_multiplier ?? "1",
-      spectatorMode: lobby.spectator_mode ?? "disabled",
-    },
+    marketEventDeckRemaining: buildMarketEventDeck(gameSettings, gameId),
+    marketEventDiscard: [] as string[],
+    settings: gameSettings,
   };
 
   await db.batch([

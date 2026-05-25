@@ -264,6 +264,7 @@ export function applyGameAction(
     case "form_syndicate":
     case "call_vote":
     case "path_choice":
+    case "draw_market_event":
       return {
         ok: false,
         errorKey: GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED,
