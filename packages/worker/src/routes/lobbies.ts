@@ -1044,8 +1044,9 @@ async function setLobbyPlayerReady(
     return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
   }
 
-  const db = c.env?.DB;
-  if (!db) {
+  const env = c.env;
+  const db = env?.DB;
+  if (!env || !db) {
     return c.json({ error: "Database not configured" }, 500);
   }
 
@@ -1079,7 +1080,7 @@ async function setLobbyPlayerReady(
     .all<LobbyPlayerRow>();
 
   const response = await buildLobbyResponse(db, lobby, playersResult.results);
-  await publishLobbyUpdate(c.env, id, response);
+  await publishLobbyUpdate(env, id, response);
   return c.json(response);
 }
 
