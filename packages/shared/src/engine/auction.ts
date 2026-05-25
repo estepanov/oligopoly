@@ -1,4 +1,8 @@
 import { getTileByPosition } from "../config/board.js";
+import {
+  computeAuctionBidDeadline,
+  isAuctionBidWindowOpen,
+} from "./auctionTiming.js";
 import { rollFairD6 } from "./dice.js";
 import type {
   ApplyActionResult,
@@ -16,6 +20,7 @@ export type PendingAuctionState = {
   tieBreakMinBid?: number;
   tieBreakRound: number;
   resumePhase: "action" | "rolling_doubles";
+  bidDeadlineAt: number;
 };
 
 function deepClone<T>(obj: T): T {
@@ -27,6 +32,10 @@ function getPlayer(
   playerId: string,
 ): InternalPlayerState | undefined {
   return state.players.find((player) => player.playerId === playerId);
+}
+
+function auctionBidDeadline(state: InternalGameState, nowMs: number): number {
+  return computeAuctionBidDeadline(nowMs, state.settings);
 }
 
 export function getActiveEligibleBidders(state: InternalGameState): string[] {
@@ -56,6 +65,7 @@ export function startDeclineAuction(
   state: InternalGameState,
   tilePosition: number | string,
   resumePhase: "action" | "rolling_doubles",
+  nowMs: number = Date.now(),
 ): InternalGameState {
   const eligiblePlayerIds = state.turnOrder.filter(
     (playerId) => !state.eliminatedPlayerIds.includes(playerId),
@@ -73,6 +83,7 @@ export function startDeclineAuction(
       eligiblePlayerIds,
       tieBreakRound: 0,
       resumePhase,
+      bidDeadlineAt: auctionBidDeadline(state, nowMs),
     },
   };
 }
@@ -149,8 +160,39 @@ function awardTileToWinner(
   return { state: newState, logEntries: logs };
 }
 
+function startTieBreakRound(
+  state: InternalGameState,
+  topBidders: string[],
+  maxAmount: number,
+  nowMs: number,
+  logs: LogEntry[],
+): ApplyActionResult {
+  const auction = state.pendingAuction!;
+  const newState = deepClone(state);
+  newState.pendingAuction = {
+    ...auction,
+    submissions: {},
+    eligiblePlayerIds: topBidders,
+    tieBreakMinBid: maxAmount,
+    tieBreakRound: auction.tieBreakRound + 1,
+    bidDeadlineAt: auctionBidDeadline(state, nowMs),
+  };
+  logs.push({
+    playerId: null,
+    actionType: "auction_tie_break",
+    payload: {
+      position: auction.tilePosition,
+      amount: maxAmount,
+      playerIds: topBidders,
+      round: newState.pendingAuction.tieBreakRound,
+    },
+  });
+  return { state: newState, logEntries: logs };
+}
+
 export function settleSealedAuction(
   state: InternalGameState,
+  nowMs: number = Date.now(),
 ): ApplyActionResult {
   const auction = state.pendingAuction;
   if (!auction || state.phase !== "waiting_for_auction_bids") {
@@ -181,38 +223,85 @@ export function settleSealedAuction(
     .map(([playerId]) => playerId);
 
   if (topBidders.length > 1) {
-    const newState = deepClone(state);
-    newState.pendingAuction = {
-      ...auction,
-      submissions: {},
-      eligiblePlayerIds: topBidders,
-      tieBreakMinBid: maxAmount,
-      tieBreakRound: auction.tieBreakRound + 1,
-    };
-    logs.push({
-      playerId: null,
-      actionType: "auction_tie_break",
-      payload: {
-        position: auction.tilePosition,
-        amount: maxAmount,
-        playerIds: topBidders,
-        round: newState.pendingAuction.tieBreakRound,
-      },
-    });
-    return { state: newState, logEntries: logs };
+    return startTieBreakRound(state, topBidders, maxAmount, nowMs, logs);
   }
 
   return awardTileToWinner(state, topBidders[0], maxAmount, logs);
+}
+
+function passForMissingBidders(
+  state: InternalGameState,
+  logs: LogEntry[],
+): InternalGameState {
+  const auction = state.pendingAuction;
+  if (!auction) return state;
+
+  const newState = deepClone(state);
+  const tile = getTileByPosition(auction.tilePosition);
+  const pendingAuction = { ...newState.pendingAuction! };
+
+  for (const playerId of getActiveEligibleBidders(newState)) {
+    if (hasAuctionSubmission(pendingAuction, playerId)) continue;
+    pendingAuction.submissions[playerId] = "pass";
+    logs.push({
+      playerId,
+      actionType: "auction_pass",
+      payload: {
+        position: auction.tilePosition,
+        name: tile?.name ?? "Unknown",
+        reason: "timeout",
+      },
+    });
+  }
+
+  newState.pendingAuction = pendingAuction;
+  return newState;
+}
+
+/**
+ * Close the sealed bid window when the deadline passes or all players submitted.
+ * Returns null when the auction should remain open.
+ */
+export function closeAuctionBidWindowIfReady(
+  state: InternalGameState,
+  nowMs: number = Date.now(),
+): ApplyActionResult | null {
+  const auction = state.pendingAuction;
+  if (!auction || state.phase !== "waiting_for_auction_bids") {
+    return null;
+  }
+
+  const allSubmitted = allEligiblePlayersSubmitted(state);
+  const windowOpen = isAuctionBidWindowOpen(auction.bidDeadlineAt, nowMs);
+  if (windowOpen && !allSubmitted) {
+    return null;
+  }
+
+  const logs: LogEntry[] = [];
+  let workingState = state;
+  if (!allSubmitted) {
+    workingState = passForMissingBidders(workingState, logs);
+  }
+
+  const settled = settleSealedAuction(workingState, nowMs);
+  return {
+    state: settled.state,
+    logEntries: [...logs, ...settled.logEntries],
+  };
 }
 
 export function recordAuctionSubmission(
   state: InternalGameState,
   playerId: string,
   submission: number | "pass",
+  nowMs: number = Date.now(),
 ): ApplyActionResult {
   const auction = state.pendingAuction;
   if (!auction || state.phase !== "waiting_for_auction_bids") {
     throw "game.auction_not_active";
+  }
+  if (!isAuctionBidWindowOpen(auction.bidDeadlineAt, nowMs)) {
+    throw "game.auction_closed";
   }
 
   if (!getActiveEligibleBidders(state).includes(playerId)) {
@@ -254,11 +343,11 @@ export function recordAuctionSubmission(
     },
   };
 
-  if (allEligiblePlayersSubmitted(newState)) {
-    const settled = settleSealedAuction(newState);
+  const closed = closeAuctionBidWindowIfReady(newState, nowMs);
+  if (closed) {
     return {
-      state: settled.state,
-      logEntries: [...logs, ...settled.logEntries],
+      state: closed.state,
+      logEntries: [...logs, ...closed.logEntries],
     };
   }
 

@@ -21,6 +21,7 @@ export function GameDetailPage() {
     statusLine,
     wsStatus,
     turnDeadline,
+    timerKind,
     myPlayerId,
     myTurn,
     runAction,
@@ -113,7 +114,9 @@ export function GameDetailPage() {
               <dd>{wsStatus}</dd>
               <dt className="muted">Your turn</dt>
               <dd>{myTurn ? "Yes" : "No"}</dd>
-              <dt className="muted">Turn deadline</dt>
+              <dt className="muted">
+                {timerKind === "auction_bids" ? "Auction closes" : "Turn deadline"}
+              </dt>
               <dd>
                 {turnDeadline
                   ? new Date(turnDeadline).toLocaleTimeString()

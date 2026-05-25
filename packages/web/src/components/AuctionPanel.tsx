@@ -50,6 +50,9 @@ export function AuctionPanel({
       <p className="muted">
         Minimum bid: {currency}
         {minBid}. Submissions: {submissionCount}/{eligibleCount}
+        {auction.bidDeadlineAt
+          ? ` · closes ${new Date(auction.bidDeadlineAt).toLocaleTimeString()}`
+          : ""}
       </p>
 
       {!eligible && (

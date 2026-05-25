@@ -25,6 +25,7 @@ import {
   checkSyndicateWin,
   chooseAiAction,
   clampTrustworthiness,
+  closeAuctionBidWindowIfReady,
   DEFAULT_CONTRIBUTION_WEIGHTS,
   DEFAULT_PROFILE_VISIBILITY,
   FLASH_CRASH_LOSS_PCT,
@@ -1646,6 +1647,9 @@ describe("applyAction — buy_tile / decline_tile", () => {
     expect(result.state.pendingBuyTilePosition).toBeNull();
     expect(result.state.pendingAuction?.tilePosition).toBe(3);
     expect(result.state.pendingAuction?.auctionType).toBe("sealed_bids");
+    expect(result.state.pendingAuction?.bidDeadlineAt).toBeGreaterThan(
+      Date.now(),
+    );
     expect(result.state.pendingAuction?.eligiblePlayerIds).toEqual([
       "player-1",
       "player-2",
@@ -1654,6 +1658,8 @@ describe("applyAction — buy_tile / decline_tile", () => {
 });
 
 describe("applyAction — auction_bid / auction_pass", () => {
+  const openAuctionDeadline = Date.now() + 60 * 60 * 1000;
+
   function makeAuctionState(
     overrides?: Partial<InternalGameState>,
   ): InternalGameState {
@@ -1668,6 +1674,7 @@ describe("applyAction — auction_bid / auction_pass", () => {
         eligiblePlayerIds: ["player-1", "player-2"],
         tieBreakRound: 0,
         resumePhase: "action",
+        bidDeadlineAt: openAuctionDeadline,
       },
       ...overrides,
     });
@@ -1746,6 +1753,7 @@ describe("applyAction — auction_bid / auction_pass", () => {
         tieBreakMinBid: 75,
         tieBreakRound: 1,
         resumePhase: "action",
+        bidDeadlineAt: openAuctionDeadline,
       },
     });
     expect(() =>
@@ -1783,6 +1791,7 @@ describe("applyAction — auction_bid / auction_pass", () => {
         eligiblePlayerIds: ["player-1", "player-2"],
         tieBreakRound: 0,
         resumePhase: "action",
+        bidDeadlineAt: openAuctionDeadline,
       },
     });
     const settled = applyAction(state, "player-2", {
@@ -1798,6 +1807,49 @@ describe("applyAction — auction_bid / auction_pass", () => {
         (entry) => entry.actionType === "auction_settled",
       ),
     ).toBe(true);
+  });
+
+  it("auto-passes missing bidders when the bid window expires", () => {
+    const state = makeAuctionState({
+      pendingAuction: {
+        tilePosition: 3,
+        trigger: "decline",
+        auctionType: "sealed_bids",
+        submissions: { "player-1": 80 },
+        eligiblePlayerIds: ["player-1", "player-2"],
+        tieBreakRound: 0,
+        resumePhase: "action",
+        bidDeadlineAt: Date.now() - 1,
+      },
+    });
+    const closed = closeAuctionBidWindowIfReady(state, Date.now());
+    expect(closed?.state.phase).toBe("action");
+    const winner = closed?.state.players.find(
+      (player) => player.playerId === "player-1",
+    );
+    expect(winner?.ownedTilePositions).toContain(3);
+  });
+
+  it("rejects bids after the bid window closes", () => {
+    const state = makeAuctionState({
+      pendingAuction: {
+        tilePosition: 3,
+        trigger: "decline",
+        auctionType: "sealed_bids",
+        submissions: {},
+        eligiblePlayerIds: ["player-1", "player-2"],
+        tieBreakRound: 0,
+        resumePhase: "action",
+        bidDeadlineAt: Date.now() - 1,
+      },
+    });
+    expect(() =>
+      applyAction(state, "player-1", {
+        type: "auction_bid",
+        tilePosition: 3,
+        amount: 50,
+      }),
+    ).toThrow("game.auction_closed");
   });
 });
 

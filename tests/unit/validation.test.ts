@@ -1023,6 +1023,7 @@ describe("GameStateSchema (enhanced)", () => {
         resumePhase: "action",
         submissionCount: 1,
         mySubmission: 90,
+        bidDeadlineAt: Date.now() + 60_000,
       },
     });
     expect(result.success).toBe(true);

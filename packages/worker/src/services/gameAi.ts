@@ -3,6 +3,7 @@ import {
   applyAction,
   applyTimeoutTakeover,
   chooseAiAction,
+  closeAuctionBidWindowIfReady,
   type InternalGameState,
   isAiControlledActor,
   normalizeGameState,
@@ -127,6 +128,35 @@ export async function persistStateMutation(
     { state: nextState, logEntries },
     { gameRoom, actorId: "system" },
   );
+}
+
+export async function applyAuctionBidWindowExpiry(
+  db: D1Database,
+  gameId: string,
+  gameRoom?: DurableObjectNamespace,
+): Promise<boolean> {
+  const row = await loadActiveGame(db, gameId);
+  if (!row) return false;
+
+  const gameState = normalizeGameState(
+    JSON.parse(row.state_json!) as Record<string, unknown>,
+  );
+  const result = closeAuctionBidWindowIfReady(gameState, Date.now());
+  if (!result) return false;
+
+  await persistGameActionResult(db, gameId, result, {
+    gameRoom,
+    actorId: "system",
+  });
+
+  if (
+    result.state.phase === "waiting_for_auction_bids" &&
+    chooseAiAction(result.state)
+  ) {
+    await runAiTurnLoop(db, gameId, gameRoom);
+  }
+
+  return true;
 }
 
 export async function applyTimeoutTakeoverAndStep(

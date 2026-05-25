@@ -1,9 +1,14 @@
-import { isAiControlledActor, normalizeGameState } from "@oligopoly/shared";
 import {
+  findNextAiAuctionActor,
+  isAiControlledActor,
+  normalizeGameState,
+} from "@oligopoly/shared";
+import {
+  applyAuctionBidWindowExpiry,
   applyTimeoutTakeoverAndStep,
   runAiTurnLoop,
 } from "../services/gameAi.js";
-import { syncTurnTimer } from "../services/gameScheduler.js";
+import { syncGameRoomTimer } from "../services/gameScheduler.js";
 import { currentTurnActorId } from "../services/turnTimeout.js";
 
 type RoomEnv = {
@@ -161,10 +166,13 @@ export class GameRoom extends RealtimeRoom {
 
   async alarm(): Promise<void> {
     const gameId = await this.state.storage.get<string>("gameId");
-    const actorId = await this.state.storage.get<string>("turnActorId");
-    if (!gameId || !actorId || !this.env.DB) return;
+    if (!gameId || !this.env.DB) return;
 
-    const deadline = await this.state.storage.get<number>("turnDeadlineAt");
+    const timerKind =
+      (await this.state.storage.get<string>("timerKind")) ?? "turn";
+    const deadline =
+      (await this.state.storage.get<number>("timerDeadlineAt")) ??
+      (await this.state.storage.get<number>("turnDeadlineAt"));
     if (deadline && Date.now() < deadline) {
       await this.state.storage.setAlarm(deadline);
       return;
@@ -172,12 +180,22 @@ export class GameRoom extends RealtimeRoom {
 
     await this.state.storage.put("aiLoopRunning", true);
     try {
-      await applyTimeoutTakeoverAndStep(
-        this.env.DB,
-        gameId,
-        actorId,
-        this.env.GAME_ROOM,
-      );
+      if (timerKind === "auction_bids") {
+        await applyAuctionBidWindowExpiry(
+          this.env.DB,
+          gameId,
+          this.env.GAME_ROOM,
+        );
+      } else {
+        const actorId = await this.state.storage.get<string>("turnActorId");
+        if (!actorId) return;
+        await applyTimeoutTakeoverAndStep(
+          this.env.DB,
+          gameId,
+          actorId,
+          this.env.GAME_ROOM,
+        );
+      }
     } finally {
       await this.state.storage.delete("aiLoopRunning");
       await this.resyncFromDatabase(gameId);
@@ -245,6 +263,21 @@ export class GameRoom extends RealtimeRoom {
       return;
     }
 
+    if (
+      state.phase === "waiting_for_auction_bids" &&
+      this.env.DB &&
+      !(await this.state.storage.get<boolean>("aiLoopRunning"))
+    ) {
+      if (findNextAiAuctionActor(state)) {
+        await this.runAiLoop(gameId);
+        return;
+      }
+      await syncGameRoomTimer(this.state.storage, gameId, state, (message) =>
+        this.broadcast(message),
+      );
+      return;
+    }
+
     const actorId = currentTurnActorId(state);
     if (!actorId) return;
 
@@ -257,7 +290,7 @@ export class GameRoom extends RealtimeRoom {
       return;
     }
 
-    await syncTurnTimer(this.state.storage, gameId, state, (message) =>
+    await syncGameRoomTimer(this.state.storage, gameId, state, (message) =>
       this.broadcast(message),
     );
   }
@@ -277,7 +310,7 @@ export class GameRoom extends RealtimeRoom {
         const latest = normalizeGameState(
           JSON.parse(row.state_json) as Record<string, unknown>,
         );
-        await syncTurnTimer(this.state.storage, gameId, latest, (message) =>
+        await syncGameRoomTimer(this.state.storage, gameId, latest, (message) =>
           this.broadcast(message),
         );
       }

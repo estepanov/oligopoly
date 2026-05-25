@@ -17,8 +17,8 @@ import {
   recordAuctionSubmission,
   startDeclineAuction,
 } from "./auction.js";
+import { computeAuctionBidDeadline } from "./auctionTiming.js";
 import {
-  BOARD_SIZE,
   isDiagonalChoice,
   isDoubles,
   moveOnPerimeter,
@@ -278,6 +278,14 @@ export function normalizeGameState(
   }
   if (!state.pendingAuction) {
     state.pendingAuction = undefined;
+  } else if (
+    state.phase === "waiting_for_auction_bids" &&
+    state.pendingAuction.bidDeadlineAt === undefined
+  ) {
+    state.pendingAuction.bidDeadlineAt = computeAuctionBidDeadline(
+      Date.now(),
+      state.settings,
+    );
   }
   // If phase is old-style "market_event" or "action", map to new phases
   if (state.phase === "market_event") {
