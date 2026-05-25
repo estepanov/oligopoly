@@ -10,6 +10,10 @@ Oligopoly Online is a multiplayer board game built as a pnpm monorepo with four 
 - `@oligopoly/worker` — Hono API on Cloudflare Workers (local dev via Wrangler/Miniflare)
 - `@oligopoly/web` — Vite frontend client
 
+### Cursor Team Kit
+
+The repo vendors [Cursor Team Kit](https://github.com/cursor/plugins/tree/main/cursor-team-kit) at `.cursor/plugins/cursor-team-kit` (skills, agents, manifest). In Cursor Desktop you can also install it with `/add-plugin cursor-team-kit`. See `.cursor/README.md` for paths, rule copies under `.cursor/rules/`, and how to refresh from upstream.
+
 ### Running services
 
 All dev commands are documented in `package.json` scripts and `oligopoly_dev_guide.md`.

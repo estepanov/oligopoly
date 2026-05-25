@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/dist", "!**/.wrangler"]
+    "includes": ["**", "!**/dist", "!**/.wrangler", "!**/.cursor/plugins"]
   },
   "formatter": {
     "enabled": true,
