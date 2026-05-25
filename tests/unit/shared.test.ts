@@ -1903,6 +1903,119 @@ describe("applyAction — auction_bid / auction_pass", () => {
   });
 });
 
+describe("applyAction — open auction", () => {
+  const openAuctionDeadline = Date.now() + 60 * 60 * 1000;
+
+  function makeOpenAuctionState(
+    overrides?: Partial<InternalGameState>,
+  ): InternalGameState {
+    return makeTestGameState({
+      phase: "waiting_for_auction_bids",
+      pendingBuyTilePosition: null,
+      settings: { auctionType: "open_bids" },
+      pendingAuction: {
+        tilePosition: 3,
+        trigger: "decline",
+        auctionType: "open_bids",
+        submissions: {},
+        eligiblePlayerIds: ["player-1", "player-2"],
+        tieBreakRound: 0,
+        resumePhase: "action",
+        bidDeadlineAt: openAuctionDeadline,
+      },
+      ...overrides,
+    });
+  }
+
+  it("starts an open auction when lobby settings request open bids", () => {
+    const state = makeTestGameState({
+      phase: "waiting_for_buy",
+      pendingBuyTilePosition: 3,
+      settings: { auctionType: "open_bids" },
+    });
+    const result = applyAction(state, "player-1", {
+      type: "decline_tile",
+      tilePosition: 3,
+    });
+    expect(result.state.pendingAuction?.auctionType).toBe("open_bids");
+    expect(
+      result.logEntries.find((entry) => entry.actionType === "auction_started")
+        ?.payload,
+    ).toMatchObject({ auctionType: "open_bids" });
+  });
+
+  it("includes bid amounts in open auction action logs", () => {
+    const state = makeOpenAuctionState();
+    const result = applyAction(state, "player-1", {
+      type: "auction_bid",
+      tilePosition: 3,
+      amount: 90,
+    });
+    const bidLog = result.logEntries.find(
+      (entry) => entry.actionType === "auction_bid",
+    );
+    expect(bidLog?.payload).toMatchObject({ amount: 90 });
+  });
+
+  it("settles open auctions immediately when all players submit", () => {
+    const state = makeOpenAuctionState({
+      pendingAuction: {
+        tilePosition: 3,
+        trigger: "decline",
+        auctionType: "open_bids",
+        submissions: { "player-1": 90 },
+        eligiblePlayerIds: ["player-1", "player-2"],
+        tieBreakRound: 0,
+        resumePhase: "action",
+        bidDeadlineAt: openAuctionDeadline,
+      },
+    });
+    const result = applyAction(state, "player-2", {
+      type: "auction_bid",
+      tilePosition: 3,
+      amount: 50,
+    });
+    expect(result.state.phase).toBe("action");
+    expect(result.state.pendingAuction).toBeUndefined();
+    expect(
+      result.logEntries.some((entry) => entry.actionType === "auction_settled"),
+    ).toBe(true);
+    expect(
+      result.logEntries.some(
+        (entry) => entry.actionType === "auction_bids_closed",
+      ),
+    ).toBe(false);
+  });
+
+  it("resolves open auction ties with dice instead of sealed tie-break rounds", () => {
+    const state = makeOpenAuctionState({
+      pendingAuction: {
+        tilePosition: 3,
+        trigger: "decline",
+        auctionType: "open_bids",
+        submissions: { "player-1": 75 },
+        eligiblePlayerIds: ["player-1", "player-2"],
+        tieBreakRound: 0,
+        resumePhase: "action",
+        bidDeadlineAt: openAuctionDeadline,
+      },
+    });
+    const result = applyAction(state, "player-2", {
+      type: "auction_bid",
+      tilePosition: 3,
+      amount: 75,
+    });
+    expect(result.state.phase).toBe("action");
+    expect(result.state.pendingAuction).toBeUndefined();
+    expect(result.state.pendingAuction?.tieBreakRound).toBeUndefined();
+    expect(
+      result.logEntries.find(
+        (entry) => entry.actionType === "auction_tie_break",
+      )?.payload,
+    ).toMatchObject({ method: "dice" });
+  });
+});
+
 describe("applyAction — end_turn", () => {
   it("advances to next player", () => {
     const state = makeTestGameState({ phase: "action" });

@@ -13,10 +13,12 @@ import type {
   LogEntry,
 } from "./gameStateMachine.js";
 
+export type DeclineAuctionType = "sealed_bids" | "open_bids";
+
 export type PendingAuctionState = {
   tilePosition: number | string;
   trigger: "decline";
-  auctionType: "sealed_bids";
+  auctionType: DeclineAuctionType;
   submissions: Record<string, number | "pass">;
   eligiblePlayerIds: string[];
   tieBreakMinBid?: number;
@@ -39,6 +41,18 @@ function getPlayer(
 
 function auctionBidDeadline(state: InternalGameState, nowMs: number): number {
   return computeAuctionBidDeadline(nowMs, state.settings);
+}
+
+export function resolveDeclineAuctionType(
+  settings: Record<string, unknown> | undefined,
+): DeclineAuctionType {
+  return settings?.auctionType === "open_bids" ? "open_bids" : "sealed_bids";
+}
+
+export function isSealedAuction(
+  auction: Pick<PendingAuctionState, "auctionType">,
+): boolean {
+  return auction.auctionType === "sealed_bids";
 }
 
 export function getActiveEligibleBidders(state: InternalGameState): string[] {
@@ -73,6 +87,7 @@ export function startDeclineAuction(
   const eligiblePlayerIds = state.turnOrder.filter(
     (playerId) => !state.eliminatedPlayerIds.includes(playerId),
   );
+  const auctionType = resolveDeclineAuctionType(state.settings);
 
   return {
     ...deepClone(state),
@@ -81,7 +96,7 @@ export function startDeclineAuction(
     pendingAuction: {
       tilePosition,
       trigger: "decline",
-      auctionType: "sealed_bids",
+      auctionType,
       submissions: {},
       eligiblePlayerIds,
       tieBreakRound: 0,
@@ -195,7 +210,44 @@ function startTieBreakRound(
   return { state: newState, logEntries: logs };
 }
 
-export function settleSealedAuction(
+function resolveOpenAuctionTieWithDice(
+  state: InternalGameState,
+  topBidders: string[],
+  amount: number,
+  logs: LogEntry[],
+): ApplyActionResult {
+  const auction = state.pendingAuction!;
+  const rolls = topBidders.map((playerId) => ({
+    playerId,
+    roll: rollFairD6() + rollFairD6(),
+  }));
+  const maxRoll = Math.max(...rolls.map((entry) => entry.roll));
+  const winners = rolls
+    .filter((entry) => entry.roll === maxRoll)
+    .map((entry) => entry.playerId);
+
+  logs.push({
+    playerId: null,
+    actionType: "auction_tie_break",
+    payload: {
+      position: auction.tilePosition,
+      amount,
+      playerIds: topBidders,
+      method: "dice",
+      rolls: Object.fromEntries(
+        rolls.map((entry) => [entry.playerId, entry.roll]),
+      ),
+    },
+  });
+
+  if (winners.length > 1) {
+    return resolveOpenAuctionTieWithDice(state, winners, amount, logs);
+  }
+
+  return awardTileToWinner(state, winners[0], amount, logs);
+}
+
+export function settlePendingAuction(
   state: InternalGameState,
   nowMs: number = Date.now(),
 ): ApplyActionResult {
@@ -232,11 +284,17 @@ export function settleSealedAuction(
     .map(([playerId]) => playerId);
 
   if (topBidders.length > 1) {
+    if (auction.auctionType === "open_bids") {
+      return resolveOpenAuctionTieWithDice(state, topBidders, maxAmount, logs);
+    }
     return startTieBreakRound(state, topBidders, maxAmount, nowMs, logs);
   }
 
   return awardTileToWinner(state, topBidders[0], maxAmount, logs);
 }
+
+/** @deprecated Use settlePendingAuction */
+export const settleSealedAuction = settlePendingAuction;
 
 function passForMissingBidders(
   state: InternalGameState,
@@ -298,7 +356,8 @@ function beginAuctionSettlePhase(
 }
 
 /**
- * Close the sealed bid window when the deadline passes or all players submitted.
+ * Close the bid window when the deadline passes or all players submitted.
+ * Sealed auctions enter the settle delay; open auctions settle immediately.
  * Returns null when the auction should remain open for bids.
  */
 export function closeAuctionBidWindowIfReady(
@@ -322,6 +381,14 @@ export function closeAuctionBidWindowIfReady(
     workingState = passForMissingBidders(workingState, logs);
   }
 
+  if (auction.auctionType === "open_bids") {
+    const settled = settlePendingAuction(workingState, nowMs);
+    return {
+      state: settled.state,
+      logEntries: [...logs, ...settled.logEntries],
+    };
+  }
+
   return beginAuctionSettlePhase(workingState, nowMs, logs);
 }
 
@@ -341,7 +408,7 @@ export function finalizeAuctionSettleIfReady(
     return null;
   }
 
-  return settleSealedAuction(state, nowMs);
+  return settlePendingAuction(state, nowMs);
 }
 
 export function recordAuctionSubmission(
@@ -377,14 +444,19 @@ export function recordAuctionSubmission(
   }
 
   const tile = getTileByPosition(auction.tilePosition);
+  const bidPayload: Record<string, unknown> = {
+    position: auction.tilePosition,
+    name: tile?.name ?? "Unknown",
+  };
+  if (submission !== "pass" && auction.auctionType === "open_bids") {
+    bidPayload.amount = submission;
+  }
+
   const logs: LogEntry[] = [
     {
       playerId,
       actionType: submission === "pass" ? "auction_pass" : "auction_bid",
-      payload: {
-        position: auction.tilePosition,
-        name: tile?.name ?? "Unknown",
-      },
+      payload: bidPayload,
     },
   ];
 

@@ -125,14 +125,20 @@ export {
   replaceKickedPlayerWithAi,
   resolveAiPersonality,
 } from "./engine/aiControl.js";
-export type { PendingAuctionState } from "./engine/auction.js";
+export type {
+  DeclineAuctionType,
+  PendingAuctionState,
+} from "./engine/auction.js";
 export {
   allEligiblePlayersSubmitted,
   closeAuctionBidWindowIfReady,
   finalizeAuctionSettleIfReady,
   getActiveEligibleBidders,
   hasAuctionSubmission,
+  isSealedAuction,
   recordAuctionSubmission,
+  resolveDeclineAuctionType,
+  settlePendingAuction,
   settleSealedAuction,
   startDeclineAuction,
   suggestAiAuctionBid,

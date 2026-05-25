@@ -11,9 +11,20 @@ type ClientPendingAuction = PendingAuction & {
   mySubmission?: number | "pass";
 };
 
+function withSubmissionCount(auction: PendingAuction): ClientPendingAuction {
+  return {
+    ...auction,
+    submissionCount: Object.keys(auction.submissions).length,
+  };
+}
+
 export function redactPendingAuctionForBroadcast(
   auction: PendingAuction,
 ): PendingAuction & { submissionCount: number } {
+  if (auction.auctionType === "open_bids") {
+    return withSubmissionCount(auction);
+  }
+
   const { submissions: _submissions, ...rest } = auction;
   return {
     ...rest,
@@ -27,6 +38,10 @@ function redactPendingAuction(
   viewerId: string,
   mode: "spectator" | "player",
 ): ClientPendingAuction {
+  if (auction.auctionType === "open_bids") {
+    return withSubmissionCount(auction);
+  }
+
   const submissionCount = Object.keys(auction.submissions).length;
   if (mode === "spectator") {
     const { submissions: _submissions, ...rest } = auction;

@@ -34,6 +34,18 @@ export function isAuctionPhase(state: GameState): boolean {
   );
 }
 
+export function isSealedAuctionPhase(state: GameState): boolean {
+  return (
+    isAuctionPhase(state) && state.pendingAuction?.auctionType !== "open_bids"
+  );
+}
+
+export function isOpenAuctionPhase(state: GameState): boolean {
+  return (
+    isAuctionPhase(state) && state.pendingAuction?.auctionType === "open_bids"
+  );
+}
+
 export function isAuctionBiddingPhase(state: GameState): boolean {
   return (
     state.phase === "waiting_for_auction_bids" && Boolean(state.pendingAuction)
@@ -61,6 +73,9 @@ export function hasSubmittedAuction(
   myPlayerId: string | null,
 ): boolean {
   if (!myPlayerId || !state.pendingAuction) return false;
+  if (state.pendingAuction.auctionType === "open_bids") {
+    return Object.hasOwn(state.pendingAuction.submissions, myPlayerId);
+  }
   return state.pendingAuction.mySubmission !== undefined;
 }
 
@@ -74,7 +89,11 @@ export function mergeAuctionClientView(
 ): GameState {
   const prevAuction = previous?.pendingAuction;
   const nextAuction = incoming.pendingAuction;
-  if (!prevAuction?.mySubmission || !nextAuction) {
+  if (
+    !prevAuction?.mySubmission ||
+    !nextAuction ||
+    nextAuction.auctionType === "open_bids"
+  ) {
     return incoming;
   }
   if (nextAuction.mySubmission !== undefined) {
