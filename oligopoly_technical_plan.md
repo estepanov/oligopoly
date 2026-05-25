@@ -601,7 +601,8 @@ No deployment-specific delivery or session keys are defined in this plan.
 - **Declined tile purchase** enters **`waiting_for_auction_bids`** with **`pendingAuction`** (sealed bids only in this slice). All non-eliminated players in turn order are eligible; **`auction_bid`** / **`auction_pass`** bypass the current-turn check. The auction auto-settles when every eligible player has submitted; highest bid wins, ties trigger additional sealed rounds with **`tieBreakMinBid`**, and all-pass leaves the tile unowned. **`resumePhase`** restores **`action`** or **`rolling_doubles`** when the decline happened during a doubles chain.
 - Sealed bid amounts are redacted in HTTP/WS player views (`toClientGameState`) and stripped from broadcast snapshots (`publicStateForBroadcast`); only the viewer's own **`mySubmission`** is returned until settlement reveals all bids in the action log.
 - Per-player **`auction_bid`** log entries omit bid amounts until **`auction_settled`** reveals all submissions simultaneously.
-- **`GameRoom`** AI loop uses **`findNextAiAuctionActor`** / **`chooseAiActionForPlayer`** to submit bids for AI seats without a submission. Auction bid-window timers are deferred; settlement is submission-driven for now.
+- **`GameRoom`** AI loop uses **`findNextAiAuctionActor`** / **`chooseAiActionForPlayer`** to submit bids for AI seats without a submission. **`GameRoom.syncAfterStateChange`** runs the AI loop during **`waiting_for_auction_bids`** whenever an AI seat still owes a submission, not only on the current turn actor.
+- Sealed auctions honor **`settings.auctionBidWindow`**: **`pendingAuction.bidDeadlineAt`** is set at decline/tie-break start; **`closeAuctionBidWindowIfReady`** auto-passes missing bidders and settles when the deadline passes (or immediately when all eligible players submit). **`GameRoom`** alarms on the bid deadline via **`syncGameRoomTimer`**. Auction settle delay remains deferred.
 
 ---
 

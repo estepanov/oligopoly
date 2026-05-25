@@ -647,6 +647,7 @@ export const PendingAuctionSchema = z.object({
   tieBreakMinBid: z.number().int().min(1).optional(),
   tieBreakRound: z.number().int().min(0).optional(),
   resumePhase: z.enum(["action", "rolling_doubles"]),
+  bidDeadlineAt: z.number().int().optional(),
   /** Present in redacted client views; omitted from persisted engine state. */
   submissionCount: z.number().int().min(0).optional(),
   /** Present in redacted player views; omitted from persisted engine state. */
@@ -827,8 +828,9 @@ export const GameRealtimeEventSchema = z.discriminatedUnion("type", [
     type: z.literal("game.timer"),
     sentAt: z.number(),
     gameId: z.string(),
-    currentPlayerId: z.string(),
+    currentPlayerId: z.string().optional(),
     deadlineAt: z.number().nullable(),
+    timerKind: z.enum(["turn", "auction_bids"]).optional(),
   }),
   z.object({
     type: z.literal("game.ai_action"),

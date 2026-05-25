@@ -22,6 +22,7 @@ export function useGameRealtime(
 ) {
   const [wsStatus, setWsStatus] = useState("disconnected");
   const [turnDeadline, setTurnDeadline] = useState<number | null>(null);
+  const [timerKind, setTimerKind] = useState<"turn" | "auction_bids">("turn");
   const onUpdateRef = useRef(options.onUpdate);
   onUpdateRef.current = options.onUpdate;
 
@@ -69,6 +70,9 @@ export function useGameRealtime(
         }
         if (message.type === "game.timer" && "deadlineAt" in message) {
           setTurnDeadline(message.deadlineAt ?? null);
+          if (message.timerKind) {
+            setTimerKind(message.timerKind);
+          }
         }
       } catch {
         // Ignore malformed websocket payloads.
@@ -78,5 +82,5 @@ export function useGameRealtime(
     return () => socket.close();
   }, [gameId]);
 
-  return { wsStatus, turnDeadline };
+  return { wsStatus, turnDeadline, timerKind };
 }

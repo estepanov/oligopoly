@@ -67,7 +67,7 @@ export function useGameSession(
     setStatusLine(update.source);
   }, []);
 
-  const { wsStatus, turnDeadline } = useGameRealtime(gameId, {
+  const { wsStatus, turnDeadline, timerKind } = useGameRealtime(gameId, {
     onUpdate: applySessionUpdate,
   });
 
@@ -184,6 +184,7 @@ export function useGameSession(
     statusLine,
     wsStatus,
     turnDeadline,
+    timerKind,
     myPlayerId,
     myTurn: state ? isMyTurn(state, myPlayerId) : false,
     currentPlayerId: state ? currentActorId(state) : null,

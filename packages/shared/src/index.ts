@@ -128,6 +128,7 @@ export {
 export type { PendingAuctionState } from "./engine/auction.js";
 export {
   allEligiblePlayersSubmitted,
+  closeAuctionBidWindowIfReady,
   getActiveEligibleBidders,
   hasAuctionSubmission,
   recordAuctionSubmission,
@@ -135,6 +136,11 @@ export {
   startDeclineAuction,
   suggestAiAuctionBid,
 } from "./engine/auction.js";
+export {
+  auctionBidWindowToMs,
+  computeAuctionBidDeadline,
+  isAuctionBidWindowOpen,
+} from "./engine/auctionTiming.js";
 export {
   validateContributionWeights,
   validateRevenueSplit,
