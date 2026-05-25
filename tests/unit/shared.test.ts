@@ -2168,6 +2168,33 @@ describe("applyAction — draw_market_event", () => {
   });
 });
 
+describe("applyAction — disruption tiles", () => {
+  it("draws and resolves a disruption card when landing on DISRUPTION CARD", () => {
+    const state = makeTestGameState({
+      phase: "waiting_for_roll",
+      disruptionDeckRemaining: ["disruption_patent_troll"],
+      disruptionDiscard: [],
+    });
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [3, 4],
+    });
+
+    expect(
+      result.state.players.find((p) => p.playerId === "player-1")!.position,
+    ).toBe(7);
+    expect(result.state.disruptionDiscard).toEqual(["disruption_patent_troll"]);
+    expect(
+      result.logEntries.some(
+        (entry) => entry.actionType === "disruption_drawn",
+      ),
+    ).toBe(true);
+    expect(
+      result.state.players.find((p) => p.playerId === "player-1")!.capital,
+    ).toBe(1450);
+  });
+});
+
 describe("applyAction — mortgage / redeem", () => {
   it("mortgages an owned tile", () => {
     const state = makeTestGameState({ phase: "action" });

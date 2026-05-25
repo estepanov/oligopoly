@@ -170,6 +170,7 @@ export {
   calculateContributionScores,
   DEFAULT_CONTRIBUTION_WEIGHTS,
 } from "./engine/contributionScore.js";
+export { shuffleDeterministic } from "./engine/deckShuffle.js";
 export {
   BOARD_SIZE,
   DIAGONAL_ENTRY_POSITION,
@@ -184,6 +185,16 @@ export {
   rollPathChoiceDie,
   TRIPLE_DOUBLES_LIMIT,
 } from "./engine/dice.js";
+export type { DisruptionTrigger } from "./engine/disruptionEvents.js";
+export {
+  buildDisruptionDeck,
+  disruptionDrawCount,
+  drawAndResolveDisruptionCards,
+  normalizeDisruptionDeck,
+  resolveBlackMarketRelay,
+  resolveDisruptionCard,
+  resolveFlashCrash,
+} from "./engine/disruptionEvents.js";
 export type {
   ApplyGameActionContext,
   ApplyGameActionFailure,

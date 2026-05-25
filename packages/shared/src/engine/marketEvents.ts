@@ -4,6 +4,7 @@ import {
   MARKET_EVENT_DECK_IDS,
   type MarketEventCard,
 } from "../config/marketEventDeck.js";
+import { shuffleDeterministic } from "./deckShuffle.js";
 import { rollFairD6 } from "./dice.js";
 import type {
   ApplyActionResult,
@@ -16,28 +17,6 @@ export type MarketEventTrigger = "round_start" | "tile";
 
 function deepClone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj)) as T;
-}
-
-function hashSeed(input: string): number {
-  let hash = 0;
-  for (const ch of input) {
-    hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  }
-  return hash || 1;
-}
-
-function shuffleDeterministic(deck: string[], seed: string): string[] {
-  const shuffled = [...deck];
-  let state = hashSeed(seed);
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    state = (state * 1_664_525 + 1_013_904_223) >>> 0;
-    const swapIndex = state % (index + 1);
-    [shuffled[index], shuffled[swapIndex]] = [
-      shuffled[swapIndex],
-      shuffled[index],
-    ];
-  }
-  return shuffled;
 }
 
 function isKnownMarketEventCardId(cardId: string): boolean {
