@@ -1,6 +1,11 @@
 import { LobbyErrorKeys } from "@oligopoly/validation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
 import {
   ApiError,
   createInviteToken,
@@ -89,6 +94,7 @@ const describeLobbyError = (fallback: string, error: unknown) => {
 export function LobbiesPage() {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialLobbyId = searchParams.get("id")?.trim() ?? "";
   const initialJoinToken = searchParams.get("token")?.trim() ?? "";
@@ -500,10 +506,7 @@ export function LobbiesPage() {
       await refreshMyLobbies();
       await refreshPublicLobbies();
       if (response.gameId) {
-        setMessage({
-          kind: "ok",
-          text: `Game started: ${response.gameId}`,
-        });
+        navigate(`/games/${response.gameId}`);
       } else {
         setMessage({ kind: "ok", text: "Lobby start requested." });
       }

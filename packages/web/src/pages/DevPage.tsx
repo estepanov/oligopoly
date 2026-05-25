@@ -1,6 +1,7 @@
 import type { HealthResponse } from "@oligopoly/validation";
 import { useCallback, useEffect, useState } from "react";
 import { fetchGameConfig } from "../api/game-config";
+import { stepAiTurn } from "../api/games";
 import { fetchHealth } from "../api/health";
 import { ApiError } from "../api/http";
 
@@ -15,6 +16,9 @@ export function DevPage() {
 
   const [configState, setConfigState] = useState<LoadState>({ kind: "idle" });
   const [config, setConfig] = useState<Record<string, unknown> | null>(null);
+  const [debugGameId, setDebugGameId] = useState("");
+  const [aiStepMessage, setAiStepMessage] = useState<string | null>(null);
+  const [aiStepBusy, setAiStepBusy] = useState(false);
 
   const loadHealth = useCallback(async () => {
     setHealthState({ kind: "loading" });
@@ -100,6 +104,61 @@ export function DevPage() {
             onClick={() => void loadConfig()}
           >
             Refresh config
+          </button>
+        </p>
+      </div>
+
+      <div className="card">
+        <h2>AI step (debug)</h2>
+        <p className="muted">
+          Manual <code className="inline">POST /api/games/:id/ai/step</code> for
+          local debugging. Production play relies on GameRoom automation.
+        </p>
+        <p style={{ marginTop: "1rem" }}>
+          <label className="muted" htmlFor="debug-game-id">
+            Game ID
+          </label>
+          <input
+            id="debug-game-id"
+            value={debugGameId}
+            onChange={(event) => setDebugGameId(event.target.value)}
+            placeholder="game id"
+            style={{
+              display: "block",
+              width: "100%",
+              maxWidth: "28rem",
+              marginTop: "0.35rem",
+            }}
+          />
+        </p>
+        {aiStepMessage && <p className="muted">{aiStepMessage}</p>}
+        <p style={{ marginTop: "1rem" }}>
+          <button
+            type="button"
+            className="button buttonSecondary"
+            disabled={aiStepBusy || !debugGameId.trim()}
+            onClick={() => {
+              void (async () => {
+                setAiStepBusy(true);
+                setAiStepMessage(null);
+                try {
+                  const next = await stepAiTurn(debugGameId.trim());
+                  setAiStepMessage(
+                    next.aiAction
+                      ? `AI ${next.aiPlayerId} chose ${next.aiAction.type}`
+                      : `Step complete (phase: ${next.phase ?? "unknown"})`,
+                  );
+                } catch (e) {
+                  setAiStepMessage(
+                    e instanceof ApiError ? e.message : "AI step failed",
+                  );
+                } finally {
+                  setAiStepBusy(false);
+                }
+              })();
+            }}
+          >
+            Step AI
           </button>
         </p>
       </div>
