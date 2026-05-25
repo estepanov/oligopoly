@@ -12,6 +12,7 @@ import type {
   InternalPlayerState,
   LogEntry,
 } from "./gameStateTypes.js";
+import { ACTION_POINTS_PER_TURN } from "./setup.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
 
 export type MarketEventTrigger = "round_start" | "tile";
@@ -285,6 +286,12 @@ export function drawAndResolveMarketEvent(
     });
     if (trigger === "round_start") {
       newState.phase = "waiting_for_roll";
+      const actor = getPlayer(newState, drawingPlayerId);
+      if (actor) {
+        actor.actionPointsRemaining = actor.inRegulation
+          ? 0
+          : ACTION_POINTS_PER_TURN;
+      }
     }
     return { state: newState, logEntries: logs };
   }
@@ -314,6 +321,12 @@ export function drawAndResolveMarketEvent(
 
   if (trigger === "round_start") {
     newState.phase = "waiting_for_roll";
+    const actor = getPlayer(newState, drawingPlayerId);
+    if (actor) {
+      actor.actionPointsRemaining = actor.inRegulation
+        ? 0
+        : ACTION_POINTS_PER_TURN;
+    }
   }
 
   return { state: newState, logEntries: logs };

@@ -5,6 +5,7 @@ import {
 } from "./affinity.js";
 import type { InternalGameState } from "./gameStateTypes.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
+import { getActiveRateCardMultiplier } from "./rateCards.js";
 import {
   calculateHubRent,
   calculateSectorTileRent,
@@ -96,12 +97,15 @@ export function computeTileRent(
     ) {
       sectorControlMultiplier = 3;
     }
+    const rateMultiplier = tile.sectorId
+      ? getActiveRateCardMultiplier(state, tile.sectorId, ownerId)
+      : undefined;
     return {
       rent: calculateSectorTileRent(
         tile.baseRent,
         devTokens,
         sectorCtrl,
-        undefined,
+        rateMultiplier,
         sectorControlMultiplier,
       ),
       ownerId,

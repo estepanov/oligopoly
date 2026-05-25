@@ -25,6 +25,8 @@ import {
   computeAuctionBidDeadline,
   computeAuctionSettleDeadline,
 } from "./auctionTiming.js";
+import { processCoordinationPhase } from "./coordinationPhase.js";
+import { handlePayDebt } from "./debtActions.js";
 import {
   isDiagonalChoice,
   isDoubles,
@@ -46,11 +48,23 @@ import {
 } from "./marketEvents.js";
 import { calculateMortgageValue, calculateRedemptionCost } from "./mortgage.js";
 import {
+  handleBreakHandshake,
+  handleSignContract,
+  handleStartNegotiation,
+} from "./negotiationActions.js";
+import {
   isOptionalRuleEnabled,
   regulationPenaltiesEnabled,
 } from "./optionalRulesEngine.js";
 import { resolvePostMovePhase } from "./phaseHelpers.js";
+import { handleInitiateAuction } from "./playerAuctionActions.js";
+import { handleEndCoordination, handleSetRateCard } from "./rateCardActions.js";
+import {
+  recordOpposingSectorLanding,
+  revokeRateCardsForMortgage,
+} from "./rateCards.js";
 import { calculateDevelopmentCost, MAX_DEVELOPMENT_TOKENS } from "./rent.js";
+import { settleRentPayment } from "./rentPayment.js";
 import {
   computeAffinityRentBonusForTile,
   computeTileRent,
@@ -66,7 +80,10 @@ import {
 import { deepClone, getPlayer } from "./stateUtils.js";
 import { areSameSyndicate } from "./syndicate.js";
 import { handleFormSyndicate } from "./syndicateActions.js";
-import { applyWinIfThresholdCrossed } from "./winResolution.js";
+import {
+  applyWinIfThresholdCrossed,
+  markFinalRoundTurnComplete,
+} from "./winResolution.js";
 
 export type {
   ApplyActionResult,
@@ -240,6 +257,17 @@ export function applyAction(
     return handleAuctionPass(state, playerId, action);
   }
 
+  if (state.phase === "syndicate_coordination") {
+    switch (action.type) {
+      case "set_rate_card":
+        return handleSetRateCard(state, playerId, action);
+      case "end_coordination":
+        return handleEndCoordination(state, playerId);
+      default:
+        throw "game.invalid_phase";
+    }
+  }
+
   const currentPid = state.turnOrder[state.currentPlayerIndex];
   if (playerId !== currentPid) {
     throw "game.not_your_turn";
@@ -268,6 +296,20 @@ export function applyAction(
       return handleFormSyndicate(state, playerId, action);
     case "use_affinity":
       return handleUseAffinity(state, playerId, action);
+    case "start_negotiation":
+      return handleStartNegotiation(state, playerId, action);
+    case "sign_contract":
+      return handleSignContract(state, playerId, action);
+    case "break_handshake":
+      return handleBreakHandshake(state, playerId, action);
+    case "initiate_auction":
+      return handleInitiateAuction(state, playerId, action);
+    case "pay_debt":
+      return handlePayDebt(state, playerId, action);
+    case "end_coordination":
+      return handleEndCoordination(state, playerId);
+    case "set_rate_card":
+      return handleSetRateCard(state, playerId, action);
     default:
       throw "game.invalid_action";
   }
@@ -598,37 +640,40 @@ function resolveLanding(
         pos,
         playerId,
       );
-      if (rentOwnerId) {
-        p.capital -= rent;
-        const ownerPlayer = getPlayer(state, rentOwnerId)!;
-        ownerPlayer.capital += rent;
-        logs.push({
-          playerId,
-          actionType: "paid_rent",
-          payload: {
-            to: rentOwnerId,
-            amount: rent,
-            position: pos,
-            name: tile.name,
-          },
-        });
-        const rentBonus = computeAffinityRentBonusForTile(
+      if (rentOwnerId && rent > 0) {
+        const settlement = settleRentPayment(
           state,
+          playerId,
           rentOwnerId,
-          pos,
           rent,
+          pos,
         );
-        if (rentBonus > 0) {
-          ownerPlayer.capital += rentBonus;
-          logs.push({
-            playerId: rentOwnerId,
-            actionType: "affinity_bonus",
-            payload: {
-              amount: rentBonus,
-              reason: "rent_subsidy",
-              position: pos,
-            },
-          });
+        state = settlement.state;
+        logs.push(...settlement.logs);
+        const ownerPlayer = getPlayer(state, rentOwnerId);
+        const paidAmount = rent - settlement.shortfall;
+        if (ownerPlayer && paidAmount > 0) {
+          const rentBonus = computeAffinityRentBonusForTile(
+            state,
+            rentOwnerId,
+            pos,
+            paidAmount,
+          );
+          if (rentBonus > 0) {
+            ownerPlayer.capital += rentBonus;
+            logs.push({
+              playerId: rentOwnerId,
+              actionType: "affinity_bonus",
+              payload: {
+                amount: rentBonus,
+                reason: "rent_subsidy",
+                position: pos,
+              },
+            });
+          }
+        }
+        if (tile.sectorId) {
+          state = recordOpposingSectorLanding(state, playerId, tile.sectorId);
         }
       }
     }
@@ -793,7 +838,7 @@ function handleEndTurn(
     throw "game.cannot_end_turn";
   }
 
-  const newState = deepClone(state);
+  let newState = deepClone(state);
   const logs: LogEntry[] = [];
 
   const p = getPlayer(newState, playerId)!;
@@ -836,6 +881,10 @@ function handleEndTurn(
     nextIndex <= newState.currentPlayerIndex || nextIndex === 0;
   newState.currentPlayerIndex = nextIndex;
 
+  if (newState.finalRound) {
+    newState = markFinalRoundTurnComplete(newState, playerId, logs);
+  }
+
   if (roundWrapped && nextIndex === 0) {
     newState.round += 1;
     logs.push({
@@ -843,6 +892,12 @@ function handleEndTurn(
       actionType: "new_round",
       payload: { round: newState.round },
     });
+    newState = processCoordinationPhase(newState, logs);
+    newState.phase = "syndicate_coordination";
+    newState.currentPlayerIndex = 0;
+    newState.lastDiceRoll = null;
+    newState.pendingBuyTilePosition = null;
+    return { state: newState, logEntries: logs };
   }
 
   // Set up next player's turn
@@ -852,10 +907,7 @@ function handleEndTurn(
   nextPlayer.actionPointsRemaining = nextPlayer.inRegulation
     ? 0
     : ACTION_POINTS_PER_TURN;
-  newState.phase =
-    roundWrapped && nextIndex === 0
-      ? "waiting_for_market_event"
-      : "waiting_for_roll";
+  newState.phase = "waiting_for_roll";
   newState.lastDiceRoll = null;
   newState.pendingBuyTilePosition = null;
 
@@ -998,8 +1050,9 @@ function handleMortgageTile(
       },
     },
   ];
+  const workingState = revokeRateCardsForMortgage(newState, pos, logs);
 
-  return { state: newState, logEntries: logs };
+  return { state: workingState, logEntries: logs };
 }
 
 function handleRedeemTile(

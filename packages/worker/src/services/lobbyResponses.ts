@@ -29,6 +29,7 @@ export type LobbyPlayerRow = {
   user_id: string;
   is_admin: number;
   joined_at: number;
+  is_ready?: number;
 };
 
 const getActiveGameIdForLobby = async (
@@ -62,6 +63,7 @@ export const toLobbyResponse = (
   players: players.map((p) => ({
     userId: p.user_id,
     isAdmin: p.is_admin === 1,
+    isReady: (p.is_ready ?? 0) === 1,
     joinedAt: p.joined_at,
   })),
   turnTimeout: row.turn_timeout ?? "5min",

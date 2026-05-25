@@ -147,6 +147,7 @@ export {
   settlePendingAuction,
   settleSealedAuction,
   startDeclineAuction,
+  startForeclosureAuction,
   suggestAiAuctionBid,
 } from "./engine/auction.js";
 export {
@@ -175,6 +176,7 @@ export {
   calculateContributionScores,
   DEFAULT_CONTRIBUTION_WEIGHTS,
 } from "./engine/contributionScore.js";
+export { processCoordinationPhase } from "./engine/coordinationPhase.js";
 export { shuffleDeterministic } from "./engine/deckShuffle.js";
 export {
   BOARD_SIZE,
@@ -227,7 +229,14 @@ export {
   initTileStates,
   normalizeGameState,
 } from "./engine/gameStateMachine.js";
-export type { CompletedGameSnapshot } from "./engine/gameStateTypes.js";
+export type {
+  CompletedGameSnapshot,
+  FinalRoundState,
+  NegotiationThreadState,
+  PendingForeclosureState,
+  RateCardState,
+} from "./engine/gameStateTypes.js";
+export type { SyndicateCharterState } from "./engine/syndicate.js";
 export type { MarketEventTrigger } from "./engine/marketEvents.js";
 export {
   buildMarketEventDeck,
@@ -255,6 +264,10 @@ export {
   isOptionalRuleEnabled,
   regulationPenaltiesEnabled,
 } from "./engine/optionalRulesEngine.js";
+export {
+  getActiveRateCardMultiplier,
+  syndicateQualifiesForRateCard,
+} from "./engine/rateCards.js";
 // ---------------------------------------------------------------------------
 // Engine — rent, mortgage, setup, win conditions, contribution, dice
 // ---------------------------------------------------------------------------
@@ -270,6 +283,7 @@ export {
   RENT_MULTIPLIERS,
   UTILITY_RENT_MULTIPLIER,
 } from "./engine/rent.js";
+export { settleRentPayment } from "./engine/rentPayment.js";
 export {
   ACTION_COSTS,
   ACTION_POINTS_PER_TURN,

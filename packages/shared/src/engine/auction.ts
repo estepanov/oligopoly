@@ -15,6 +15,7 @@ import {
   isAuctionSettleDelayActive,
 } from "./auctionTiming.js";
 import { rollFairD6 } from "./dice.js";
+import { applyForeclosureAuctionProceeds } from "./foreclosure.js";
 import type {
   ApplyActionResult,
   InternalGameState,
@@ -25,9 +26,13 @@ import { applyWinIfThresholdCrossed } from "./winResolution.js";
 
 export type { DeclineAuctionType } from "./auctionMode.js";
 
+export type AuctionTrigger = "decline" | "foreclosure" | "player_initiated";
+
 export type PendingAuctionState = {
   tilePosition: number | string;
-  trigger: "decline";
+  trigger: AuctionTrigger;
+  sellerId?: string;
+  reservePrice?: number;
   auctionType: DeclineAuctionType;
   submissions: Record<string, number | "pass">;
   eligiblePlayerIds: string[];
@@ -78,6 +83,24 @@ export function allEligiblePlayersSubmitted(state: InternalGameState): boolean {
   );
 }
 
+export function startForeclosureAuction(
+  state: InternalGameState,
+  tilePosition: number | string,
+  resumePhase: "action" | "rolling_doubles",
+  nowMs: number = Date.now(),
+): InternalGameState {
+  const base = startDeclineAuction(state, tilePosition, resumePhase, nowMs);
+  if (!base.pendingAuction) return base;
+  return {
+    ...base,
+    pendingAuction: {
+      ...base.pendingAuction,
+      trigger: "foreclosure",
+      tieBreakMinBid: base.pendingAuction.tieBreakMinBid ?? 1,
+    },
+  };
+}
+
 export function startDeclineAuction(
   state: InternalGameState,
   tilePosition: number | string,
@@ -115,7 +138,6 @@ function finishAuctionWithoutSale(
 
   const newState = deepClone(state);
   newState.pendingAuction = undefined;
-  newState.phase = auction.resumePhase;
 
   logs.push({
     playerId: null,
@@ -123,9 +145,16 @@ function finishAuctionWithoutSale(
     payload: {
       position: auction.tilePosition,
       name: tile?.name ?? "Unknown",
+      trigger: auction.trigger,
     },
   });
 
+  if (auction.trigger === "foreclosure" && newState.pendingForeclosure) {
+    const workingState = applyForeclosureAuctionProceeds(newState, 0, logs);
+    return { state: workingState, logEntries: logs };
+  }
+
+  newState.phase = auction.resumePhase;
   return { state: newState, logEntries: logs };
 }
 
@@ -151,13 +180,70 @@ function awardTileToWinner(
   }
 
   winner.capital -= amount;
-  winner.ownedTilePositions.push(auction.tilePosition);
 
   const tileState = newState.tiles.find(
     (entry) => String(entry.position) === String(auction.tilePosition),
   );
-  if (tileState) {
-    tileState.ownerId = winnerId;
+
+  if (auction.trigger === "foreclosure" && newState.pendingForeclosure) {
+    const debtorId = newState.pendingForeclosure.debtorId;
+    const debtor = getPlayer(newState, debtorId);
+    if (debtor) {
+      debtor.ownedTilePositions = debtor.ownedTilePositions.filter(
+        (pos) => String(pos) !== String(auction.tilePosition),
+      );
+      debtor.mortgagedTilePositions = debtor.mortgagedTilePositions.filter(
+        (pos) => String(pos) !== String(auction.tilePosition),
+      );
+    }
+    winner.ownedTilePositions.push(auction.tilePosition);
+    if (tileState) {
+      tileState.ownerId = winnerId;
+      tileState.mortgaged = false;
+    }
+    newState.pendingAuction = undefined;
+    const workingState = applyForeclosureAuctionProceeds(
+      newState,
+      amount,
+      logs,
+    );
+    logs.push({
+      playerId: winnerId,
+      actionType: "auction_settled",
+      payload: {
+        position: auction.tilePosition,
+        name: tile.name,
+        amount,
+        winnerId,
+        trigger: "foreclosure",
+        submissions: auction.submissions,
+      },
+    });
+    applyWinIfThresholdCrossed(workingState, logs);
+    return { state: workingState, logEntries: logs };
+  }
+
+  if (auction.trigger === "player_initiated" && auction.sellerId) {
+    const seller = getPlayer(newState, auction.sellerId);
+    if (seller) {
+      seller.capital += amount;
+      seller.ownedTilePositions = seller.ownedTilePositions.filter(
+        (pos) => String(pos) !== String(auction.tilePosition),
+      );
+      seller.mortgagedTilePositions = seller.mortgagedTilePositions.filter(
+        (pos) => String(pos) !== String(auction.tilePosition),
+      );
+    }
+    winner.ownedTilePositions.push(auction.tilePosition);
+    if (tileState) {
+      tileState.ownerId = winnerId;
+      tileState.mortgaged = false;
+    }
+  } else {
+    winner.ownedTilePositions.push(auction.tilePosition);
+    if (tileState) {
+      tileState.ownerId = winnerId;
+    }
   }
 
   newState.pendingAuction = undefined;
@@ -171,6 +257,8 @@ function awardTileToWinner(
       name: tile.name,
       amount,
       winnerId,
+      trigger: auction.trigger,
+      sellerId: auction.sellerId,
       submissions: auction.submissions,
     },
   });

@@ -267,6 +267,10 @@ export function applyGameAction(
     case "draw_market_event":
     case "use_affinity":
     case "accept_disruption":
+    case "set_rate_card":
+    case "end_coordination":
+    case "initiate_auction":
+    case "pay_debt":
       return {
         ok: false,
         errorKey: GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED,

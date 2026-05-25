@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   advanceAuctionSettle,
+  completeCoordinationPhase,
   createAndStartGame,
   createD1Stub,
   drawRoundStartMarketEvent,
   type HarnessDb,
   loadStoredGameState,
+  markLobbyPlayersReady,
   requestWithEnv,
   storedActorId,
 } from "../helpers/workerGameplayHarness.js";
@@ -31,6 +33,7 @@ describe("POST /api/games/:id/action — draw_market_event", () => {
       headers: { "x-subject": "user-2" },
       db,
     });
+    await markLobbyPlayersReady(db, lobby.id as string, ["user-1", "user-2"]);
 
     const startRes = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {
       method: "POST",
@@ -560,7 +563,9 @@ describe("Full game round cycle", () => {
     const end2Body = (await endRes2.json()) as Record<string, unknown>;
     // After both players go, round should advance
     expect(end2Body.round).toBe(2);
+    expect(end2Body.phase).toBe("syndicate_coordination");
 
+    await completeCoordinationPhase(db, gameId, [currentPlayer, otherPlayer]);
     await drawRoundStartMarketEvent(db, gameId, currentPlayer);
 
     // Player 1 can take their turn again in round 2
