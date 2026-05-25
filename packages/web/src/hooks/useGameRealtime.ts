@@ -22,7 +22,9 @@ export function useGameRealtime(
 ) {
   const [wsStatus, setWsStatus] = useState("disconnected");
   const [turnDeadline, setTurnDeadline] = useState<number | null>(null);
-  const [timerKind, setTimerKind] = useState<"turn" | "auction_bids">("turn");
+  const [timerKind, setTimerKind] = useState<
+    "turn" | "auction_bids" | "auction_settle"
+  >("turn");
   const onUpdateRef = useRef(options.onUpdate);
   onUpdateRef.current = options.onUpdate;
 

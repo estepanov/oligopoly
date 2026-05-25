@@ -1,7 +1,7 @@
 import type { InternalGameState } from "@oligopoly/shared";
 import { currentTurnActorId, turnTimeoutToMs } from "./turnTimeout.js";
 
-export type GameTimerKind = "turn" | "auction_bids";
+export type GameTimerKind = "turn" | "auction_bids" | "auction_settle";
 
 export function timerEventJson(
   gameId: string,
@@ -31,6 +31,25 @@ export async function syncGameRoomTimer(
   if (state.phase === "game_over") {
     await storage.deleteAlarm();
     await storage.delete("timerKind");
+    return;
+  }
+
+  if (
+    state.phase === "waiting_for_auction_settle" &&
+    state.pendingAuction?.settleDeadlineAt
+  ) {
+    const deadlineAt = state.pendingAuction.settleDeadlineAt;
+    await storage.put("timerKind", "auction_settle");
+    await storage.put("timerDeadlineAt", deadlineAt);
+    await storage.delete("turnActorId");
+    await storage.delete("turnDeadlineAt");
+    await storage.setAlarm(deadlineAt);
+    broadcast(
+      timerEventJson(gameId, {
+        deadlineAt,
+        timerKind: "auction_settle",
+      }),
+    );
     return;
   }
 

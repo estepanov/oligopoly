@@ -28,6 +28,14 @@ export function isMyTurn(state: GameState, myPlayerId: string | null): boolean {
 
 export function isAuctionPhase(state: GameState): boolean {
   return (
+    (state.phase === "waiting_for_auction_bids" ||
+      state.phase === "waiting_for_auction_settle") &&
+    Boolean(state.pendingAuction)
+  );
+}
+
+export function isAuctionBiddingPhase(state: GameState): boolean {
+  return (
     state.phase === "waiting_for_auction_bids" && Boolean(state.pendingAuction)
   );
 }

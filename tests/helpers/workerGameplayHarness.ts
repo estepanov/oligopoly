@@ -1,3 +1,7 @@
+import {
+  finalizeAuctionSettleIfReady,
+  normalizeGameState,
+} from "@oligopoly/shared";
 import app from "@oligopoly/worker";
 import { createWorkerD1Stub } from "./workerD1Stub.js";
 
@@ -209,6 +213,27 @@ export async function ensureActorTurn(
     );
   }
   return finalState;
+}
+
+export function advanceAuctionSettle(db: D1Database, gameId: string) {
+  const tables = (db as D1Database & { _tables: Record<string, Row[]> })
+    ._tables;
+  const gameRow = tables.games.find((row) => row.id === gameId);
+  if (!gameRow?.state_json) {
+    throw new Error(`Game ${gameId} not found`);
+  }
+
+  const state = normalizeGameState(
+    JSON.parse(gameRow.state_json as string) as Record<string, unknown>,
+  );
+  const deadline = state.pendingAuction?.settleDeadlineAt ?? Date.now();
+  const result = finalizeAuctionSettleIfReady(state, deadline + 1);
+  if (!result) {
+    throw new Error("Auction settle phase is not ready to finalize");
+  }
+
+  gameRow.state_json = JSON.stringify(result.state);
+  return result;
 }
 
 export function isActorTurn(

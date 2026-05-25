@@ -602,7 +602,7 @@ No deployment-specific delivery or session keys are defined in this plan.
 - Sealed bid amounts are redacted in HTTP/WS player views (`toClientGameState`) and stripped from broadcast snapshots (`publicStateForBroadcast`); only the viewer's own **`mySubmission`** is returned until settlement reveals all bids in the action log.
 - Per-player **`auction_bid`** log entries omit bid amounts until **`auction_settled`** reveals all submissions simultaneously.
 - **`GameRoom`** AI loop uses **`findNextAiAuctionActor`** / **`chooseAiActionForPlayer`** to submit bids for AI seats without a submission. **`GameRoom.syncAfterStateChange`** runs the AI loop during **`waiting_for_auction_bids`** whenever an AI seat still owes a submission, not only on the current turn actor.
-- Sealed auctions honor **`settings.auctionBidWindow`**: **`pendingAuction.bidDeadlineAt`** is set at decline/tie-break start; **`closeAuctionBidWindowIfReady`** auto-passes missing bidders and settles when the deadline passes (or immediately when all eligible players submit). **`GameRoom`** alarms on the bid deadline via **`syncGameRoomTimer`**. Auction settle delay remains deferred.
+- Sealed auctions honor **`settings.auctionBidWindow`**: **`pendingAuction.bidDeadlineAt`** is set at decline/tie-break start; **`closeAuctionBidWindowIfReady`** auto-passes missing bidders and enters **`waiting_for_auction_settle`** when the bid window closes (or when all eligible players submit). **`settings.auctionSettleDelay`** sets **`pendingAuction.settleDeadlineAt`**; **`finalizeAuctionSettleIfReady`** reveals bids and settles after the delay. **`GameRoom`** alarms on bid/settle deadlines via **`syncGameRoomTimer`** (`timerKind`: `auction_bids` | `auction_settle`).
 
 ---
 

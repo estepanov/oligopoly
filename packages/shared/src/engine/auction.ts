@@ -1,7 +1,9 @@
 import { getTileByPosition } from "../config/board.js";
 import {
   computeAuctionBidDeadline,
+  computeAuctionSettleDeadline,
   isAuctionBidWindowOpen,
+  isAuctionSettleDelayActive,
 } from "./auctionTiming.js";
 import { rollFairD6 } from "./dice.js";
 import type {
@@ -21,6 +23,7 @@ export type PendingAuctionState = {
   tieBreakRound: number;
   resumePhase: "action" | "rolling_doubles";
   bidDeadlineAt: number;
+  settleDeadlineAt?: number;
 };
 
 function deepClone<T>(obj: T): T {
@@ -169,6 +172,7 @@ function startTieBreakRound(
 ): ApplyActionResult {
   const auction = state.pendingAuction!;
   const newState = deepClone(state);
+  newState.phase = "waiting_for_auction_bids";
   newState.pendingAuction = {
     ...auction,
     submissions: {},
@@ -176,6 +180,7 @@ function startTieBreakRound(
     tieBreakMinBid: maxAmount,
     tieBreakRound: auction.tieBreakRound + 1,
     bidDeadlineAt: auctionBidDeadline(state, nowMs),
+    settleDeadlineAt: undefined,
   };
   logs.push({
     playerId: null,
@@ -195,7 +200,11 @@ export function settleSealedAuction(
   nowMs: number = Date.now(),
 ): ApplyActionResult {
   const auction = state.pendingAuction;
-  if (!auction || state.phase !== "waiting_for_auction_bids") {
+  if (
+    !auction ||
+    (state.phase !== "waiting_for_auction_settle" &&
+      state.phase !== "waiting_for_auction_bids")
+  ) {
     throw "game.auction_not_active";
   }
 
@@ -258,9 +267,39 @@ function passForMissingBidders(
   return newState;
 }
 
+function beginAuctionSettlePhase(
+  state: InternalGameState,
+  nowMs: number,
+  logs: LogEntry[],
+): ApplyActionResult {
+  const auction = state.pendingAuction;
+  if (!auction) {
+    throw "game.auction_not_active";
+  }
+
+  const tile = getTileByPosition(auction.tilePosition);
+  const newState = deepClone(state);
+  newState.phase = "waiting_for_auction_settle";
+  newState.pendingAuction = {
+    ...auction,
+    settleDeadlineAt: computeAuctionSettleDeadline(nowMs, state.settings),
+  };
+
+  logs.push({
+    playerId: null,
+    actionType: "auction_bids_closed",
+    payload: {
+      position: auction.tilePosition,
+      name: tile?.name ?? "Unknown",
+    },
+  });
+
+  return { state: newState, logEntries: logs };
+}
+
 /**
  * Close the sealed bid window when the deadline passes or all players submitted.
- * Returns null when the auction should remain open.
+ * Returns null when the auction should remain open for bids.
  */
 export function closeAuctionBidWindowIfReady(
   state: InternalGameState,
@@ -283,11 +322,26 @@ export function closeAuctionBidWindowIfReady(
     workingState = passForMissingBidders(workingState, logs);
   }
 
-  const settled = settleSealedAuction(workingState, nowMs);
-  return {
-    state: settled.state,
-    logEntries: [...logs, ...settled.logEntries],
-  };
+  return beginAuctionSettlePhase(workingState, nowMs, logs);
+}
+
+/**
+ * Reveal bids and settle after the configured settle delay.
+ * Returns null while the settle countdown is still active.
+ */
+export function finalizeAuctionSettleIfReady(
+  state: InternalGameState,
+  nowMs: number = Date.now(),
+): ApplyActionResult | null {
+  const auction = state.pendingAuction;
+  if (!auction || state.phase !== "waiting_for_auction_settle") {
+    return null;
+  }
+  if (isAuctionSettleDelayActive(auction.settleDeadlineAt, nowMs)) {
+    return null;
+  }
+
+  return settleSealedAuction(state, nowMs);
 }
 
 export function recordAuctionSubmission(

@@ -14,7 +14,7 @@ const ACTION_LABELS: Record<string, string> = {
   pay_rent: "Paid rent",
   pass_start: "Passed start",
   timeout_takeover: "Timeout takeover",
-  auction_started: "Auction started",
+  auction_bids_closed: "Auction bids closed",
   auction_bid: "Auction bid",
   auction_pass: "Passed auction",
   auction_settled: "Auction settled",

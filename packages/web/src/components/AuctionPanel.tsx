@@ -5,6 +5,7 @@ import {
   activeEligibleAuctionPlayers,
   canParticipateInAuction,
   hasSubmittedAuction,
+  isAuctionBiddingPhase,
   isAuctionPhase,
 } from "../lib/gameUi";
 
@@ -30,6 +31,8 @@ export function AuctionPanel({
     return null;
   }
 
+  const bidding = isAuctionBiddingPhase(state);
+
   const currency = state.settings?.currencySymbol ?? "¤";
   const tileName = tileLabel(auction.tilePosition, tileNames);
   const minBid = auction.tieBreakMinBid ?? 1;
@@ -40,7 +43,7 @@ export function AuctionPanel({
 
   return (
     <div className="auctionPanel">
-      <h3>Sealed auction</h3>
+      <h3>{bidding ? "Sealed auction" : "Auction settling"}</h3>
       <p>
         Bidding on <strong>{tileName}</strong>
         {auction.tieBreakRound
@@ -48,22 +51,36 @@ export function AuctionPanel({
           : ""}
       </p>
       <p className="muted">
-        Minimum bid: {currency}
-        {minBid}. Submissions: {submissionCount}/{eligibleCount}
-        {auction.bidDeadlineAt
-          ? ` · closes ${new Date(auction.bidDeadlineAt).toLocaleTimeString()}`
-          : ""}
+        {bidding ? (
+          <>
+            Minimum bid: {currency}
+            {minBid}. Submissions: {submissionCount}/{eligibleCount}
+            {auction.bidDeadlineAt
+              ? ` · closes ${new Date(auction.bidDeadlineAt).toLocaleTimeString()}`
+              : ""}
+          </>
+        ) : (
+          <>
+            Bids are sealed. Revealing results
+            {auction.settleDeadlineAt
+              ? ` at ${new Date(auction.settleDeadlineAt).toLocaleTimeString()}`
+              : " soon"}
+            .
+          </>
+        )}
       </p>
 
-      {!eligible && (
+      {!bidding && <p className="muted">No further bids can be submitted.</p>}
+
+      {bidding && !eligible && (
         <p className="muted">You are not eligible to bid in this auction.</p>
       )}
 
-      {eligible && submitted && (
+      {bidding && eligible && submitted && (
         <p className="ok">Your sealed bid has been submitted.</p>
       )}
 
-      {eligible && !submitted && (
+      {bidding && eligible && !submitted && (
         <>
           <label className="muted" htmlFor="auction-bid-amount">
             Bid amount
