@@ -1,3 +1,8 @@
+import { NegotiationErrorKeys } from "@oligopoly/validation";
+import {
+  validateContributionWeights,
+  validateRevenueSplit,
+} from "./charter.js";
 import type {
   ApplyActionResult,
   GameActionInput,
@@ -5,7 +10,11 @@ import type {
   LogEntry,
 } from "./gameStateTypes.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
-import { formSyndicateApCost, getSyndicateForPlayer } from "./syndicate.js";
+import {
+  formSyndicateApCost,
+  getSyndicateForPlayer,
+  type SyndicateCharterState,
+} from "./syndicate.js";
 import { applyWinIfThresholdCrossed } from "./winResolution.js";
 
 export function handleFormSyndicate(
@@ -40,12 +49,35 @@ export function handleFormSyndicate(
     newState.syndicates = {};
   }
 
+  const charter = action.charter as SyndicateCharterState | undefined;
+  if (charter) {
+    const splitCheck = validateRevenueSplit(charter.revenueSplit);
+    if (!splitCheck.valid)
+      throw splitCheck.errorKey ?? NegotiationErrorKeys.CHARTER_INVALID_SPLIT;
+    const weightCheck = validateContributionWeights(
+      charter.contributionWeights,
+    );
+    if (!weightCheck.valid)
+      throw (
+        weightCheck.errorKey ?? NegotiationErrorKeys.CHARTER_INVALID_WEIGHTS
+      );
+  }
+
   const syndicateId = `syndicate-${newState.gameId}-${Object.keys(newState.syndicates).length + 1}`;
   newState.syndicates[syndicateId] = {
     syndicateId,
     adminId: playerId,
     memberIds: [...memberIds],
+    charter: charter
+      ? { ...charter, ratifiedAt: charter.ratifiedAt ?? Date.now() }
+      : undefined,
   };
+
+  if (charter && newState.charters) {
+    newState.charters[syndicateId] = charter;
+  } else if (charter) {
+    newState.charters = { [syndicateId]: charter };
+  }
 
   for (const memberId of memberIds) {
     const member = getPlayer(newState, memberId)!;

@@ -1,5 +1,5 @@
 import { NegotiationErrorKeys } from "@oligopoly/validation";
-import { NEGOTIATION_THREAD_DURATION } from "../index.js";
+import { NEGOTIATION_THREAD_DURATION } from "../trustConstants.js";
 import type { BindingContract, BindingContractTerm } from "./types.js";
 
 export function isThreadExpired(

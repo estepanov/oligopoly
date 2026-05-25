@@ -6,10 +6,22 @@ import {
 } from "../config/board.js";
 import { checkSyndicateWin } from "./winCondition.js";
 
+export interface SyndicateCharterState {
+  governanceModel: "asset_weighted" | "equal_vote";
+  revenueSplit: Array<{ playerId: string; pct: number }>;
+  contributionWeights: {
+    assetScorePct: number;
+    revenueScorePct: number;
+    negotiationCreditPct: number;
+  };
+  ratifiedAt: number;
+}
+
 export interface SyndicateState {
   syndicateId: string;
   adminId: string;
   memberIds: string[];
+  charter?: SyndicateCharterState;
 }
 
 export interface SyndicateGameContext {

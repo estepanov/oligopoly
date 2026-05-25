@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   advanceAuctionSettle,
+  completeCoordinationPhase,
   createAndStartGame,
   createD1Stub,
   drawRoundStartMarketEvent,
   type HarnessDb,
   loadStoredGameState,
+  markLobbyPlayersReady,
   requestWithEnv,
   storedActorId,
 } from "../helpers/workerGameplayHarness.js";
@@ -31,6 +33,7 @@ describe("POST /api/games/:id/action — draw_market_event", () => {
       headers: { "x-subject": "user-2" },
       db,
     });
+    await markLobbyPlayersReady(db, lobby.id as string, ["user-1", "user-2"]);
 
     const startRes = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {
       method: "POST",
@@ -398,12 +401,20 @@ describe("POST /api/games/:id/action — rent payment", () => {
       body: { type: "buy_tile", tilePosition: 3 },
       db,
     });
-    await requestWithEnv(`/api/games/${gameId}/action`, {
+    const endTurnRes = await requestWithEnv(`/api/games/${gameId}/action`, {
       method: "POST",
       headers: { "x-subject": currentPlayer },
       body: { type: "end_turn" },
       db,
     });
+    const endTurnBody = (await endTurnRes.json()) as Record<string, unknown>;
+    const playersAfterBuy = endTurnBody.players as Array<{
+      playerId: string;
+      capital: number;
+    }>;
+    const ownerCapitalBeforeRent = playersAfterBuy.find(
+      (p) => p.playerId === currentPlayer,
+    )!.capital;
 
     // Player 2: Roll to same position (pos 3)
     const rollRes = await requestWithEnv(`/api/games/${gameId}/action`, {
@@ -424,7 +435,7 @@ describe("POST /api/games/:id/action — rent payment", () => {
     const owner = players.find((p) => p.playerId === currentPlayer)!;
 
     expect(payer.capital).toBe(capitals[otherPlayer] - 4);
-    expect(owner.capital).toBe(capitals[currentPlayer] - 80 + 4);
+    expect(owner.capital).toBe(ownerCapitalBeforeRent + 4);
   });
 });
 
@@ -560,7 +571,9 @@ describe("Full game round cycle", () => {
     const end2Body = (await endRes2.json()) as Record<string, unknown>;
     // After both players go, round should advance
     expect(end2Body.round).toBe(2);
+    expect(end2Body.phase).toBe("syndicate_coordination");
 
+    await completeCoordinationPhase(db, gameId, [currentPlayer, otherPlayer]);
     await drawRoundStartMarketEvent(db, gameId, currentPlayer);
 
     // Player 1 can take their turn again in round 2
@@ -644,14 +657,18 @@ describe("POST /api/games/:id/action — mortgage and redeem", () => {
       body: { type: "buy_tile", tilePosition: 3 },
       db,
     });
-    await requestWithEnv(`/api/games/${gameId}/action`, {
+    const mortgageRes = await requestWithEnv(`/api/games/${gameId}/action`, {
       method: "POST",
       headers: { "x-subject": currentPlayer },
       body: { type: "mortgage_tile", tilePosition: 3 },
       db,
     });
+    const mortgageBody = (await mortgageRes.json()) as Record<string, unknown>;
+    const capitalBeforeRedeem = (
+      mortgageBody.players as Array<{ playerId: string; capital: number }>
+    ).find((p) => p.playerId === currentPlayer)!.capital;
 
-    // Redeem (cost = ceil(40 * 1.1) = 44)
+    // Redeem (base cost = ceil(40 * 1.1) = 44; PropTech Pioneer may reduce further)
     const redeemRes = await requestWithEnv(`/api/games/${gameId}/action`, {
       method: "POST",
       headers: { "x-subject": currentPlayer },
@@ -667,7 +684,9 @@ describe("POST /api/games/:id/action — mortgage and redeem", () => {
       mortgagedTilePositions: number[];
     }>;
     const player = players.find((p) => p.playerId === currentPlayer)!;
-    expect(player.capital).toBe(capitals[currentPlayer] - 80 + 40 - 44);
+    const redeemCost = capitalBeforeRedeem - player.capital;
+    expect(redeemCost).toBeGreaterThan(0);
+    expect(redeemCost).toBeLessThanOrEqual(44);
     expect(player.mortgagedTilePositions).not.toContain(3);
   });
 });

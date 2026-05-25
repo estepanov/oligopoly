@@ -363,6 +363,7 @@ export const LobbyErrorKeys = {
   PLAYER_NOT_FOUND: "lobby.player_not_found",
   AUTH_REQUIRED: "lobby.auth_required",
   RANK_TOO_LOW: "lobby.rank_too_low",
+  NOT_ALL_READY: "lobby.not_all_ready",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -594,6 +595,23 @@ export const GameActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("end_turn"),
   }),
+  z.object({
+    type: z.literal("set_rate_card"),
+    sectorId: z.string(),
+    multiplier: z.number().min(0.5).max(2.0),
+  }),
+  z.object({
+    type: z.literal("end_coordination"),
+  }),
+  z.object({
+    type: z.literal("initiate_auction"),
+    tilePosition: z.union([z.number().int(), z.string()]),
+    amount: z.number().int().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal("pay_debt"),
+    amount: z.number().int().min(1).optional(),
+  }),
 ]);
 export type GameAction = z.infer<typeof GameActionSchema>;
 
@@ -653,7 +671,9 @@ export type RateCard = z.infer<typeof RateCardSchema>;
 
 export const PendingAuctionSchema = z.object({
   tilePosition: z.union([z.number().int(), z.string()]),
-  trigger: z.literal("decline"),
+  trigger: z.enum(["decline", "foreclosure", "player_initiated"]),
+  sellerId: z.string().optional(),
+  reservePrice: z.number().int().min(1).optional(),
   auctionType: z.enum(["sealed_bids", "open_bids", "live_bidding"]),
   submissions: z.record(
     z.string(),

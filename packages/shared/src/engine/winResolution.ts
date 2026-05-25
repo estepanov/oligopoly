@@ -6,7 +6,7 @@ import {
   sumOwnedTileMarketValue,
   syndicateMarketValue,
 } from "./syndicate.js";
-import { checkSoloWin } from "./winCondition.js";
+import { checkSoloWin, checkSyndicateWin } from "./winCondition.js";
 
 export function playerMarketValue(
   state: InternalGameState,
@@ -88,21 +88,107 @@ export function playerWonGame(
   return winner.syndicateId === player.syndicateId;
 }
 
-export function applyWinIfThresholdCrossed(
+function finalRoundOpponents(
+  state: InternalGameState,
+  winnerId: string,
+): string[] {
+  const winnerSyndicate = getSyndicateForPlayer(state, winnerId);
+  const opponents = new Set<string>();
+  for (const player of state.players) {
+    if (state.eliminatedPlayerIds.includes(player.playerId)) continue;
+    if (player.playerId === winnerId) continue;
+    if (winnerSyndicate?.memberIds.includes(player.playerId)) continue;
+    if (
+      player.syndicateId &&
+      player.syndicateId === winnerSyndicate?.syndicateId
+    ) {
+      continue;
+    }
+    opponents.add(player.playerId);
+  }
+  return [...opponents];
+}
+
+export function triggerFinalRoundIfNeeded(
   state: InternalGameState,
   logs: LogEntry[],
 ): InternalGameState {
-  if (state.phase === "game_over") {
+  if (state.finalRound || state.phase === "game_over") {
+    return state;
+  }
+
+  const evaluation = evaluateWin(state);
+  if (!evaluation || evaluation.winType === "last_standing") {
+    return state;
+  }
+
+  if (evaluation.winType !== "syndicate") {
+    return finalizeWin(state, evaluation, logs);
+  }
+
+  if (!checkSyndicateWin(evaluation.marketValue, TOTAL_BOARD_MARKET_VALUE)) {
+    return state;
+  }
+
+  const remaining = finalRoundOpponents(state, evaluation.winnerId);
+  if (remaining.length === 0) {
+    return finalizeWin(state, evaluation, logs);
+  }
+
+  state.finalRound = {
+    pendingWinnerId: evaluation.winnerId,
+    winType: evaluation.winType === "syndicate" ? "syndicate" : "solo",
+    remainingTurnPlayerIds: remaining,
+  };
+  logs.push({
+    playerId: evaluation.winnerId,
+    actionType: "final_round_started",
+    payload: {
+      remainingTurnPlayerIds: remaining,
+      winType: evaluation.winType,
+    },
+  });
+  return state;
+}
+
+export function markFinalRoundTurnComplete(
+  state: InternalGameState,
+  playerId: string,
+  logs: LogEntry[],
+): InternalGameState {
+  const finalRound = state.finalRound;
+  if (!finalRound) return state;
+
+  finalRound.remainingTurnPlayerIds = finalRound.remainingTurnPlayerIds.filter(
+    (id) => id !== playerId,
+  );
+
+  if (finalRound.remainingTurnPlayerIds.length > 0) {
     return state;
   }
 
   const evaluation = evaluateWin(state);
   if (!evaluation) {
+    state.finalRound = null;
+    logs.push({
+      playerId: null,
+      actionType: "final_round_ended",
+      payload: { reason: "threshold_not_met" },
+    });
     return state;
   }
 
+  return finalizeWin(state, evaluation, logs);
+}
+
+function finalizeWin(
+  state: InternalGameState,
+  evaluation: WinEvaluation,
+  logs: LogEntry[],
+): InternalGameState {
   state.winnerId = evaluation.winnerId;
   state.phase = "game_over";
+  state.finalRound = null;
   logs.push({
     playerId: evaluation.winnerId,
     actionType: "game_won",
@@ -113,6 +199,29 @@ export function applyWinIfThresholdCrossed(
       totalMarketValue: TOTAL_BOARD_MARKET_VALUE,
     },
   });
-
   return state;
+}
+
+export function applyWinIfThresholdCrossed(
+  state: InternalGameState,
+  logs: LogEntry[],
+): InternalGameState {
+  if (state.phase === "game_over") {
+    return state;
+  }
+
+  if (state.finalRound) {
+    return state;
+  }
+
+  const evaluation = evaluateWin(state);
+  if (!evaluation) {
+    return state;
+  }
+
+  if (evaluation.winType === "syndicate") {
+    return triggerFinalRoundIfNeeded(state, logs);
+  }
+
+  return finalizeWin(state, evaluation, logs);
 }

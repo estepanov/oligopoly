@@ -1,6 +1,32 @@
 import type { AiPersonality } from "@oligopoly/validation";
-import type { PendingAuctionState } from "./auction.js";
-import type { SyndicateState } from "./syndicate.js";
+import type {
+  AuctionResumePhase,
+  PendingAuctionState,
+} from "./auctionTypes.js";
+import type { SyndicateCharterState, SyndicateState } from "./syndicate.js";
+import type { BindingContract } from "./types.js";
+
+export interface RateCardState {
+  sectorId: string;
+  syndicateId: string;
+  multiplier: number;
+  roundsWithoutLanding: number;
+}
+
+export interface PendingForeclosureState {
+  debtorId: string;
+  debtRemaining: number;
+  tileQueue: (number | string)[];
+  resumePhase: AuctionResumePhase;
+  creditorId?: string;
+}
+
+export interface FinalRoundState {
+  pendingWinnerId: string;
+  winType: "syndicate" | "solo";
+  /** Player IDs that still owe one final full turn */
+  remainingTurnPlayerIds: string[];
+}
 
 export interface InternalGameState {
   gameId: string;
@@ -14,6 +40,7 @@ export interface InternalGameState {
   tiles: InternalTileState[];
   pendingBuyTilePosition: number | string | null;
   pendingAuction?: PendingAuctionState;
+  pendingForeclosure?: PendingForeclosureState | null;
   lastDiceRoll: [number, number] | null;
   winnerId: string | null;
   eliminatedPlayerIds: string[];
@@ -25,6 +52,11 @@ export interface InternalGameState {
   disruptionDeckRemaining?: string[];
   disruptionDiscard?: string[];
   syndicates?: Record<string, SyndicateState>;
+  charters?: Record<string, SyndicateCharterState>;
+  rateCards?: RateCardState[];
+  activeContracts?: BindingContract[];
+  negotiationThreads?: NegotiationThreadState[];
+  finalRound?: FinalRoundState | null;
   pendingDisruptionNullify?: {
     cardId: string;
     drawingPlayerId: string;
@@ -32,6 +64,15 @@ export interface InternalGameState {
     tilePosition?: number | string;
     remainingDraws?: number;
   } | null;
+}
+
+export interface NegotiationThreadState {
+  id: string;
+  createdBy: string;
+  partyIds: string[];
+  status: "open" | "agreed" | "expired" | "cancelled";
+  startedRound: number;
+  expiresAfterRound: number;
 }
 
 export interface InternalAiPlayerState {
@@ -58,6 +99,10 @@ export interface InternalPlayerState {
   isOnDiagonal: boolean;
   syndicateId?: string | null;
   usedAffinityIds?: string[];
+  outstandingDebt?: number;
+  rentCollectedTotal?: number;
+  dealValueTotal?: number;
+  coordinationAcknowledged?: boolean;
 }
 
 export interface InternalTileState {
@@ -79,6 +124,13 @@ export interface GameActionInput {
   memberIds?: string[];
   affinityId?: string;
   targetPlayerId?: string;
+  targetPlayerIds?: string[];
+  sectorId?: string;
+  multiplier?: number;
+  charter?: SyndicateCharterState;
+  contractId?: string;
+  handshakeId?: string;
+  voteType?: string;
 }
 
 export interface ApplyActionResult {

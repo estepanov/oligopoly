@@ -1,5 +1,5 @@
 import {
-  findNextAiAuctionActor,
+  findNextAiActorForPhase,
   isAiControlledActor,
   normalizeGameState,
 } from "@oligopoly/shared";
@@ -268,14 +268,12 @@ export class GameRoom extends RealtimeRoom {
     }
 
     if (
-      state.phase === "waiting_for_auction_bids" &&
       this.env.DB &&
-      !(await this.state.storage.get<boolean>("aiLoopRunning"))
+      !(await this.state.storage.get<boolean>("aiLoopRunning")) &&
+      findNextAiActorForPhase(state)
     ) {
-      if (findNextAiAuctionActor(state)) {
-        await this.runAiLoop(gameId);
-        return;
-      }
+      await this.runAiLoop(gameId);
+      return;
     }
 
     if (

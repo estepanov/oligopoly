@@ -4,6 +4,7 @@ import {
   createWorkerD1Stub,
   type WorkerD1Stub,
 } from "../helpers/workerD1Stub.js";
+import { markLobbyPlayersReady } from "../helpers/workerGameplayHarness.js";
 
 type D1Stub = WorkerD1Stub;
 
@@ -529,6 +530,7 @@ describe("POST /api/lobbies/:id/start", () => {
       headers: { "x-subject": "user-2" },
       db,
     });
+    await markLobbyPlayersReady(db, lobby.id, ["user-1", "user-2"]);
 
     const res = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {
       method: "POST",
@@ -570,6 +572,7 @@ describe("POST /api/lobbies/:id/start", () => {
       headers: { "x-subject": "user-2" },
       db,
     });
+    await markLobbyPlayersReady(db, lobby.id, ["user-1", "user-2"]);
 
     const startRes = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {
       method: "POST",
@@ -605,6 +608,8 @@ describe("POST /api/lobbies/:id/start", () => {
     });
     const lobby = await createRes.json();
     expect(lobby.aiSlots).toHaveLength(1);
+
+    await markLobbyPlayersReady(db, lobby.id, ["user-1"]);
 
     const res = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {
       method: "POST",
@@ -770,6 +775,7 @@ describe("Enhanced game start — proper initial state", () => {
       headers: { "x-subject": "user-2" },
       db,
     });
+    await markLobbyPlayersReady(db, lobby.id, ["user-1", "user-2"]);
 
     // Start the game
     const startRes = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {
@@ -826,6 +832,7 @@ describe("Enhanced game start — proper initial state", () => {
       headers: { "x-subject": "user-2" },
       db,
     });
+    await markLobbyPlayersReady(db, lobby.id, ["user-1", "user-2"]);
 
     // Start the game
     const startRes = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {

@@ -1030,6 +1030,66 @@ lobbyRoutes.delete("/:id/player/:uid", async (c) => {
   return c.json(kickResponse);
 });
 
+async function setLobbyPlayerReady(
+  c: {
+    get: (key: string) => string | undefined;
+    req: { param: (name: string) => string };
+    env?: Bindings;
+    json: (body: unknown, status?: number) => Response;
+  },
+  ready: boolean,
+) {
+  const subject = getSubject(c);
+  if (!subject) {
+    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
+  }
+
+  const env = c.env;
+  const db = env?.DB;
+  if (!env || !db) {
+    return c.json({ error: "Database not configured" }, 500);
+  }
+
+  const id = c.req.param("id");
+  const lobby = await db
+    .prepare("SELECT * FROM lobbies WHERE id = ?")
+    .bind(id)
+    .first<LobbyRow>();
+
+  if (!lobby) {
+    return c.json({ error: LobbyErrorKeys.NOT_FOUND }, 404);
+  }
+  if (lobby.status !== "waiting") {
+    return c.json({ error: LobbyErrorKeys.ALREADY_STARTED }, 409);
+  }
+
+  const updated = await db
+    .prepare(
+      `UPDATE lobby_players SET is_ready = ${ready ? 1 : 0} WHERE lobby_id = ? AND user_id = ?`,
+    )
+    .bind(id, subject)
+    .run();
+
+  if (updated.meta.changes === 0) {
+    return c.json({ error: LobbyErrorKeys.NOT_IN_LOBBY }, 404);
+  }
+
+  const playersResult = await db
+    .prepare("SELECT * FROM lobby_players WHERE lobby_id = ?")
+    .bind(id)
+    .all<LobbyPlayerRow>();
+
+  const response = await buildLobbyResponse(db, lobby, playersResult.results);
+  await publishLobbyUpdate(env, id, response);
+  return c.json(response);
+}
+
+// POST /:id/ready — Mark the current player as ready
+lobbyRoutes.post("/:id/ready", (c) => setLobbyPlayerReady(c, true));
+
+// DELETE /:id/ready — Clear ready status for the current player
+lobbyRoutes.delete("/:id/ready", (c) => setLobbyPlayerReady(c, false));
+
 // POST /:id/start — Start the game (admin only, min 2 players)
 lobbyRoutes.post("/:id/start", async (c) => {
   const subject = getSubject(c);
@@ -1079,6 +1139,11 @@ lobbyRoutes.post("/:id/start", async (c) => {
   }
   if (totalSeats > Math.min(lobby.max_players, MAX_TOTAL_PLAYERS)) {
     return c.json({ error: LobbyErrorKeys.FULL }, 409);
+  }
+
+  const allHumansReady = lobbyPlayers.every((p) => (p.is_ready ?? 0) === 1);
+  if (!allHumansReady) {
+    return c.json({ error: LobbyErrorKeys.NOT_ALL_READY }, 409);
   }
 
   const gameId = generateId();

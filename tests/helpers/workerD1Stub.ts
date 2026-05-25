@@ -102,7 +102,13 @@ export function createWorkerD1Stub(): WorkerD1Stub {
           number,
           number,
         ];
-        tables.lobby_players.push({ lobby_id, user_id, is_admin, joined_at });
+        tables.lobby_players.push({
+          lobby_id,
+          user_id,
+          is_admin,
+          joined_at,
+          is_ready: 0,
+        });
       } else {
         const [lobby_id, user_id, joined_at] = binds as [
           string,
@@ -115,6 +121,7 @@ export function createWorkerD1Stub(): WorkerD1Stub {
           user_id,
           is_admin: isAdmin,
           joined_at,
+          is_ready: 0,
         });
       }
       return { results: [], success: true };
@@ -352,6 +359,22 @@ export function createWorkerD1Stub(): WorkerD1Stub {
         }
       }
       return { results: [], success: true };
+    }
+
+    if (trimmed.startsWith("UPDATE lobby_players SET is_ready = 1")) {
+      const row = tables.lobby_players.find(
+        (r) => r.lobby_id === binds[0] && r.user_id === binds[1],
+      );
+      if (row) row.is_ready = 1;
+      return { meta: { changes: row ? 1 : 0 } };
+    }
+
+    if (trimmed.startsWith("UPDATE lobby_players SET is_ready = 0")) {
+      const row = tables.lobby_players.find(
+        (r) => r.lobby_id === binds[0] && r.user_id === binds[1],
+      );
+      if (row) row.is_ready = 0;
+      return { meta: { changes: row ? 1 : 0 } };
     }
 
     if (trimmed.startsWith("UPDATE lobby_players SET is_admin = 1")) {

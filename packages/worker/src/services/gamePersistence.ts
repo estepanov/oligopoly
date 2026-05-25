@@ -108,7 +108,7 @@ export function toActionResponse(
   result: ApplyActionResult,
   subject: string | null,
   extra: Record<string, unknown> = {},
-) {
+): Record<string, unknown> {
   if (!subject) {
     const { affinityAssignments: _affinity, ...publicState } = result.state;
     return {

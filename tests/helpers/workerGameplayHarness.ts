@@ -31,6 +31,35 @@ const requestWithEnv = (
   });
 };
 
+export async function completeCoordinationPhase(
+  db: D1Database,
+  gameId: string,
+  playerIds: string[],
+) {
+  for (const playerId of playerIds) {
+    await requestWithEnv(`/api/games/${gameId}/action`, {
+      method: "POST",
+      headers: { "x-subject": playerId },
+      body: { type: "end_coordination" },
+      db,
+    });
+  }
+}
+
+export async function markLobbyPlayersReady(
+  db: D1Database,
+  lobbyId: string,
+  userIds: string[],
+) {
+  for (const userId of userIds) {
+    await requestWithEnv(`/api/lobbies/${lobbyId}/ready`, {
+      method: "POST",
+      headers: { "x-subject": userId },
+      db,
+    });
+  }
+}
+
 async function createAndStartGame(db: D1Database) {
   const createRes = await requestWithEnv("/api/lobbies", {
     method: "POST",
@@ -50,6 +79,14 @@ async function createAndStartGame(db: D1Database) {
     headers: { "x-subject": "user-2" },
     db,
   });
+
+  for (const userId of ["user-1", "user-2"]) {
+    await requestWithEnv(`/api/lobbies/${lobby.id}/ready`, {
+      method: "POST",
+      headers: { "x-subject": userId },
+      db,
+    });
+  }
 
   const startRes = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {
     method: "POST",

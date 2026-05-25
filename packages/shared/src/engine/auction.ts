@@ -1,12 +1,18 @@
 import { getTileByPosition } from "../config/board.js";
 import {
-  type DeclineAuctionType,
+  startDeclineAuction,
+  startForeclosureAuction,
+} from "./auctionLifecycle.js";
+import {
   isLiveAuction,
   isSealedAuction,
   isVisibleAuction,
-  resolveDeclineAuctionType,
   settlesImmediatelyAfterBidWindow,
 } from "./auctionMode.js";
+import {
+  awardTileToWinner,
+  finishAuctionWithoutSale,
+} from "./auctionSettlement.js";
 import {
   computeAuctionBidDeadline,
   computeAuctionSettleDeadline,
@@ -14,6 +20,14 @@ import {
   isAuctionBidWindowOpen,
   isAuctionSettleDelayActive,
 } from "./auctionTiming.js";
+import type { PendingAuctionState } from "./auctionTypes.js";
+
+export type {
+  AuctionResumePhase,
+  AuctionTrigger,
+  PendingAuctionState,
+} from "./auctionTypes.js";
+
 import { rollFairD6 } from "./dice.js";
 import type {
   ApplyActionResult,
@@ -21,28 +35,18 @@ import type {
   LogEntry,
 } from "./gameStateTypes.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
-import { applyWinIfThresholdCrossed } from "./winResolution.js";
 
+export {
+  startDeclineAuction,
+  startForeclosureAuction,
+} from "./auctionLifecycle.js";
 export type { DeclineAuctionType } from "./auctionMode.js";
 
-export type PendingAuctionState = {
-  tilePosition: number | string;
-  trigger: "decline";
-  auctionType: DeclineAuctionType;
-  submissions: Record<string, number | "pass">;
-  eligiblePlayerIds: string[];
-  tieBreakMinBid?: number;
-  tieBreakRound: number;
-  resumePhase: "action" | "rolling_doubles";
-  bidDeadlineAt: number;
-  settleDeadlineAt?: number;
-};
+export { isSealedAuction, resolveDeclineAuctionType } from "./auctionMode.js";
 
 function auctionBidDeadline(state: InternalGameState, nowMs: number): number {
   return computeAuctionBidDeadline(nowMs, state.settings);
 }
-
-export { isSealedAuction, resolveDeclineAuctionType } from "./auctionMode.js";
 
 export function currentAuctionHighBid(auction: PendingAuctionState): number {
   const floor = (auction.tieBreakMinBid ?? 1) - 1;
@@ -76,108 +80,6 @@ export function allEligiblePlayersSubmitted(state: InternalGameState): boolean {
   return getActiveEligibleBidders(state).every((playerId) =>
     hasAuctionSubmission(auction, playerId),
   );
-}
-
-export function startDeclineAuction(
-  state: InternalGameState,
-  tilePosition: number | string,
-  resumePhase: "action" | "rolling_doubles",
-  nowMs: number = Date.now(),
-): InternalGameState {
-  const eligiblePlayerIds = state.turnOrder.filter(
-    (playerId) => !state.eliminatedPlayerIds.includes(playerId),
-  );
-  const auctionType = resolveDeclineAuctionType(state.settings);
-
-  return {
-    ...deepClone(state),
-    pendingBuyTilePosition: null,
-    phase: "waiting_for_auction_bids",
-    pendingAuction: {
-      tilePosition,
-      trigger: "decline",
-      auctionType,
-      submissions: {},
-      eligiblePlayerIds,
-      tieBreakRound: 0,
-      resumePhase,
-      bidDeadlineAt: auctionBidDeadline(state, nowMs),
-    },
-  };
-}
-
-function finishAuctionWithoutSale(
-  state: InternalGameState,
-  logs: LogEntry[],
-): ApplyActionResult {
-  const auction = state.pendingAuction!;
-  const tile = getTileByPosition(auction.tilePosition);
-
-  const newState = deepClone(state);
-  newState.pendingAuction = undefined;
-  newState.phase = auction.resumePhase;
-
-  logs.push({
-    playerId: null,
-    actionType: "auction_no_bids",
-    payload: {
-      position: auction.tilePosition,
-      name: tile?.name ?? "Unknown",
-    },
-  });
-
-  return { state: newState, logEntries: logs };
-}
-
-function awardTileToWinner(
-  state: InternalGameState,
-  winnerId: string,
-  amount: number,
-  logs: LogEntry[],
-): ApplyActionResult {
-  const auction = state.pendingAuction!;
-  const tile = getTileByPosition(auction.tilePosition);
-  if (!tile) {
-    throw "game.tile_not_purchasable";
-  }
-
-  const newState = deepClone(state);
-  const winner = getPlayer(newState, winnerId);
-  if (!winner) {
-    throw "game.invalid_player_state";
-  }
-  if (winner.capital < amount) {
-    throw "game.insufficient_capital";
-  }
-
-  winner.capital -= amount;
-  winner.ownedTilePositions.push(auction.tilePosition);
-
-  const tileState = newState.tiles.find(
-    (entry) => String(entry.position) === String(auction.tilePosition),
-  );
-  if (tileState) {
-    tileState.ownerId = winnerId;
-  }
-
-  newState.pendingAuction = undefined;
-  newState.phase = auction.resumePhase;
-
-  logs.push({
-    playerId: winnerId,
-    actionType: "auction_settled",
-    payload: {
-      position: auction.tilePosition,
-      name: tile.name,
-      amount,
-      winnerId,
-      submissions: auction.submissions,
-    },
-  });
-
-  applyWinIfThresholdCrossed(newState, logs);
-
-  return { state: newState, logEntries: logs };
 }
 
 function startTieBreakRound(

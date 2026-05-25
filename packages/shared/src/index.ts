@@ -36,22 +36,6 @@ export const DEFAULT_PROFILE_VISIBILITY = {
   favoriteSector: "public" as const,
 };
 
-export const TRUSTWORTHINESS_DEFAULT = 7;
-export const TRUSTWORTHINESS_MIN = 0;
-export const TRUSTWORTHINESS_MAX = 10;
-export const TRUSTWORTHINESS_BINDING_THRESHOLD = 5;
-export const HANDSHAKE_BREACH_PENALTY = -2;
-export const THREAD_EXPIRY_PENALTY = -1;
-export const NEGOTIATION_THREAD_DURATION = 3;
-
-export function clampTrustworthiness(score: number): number {
-  return Math.max(TRUSTWORTHINESS_MIN, Math.min(TRUSTWORTHINESS_MAX, score));
-}
-
-export function canCreateBindingContract(trustScore: number): boolean {
-  return trustScore >= TRUSTWORTHINESS_BINDING_THRESHOLD;
-}
-
 // ---------------------------------------------------------------------------
 // Config registries
 // ---------------------------------------------------------------------------
@@ -121,7 +105,9 @@ export type { AiDecision } from "./engine/ai.js";
 export {
   chooseAiAction,
   chooseAiActionForPlayer,
+  findNextAiActorForPhase,
   findNextAiAuctionActor,
+  findNextAiCoordinationActor,
 } from "./engine/ai.js";
 export {
   applyTimeoutTakeover,
@@ -147,6 +133,7 @@ export {
   settlePendingAuction,
   settleSealedAuction,
   startDeclineAuction,
+  startForeclosureAuction,
   suggestAiAuctionBid,
 } from "./engine/auction.js";
 export {
@@ -175,6 +162,7 @@ export {
   calculateContributionScores,
   DEFAULT_CONTRIBUTION_WEIGHTS,
 } from "./engine/contributionScore.js";
+export { processCoordinationPhase } from "./engine/coordinationPhase.js";
 export { shuffleDeterministic } from "./engine/deckShuffle.js";
 export {
   BOARD_SIZE,
@@ -201,6 +189,10 @@ export {
   resolveFlashCrash,
   resolvePendingDisruptionCard,
 } from "./engine/disruptionEvents.js";
+export {
+  applyForeclosureAuctionProceeds,
+  startForeclosureSequence,
+} from "./engine/foreclosure.js";
 export { collectFreeMarketPool } from "./engine/freeMarket.js";
 export type {
   ApplyGameActionContext,
@@ -227,7 +219,13 @@ export {
   initTileStates,
   normalizeGameState,
 } from "./engine/gameStateMachine.js";
-export type { CompletedGameSnapshot } from "./engine/gameStateTypes.js";
+export type {
+  CompletedGameSnapshot,
+  FinalRoundState,
+  NegotiationThreadState,
+  PendingForeclosureState,
+  RateCardState,
+} from "./engine/gameStateTypes.js";
 export type { MarketEventTrigger } from "./engine/marketEvents.js";
 export {
   buildMarketEventDeck,
@@ -255,6 +253,11 @@ export {
   isOptionalRuleEnabled,
   regulationPenaltiesEnabled,
 } from "./engine/optionalRulesEngine.js";
+export {
+  getActiveRateCardMultiplier,
+  recordOpposingSectorLanding,
+  syndicateQualifiesForRateCard,
+} from "./engine/rateCards.js";
 // ---------------------------------------------------------------------------
 // Engine — rent, mortgage, setup, win conditions, contribution, dice
 // ---------------------------------------------------------------------------
@@ -270,6 +273,7 @@ export {
   RENT_MULTIPLIERS,
   UTILITY_RENT_MULTIPLIER,
 } from "./engine/rent.js";
+export { settleRentPayment } from "./engine/rentPayment.js";
 export {
   ACTION_COSTS,
   ACTION_POINTS_PER_TURN,
@@ -286,6 +290,7 @@ export {
   SPEED_MARKET_MULTIPLIER,
   STARTING_CAPITAL,
 } from "./engine/setup.js";
+export type { SyndicateCharterState } from "./engine/syndicate.js";
 export {
   areSameSyndicate,
   controllingPlayerIds,
@@ -316,3 +321,14 @@ export {
   playerMarketValue,
   playerWonGame,
 } from "./engine/winResolution.js";
+export {
+  canCreateBindingContract,
+  clampTrustworthiness,
+  HANDSHAKE_BREACH_PENALTY,
+  NEGOTIATION_THREAD_DURATION,
+  THREAD_EXPIRY_PENALTY,
+  TRUSTWORTHINESS_BINDING_THRESHOLD,
+  TRUSTWORTHINESS_DEFAULT,
+  TRUSTWORTHINESS_MAX,
+  TRUSTWORTHINESS_MIN,
+} from "./trustConstants.js";
