@@ -187,8 +187,6 @@ export function handleSignContract(
   return { state: newState, logEntries: logs };
 }
 
-export { handleBreakHandshake } from "./handshakeActions.js";
-
 export function assertActionNotBlockedByContracts(
   state: InternalGameState,
   playerId: string,

@@ -157,6 +157,50 @@ describe("drawAndResolveMarketEvent", () => {
       result.logEntries.some((e) => e.actionType === "market_event_deck_empty"),
     ).toBe(true);
   });
+
+  it("preserves auction phase after optional_leveraged_buyout on round start", () => {
+    const state = makeMarketEventState({
+      marketEventDeckRemaining: ["optional_leveraged_buyout", "market_crash"],
+      players: [
+        {
+          playerId: "player-1",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [1, 3],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 2,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+        {
+          playerId: "player-2",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [6],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 0,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+      ],
+    });
+    state.tiles.find((tile) => tile.position === 1)!.ownerId = "player-1";
+    state.tiles.find((tile) => tile.position === 3)!.ownerId = "player-1";
+    state.tiles.find((tile) => tile.position === 6)!.ownerId = "player-2";
+
+    const result = drawAndResolveMarketEvent(state, "player-1", "round_start");
+
+    expect(result.state.phase).toBe("waiting_for_auction_bids");
+    expect(result.state.pendingAuction).toBeDefined();
+    expect(result.state.pendingAuction?.tilePosition).toBe(6);
+    expect(result.state.pendingAuction?.sellerId).toBe("player-2");
+  });
 });
 
 describe("resolveMarketEventCard", () => {

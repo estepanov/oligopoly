@@ -603,7 +603,7 @@ export const GameActionSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("call_vote"),
-    voteType: z.string(),
+    voteType: z.literal("dissolve_syndicate"),
   }),
   z.object({
     type: z.literal("path_choice"),

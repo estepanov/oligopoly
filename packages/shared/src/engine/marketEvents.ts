@@ -618,6 +618,21 @@ export function handleInsiderDiscardMarketEvent(
   return resolved;
 }
 
+const AUCTION_PHASES = new Set([
+  "waiting_for_auction_bids",
+  "waiting_for_auction_settle",
+]);
+
+function marketEventLeftPendingWork(state: InternalGameState): boolean {
+  return (
+    Boolean(state.pendingAuction) ||
+    Boolean(state.pendingInsiderPeek) ||
+    Boolean(state.pendingDisruptionNullify) ||
+    Boolean(state.pendingForeclosure) ||
+    AUCTION_PHASES.has(state.phase)
+  );
+}
+
 function finishMarketEventDraw(
   state: InternalGameState,
   drawingPlayerId: string,
@@ -625,7 +640,7 @@ function finishMarketEventDraw(
   tilePosition: number | string | undefined,
   logs: LogEntry[],
 ): void {
-  if (trigger === "round_start") {
+  if (trigger === "round_start" && !marketEventLeftPendingWork(state)) {
     state.phase = "waiting_for_roll";
     const actor = getPlayer(state, drawingPlayerId);
     if (actor) {
@@ -637,7 +652,7 @@ function finishMarketEventDraw(
   logs.push({
     playerId: drawingPlayerId,
     actionType: "market_event_draw_complete",
-    payload: { trigger, tilePosition },
+    payload: { trigger, tilePosition, phase: state.phase },
   });
 }
 
@@ -701,7 +716,7 @@ export function drawAndResolveMarketEvent(
       actionType: "market_event_deck_empty",
       payload: { trigger, tilePosition },
     });
-    if (trigger === "round_start") {
+    if (trigger === "round_start" && !marketEventLeftPendingWork(newState)) {
       newState.phase = "waiting_for_roll";
       const actor = getPlayer(newState, drawingPlayerId);
       if (actor) {

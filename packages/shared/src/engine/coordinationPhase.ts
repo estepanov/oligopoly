@@ -4,13 +4,20 @@ import {
 } from "../trustConstants.js";
 import type { InternalGameState, LogEntry } from "./gameStateTypes.js";
 import { calcThreadExpiry, isThreadExpired } from "./negotiation.js";
-import { clearRoundOptionalRuleFlags } from "./optionalRuleActions.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
 import { tickRateCardPressureResets } from "./rateCards.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
 import { triggerFinalRoundIfNeeded } from "./winResolution.js";
 
 const DEBT_SPIRAL_INTEREST_RATE = 0.1;
+
+/** Clears per-round transient flags (frozen tiles, manipulation usage). */
+export function clearPerRoundTransientState(state: InternalGameState): void {
+  for (const player of state.players) {
+    player.marketManipulationUsedThisRound = false;
+  }
+  state.frozenTilePositions = [];
+}
 
 export function processCoordinationPhase(
   state: InternalGameState,
@@ -33,7 +40,7 @@ export function processCoordinationPhase(
     }
   }
 
-  clearRoundOptionalRuleFlags(newState);
+  clearPerRoundTransientState(newState);
   newState = tickRateCardPressureResets(newState, logs);
   newState = expireNegotiationThreads(newState, logs);
 

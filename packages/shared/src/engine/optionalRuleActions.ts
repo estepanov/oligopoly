@@ -142,10 +142,3 @@ export function handleMarketManipulation(
 
   return { state: newState, logEntries: logs };
 }
-
-export function clearRoundOptionalRuleFlags(state: InternalGameState): void {
-  for (const player of state.players) {
-    player.marketManipulationUsedThisRound = false;
-  }
-  state.frozenTilePositions = [];
-}

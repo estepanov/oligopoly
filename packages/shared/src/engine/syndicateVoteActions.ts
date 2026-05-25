@@ -23,10 +23,17 @@ export function handleCallVote(
   if (!syndicate) throw "game.invalid_action";
 
   const player = getPlayer(state, playerId);
-  if (
-    !player ||
-    player.actionPointsRemaining < ACTION_COSTS.CALL_SYNDICATE_VOTE
-  ) {
+  if (!player) throw "game.invalid_action";
+
+  const existingVote =
+    state.pendingSyndicateVote?.syndicateId === syndicate.syndicateId
+      ? state.pendingSyndicateVote
+      : null;
+  if (existingVote?.votes[playerId]) {
+    throw "game.invalid_action";
+  }
+
+  if (player.actionPointsRemaining < ACTION_COSTS.CALL_SYNDICATE_VOTE) {
     throw "game.insufficient_ap";
   }
 
