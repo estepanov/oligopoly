@@ -45,19 +45,7 @@ export function ActionPhaseExtras({
   const debt = me?.outstandingDebt ?? 0;
   const affinityId = state.myAffinityCardId ?? null;
   const optionalRules = state.settings?.optionalRuleIds ?? [];
-  const handshakes =
-    (
-      state as GameState & {
-        handshakeAgreements?: Array<{
-          id: string;
-          partyA: string;
-          partyB: string;
-          summary: string;
-          status: string;
-          partySignatures?: Record<string, boolean>;
-        }>;
-      }
-    ).handshakeAgreements ?? [];
+  const handshakes = state.handshakeAgreements ?? [];
 
   if (isDisruptionNullifyPhase(state) && myPlayerId) {
     return (
@@ -446,8 +434,7 @@ export function ActionPhaseExtras({
 
       {optionalRules.includes("hostile_takeover") &&
         others.length > 0 &&
-        !(me as { hostileTakeoverUsed?: boolean } | undefined)
-          ?.hostileTakeoverUsed && (
+        !me?.hostileTakeoverUsed && (
           <div className="takeoverForm">
             <label className="muted">
               Hostile takeover target{" "}

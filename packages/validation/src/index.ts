@@ -692,8 +692,44 @@ export const PlayerStateSchema = z.object({
   syndicateId: z.string().nullable().optional(),
   outstandingDebt: z.number().int().min(0).optional(),
   coordinationAcknowledged: z.boolean().optional(),
+  hostileTakeoverUsed: z.boolean().optional(),
+  marketManipulationUsedThisRound: z.boolean().optional(),
 });
 export type PlayerState = z.infer<typeof PlayerStateSchema>;
+
+/** In-game handshake row (engine `handshakeAgreements`, not persisted DB shape). */
+export const InGameHandshakeAgreementSchema = z.object({
+  id: z.string(),
+  partyA: z.string(),
+  partyB: z.string(),
+  summary: z.string(),
+  partySignatures: z.record(z.string(), z.boolean()).optional(),
+  status: z.enum(["pending", "active", "broken"]),
+  createdRound: z.number().int().optional(),
+});
+export type InGameHandshakeAgreement = z.infer<
+  typeof InGameHandshakeAgreementSchema
+>;
+
+export const PendingInsiderPeekSchema = z.object({
+  cardId: z.string(),
+  drawingPlayerId: z.string(),
+  trigger: z.enum(["round_start", "tile"]).optional(),
+  tilePosition: z.union([z.number().int(), z.string()]).optional(),
+});
+export type PendingInsiderPeek = z.infer<typeof PendingInsiderPeekSchema>;
+
+/** Negotiation thread snapshot returned in game state (subset of full thread). */
+export const GameNegotiationThreadSchema = z.object({
+  id: z.string(),
+  createdBy: z.string(),
+  partyIds: z.array(z.string()),
+  status: NegotiationThreadStatusSchema,
+  startedRound: z.number().int(),
+  expiresAfterRound: z.number().int(),
+  visibility: z.enum(["private", "open"]).optional(),
+});
+export type GameNegotiationThread = z.infer<typeof GameNegotiationThreadSchema>;
 
 export const TileStateSchema = z.object({
   position: z.union([z.number().int(), z.string()]),
@@ -777,6 +813,9 @@ export const GameStateSchema = z.object({
   eliminatedPlayerIds: z.array(z.string()).optional(),
   /** Human players permanently replaced by AI after an admin kick */
   kickedPlayerIds: z.array(z.string()).optional(),
+  handshakeAgreements: z.array(InGameHandshakeAgreementSchema).optional(),
+  negotiationThreads: z.array(GameNegotiationThreadSchema).optional(),
+  pendingInsiderPeek: PendingInsiderPeekSchema.nullable().optional(),
   settings: z
     .object({
       turnTimeout: TurnTimeoutSchema.optional(),

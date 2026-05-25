@@ -27,11 +27,15 @@ export function GamePlayControls({
   const ownedTiles = myPlayerId ? ownedTilesForPlayer(state, myPlayerId) : [];
   const currency = state.settings?.currencySymbol ?? "¤";
   const gameOver = state.phase === "game_over";
-  const insiderPeek = (
-    state as GameState & {
-      pendingInsiderPeek?: { cardId: string; drawingPlayerId: string };
-    }
-  ).pendingInsiderPeek;
+  const insiderPeek = state.pendingInsiderPeek ?? undefined;
+
+  if (state.phase === "waiting_for_insider_peek" && !insiderPeek) {
+    return (
+      <p className="muted">
+        Waiting for insider-trading choice from the active player…
+      </p>
+    );
+  }
 
   if (state.phase === "waiting_for_insider_peek" && insiderPeek) {
     return (

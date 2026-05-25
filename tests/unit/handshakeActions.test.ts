@@ -61,17 +61,19 @@ describe("handshake actions", () => {
       summary: "No trades this round",
     });
     const handshakeId = proposed.state.handshakeAgreements?.[0]?.id;
-    expect(handshakeId).toBeDefined();
+    if (!handshakeId) {
+      throw new Error("expected handshake id");
+    }
 
     const signed = handleSignHandshake(proposed.state, "p2", {
       type: "sign_handshake",
-      handshakeId: handshakeId!,
+      handshakeId,
     });
     expect(signed.state.handshakeAgreements?.[0]?.status).toBe("active");
 
     const broken = handleBreakHandshake(signed.state, "p1", {
       type: "break_handshake",
-      handshakeId: handshakeId!,
+      handshakeId,
     });
     expect(broken.state.handshakeAgreements?.[0]?.status).toBe("broken");
     expect(
