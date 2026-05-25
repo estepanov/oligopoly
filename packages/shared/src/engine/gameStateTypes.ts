@@ -152,29 +152,40 @@ export interface InternalTileState {
   developmentTokens: number;
 }
 
+type ActionWithField<K extends PropertyKey> = Extract<
+  GameAction,
+  { [P in K]?: unknown }
+>;
+type FieldFromAction<K extends PropertyKey> =
+  ActionWithField<K> extends {
+    [P in K]?: infer V;
+  }
+    ? V
+    : never;
+
 export interface GameActionInput {
   type: GameAction["type"];
-  result?: [number, number];
-  tilePosition?: number | string;
-  tokenNumber?: number;
-  choice?: "perimeter" | "diagonal";
-  amount?: number;
+  result?: FieldFromAction<"result">;
+  tilePosition?: FieldFromAction<"tilePosition">;
+  tokenNumber?: FieldFromAction<"tokenNumber">;
+  choice?: FieldFromAction<"choice">;
+  amount?: FieldFromAction<"amount">;
   /** Server-generated when rolling through START to choose perimeter vs diagonal. */
   pathChoiceDie?: number;
-  memberIds?: string[];
-  affinityId?: string;
-  targetPlayerId?: string;
-  targetPlayerIds?: string[];
-  sectorId?: string;
-  multiplier?: number;
+  memberIds?: FieldFromAction<"memberIds">;
+  affinityId?: FieldFromAction<"affinityId">;
+  targetPlayerId?: FieldFromAction<"targetPlayerId">;
+  targetPlayerIds?: FieldFromAction<"targetPlayerIds">;
+  sectorId?: FieldFromAction<"sectorId">;
+  multiplier?: FieldFromAction<"multiplier">;
   charter?: SyndicateCharterState;
-  contractId?: string;
-  partyB?: string;
+  contractId?: FieldFromAction<"contractId">;
+  partyB?: FieldFromAction<"partyB">;
   terms?: BindingContractTerm[];
-  expiresRound?: number;
-  handshakeId?: string;
-  voteType?: string;
-  summary?: string;
+  expiresRound?: FieldFromAction<"expiresRound">;
+  handshakeId?: FieldFromAction<"handshakeId">;
+  voteType?: FieldFromAction<"voteType">;
+  summary?: FieldFromAction<"summary">;
 }
 
 export interface ApplyActionResult {
