@@ -236,7 +236,6 @@ export type {
   PendingForeclosureState,
   RateCardState,
 } from "./engine/gameStateTypes.js";
-export type { SyndicateCharterState } from "./engine/syndicate.js";
 export type { MarketEventTrigger } from "./engine/marketEvents.js";
 export {
   buildMarketEventDeck,
@@ -301,6 +300,7 @@ export {
   SPEED_MARKET_MULTIPLIER,
   STARTING_CAPITAL,
 } from "./engine/setup.js";
+export type { SyndicateCharterState } from "./engine/syndicate.js";
 export {
   areSameSyndicate,
   controllingPlayerIds,

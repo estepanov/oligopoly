@@ -1,5 +1,8 @@
+import {
+  normalizeGameState,
+  recordOpposingSectorLanding,
+} from "@oligopoly/shared";
 import { describe, expect, it } from "vitest";
-import { normalizeGameState, recordOpposingSectorLanding } from "@oligopoly/shared";
 
 describe("rateCards", () => {
   it("resets pressure timer only for opposing landings", () => {
@@ -73,12 +76,18 @@ describe("rateCards", () => {
       settings: {},
     });
 
-    const afterMember = recordOpposingSectorLanding(state, "p1", "emerging_tech");
-    expect(
-      afterMember.rateCards?.[0].roundsWithoutOpposingLanding,
-    ).toBe(2);
+    const afterMember = recordOpposingSectorLanding(
+      state,
+      "p1",
+      "emerging_tech",
+    );
+    expect(afterMember.rateCards?.[0].roundsWithoutOpposingLanding).toBe(2);
 
-    const afterOpponent = recordOpposingSectorLanding(state, "p3", "emerging_tech");
+    const afterOpponent = recordOpposingSectorLanding(
+      state,
+      "p3",
+      "emerging_tech",
+    );
     expect(afterOpponent.rateCards?.[0].roundsWithoutOpposingLanding).toBe(0);
   });
 });
