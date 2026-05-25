@@ -137,7 +137,7 @@ type PhaseActionHandler = (
   state: InternalGameState,
   playerId: string,
   action: GameActionInput,
-): ApplyActionResult;
+) => ApplyActionResult;
 
 const PHASE_ACTION_ROUTES: Record<
   string,
@@ -158,7 +158,8 @@ const PHASE_ACTION_ROUTES: Record<
   syndicate_coordination: {
     set_rate_card: (state, playerId, action) =>
       handleSetRateCard(state, playerId, action),
-    end_coordination: (state, playerId) => handleEndCoordination(state, playerId),
+    end_coordination: (state, playerId) =>
+      handleEndCoordination(state, playerId),
   },
 };
 

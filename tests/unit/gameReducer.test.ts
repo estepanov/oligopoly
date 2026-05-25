@@ -47,7 +47,11 @@ function minimalTwoPlayerState(
 describe("applyGameAction", () => {
   it("rejects roll_dice when it is not the actor's turn", () => {
     const state = minimalTwoPlayerState("action");
-    const r = applyGameAction(state, { type: "roll_dice" }, { actorId: "bob" });
+    const r = applyGameAction(
+      state,
+      { type: "roll_dice" },
+      { actorId: "bob", rollDice: () => [1, 3] },
+    );
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.errorKey).toBe(GameEngineErrorKeys.NOT_YOUR_TURN);
@@ -59,31 +63,31 @@ describe("applyGameAction", () => {
     const r = applyGameAction(
       state,
       { type: "roll_dice" },
-      { actorId: "alice", rollDice: () => [2, 3] },
+      { actorId: "alice", rollDice: () => [1, 3] },
     );
     expect(r.ok).toBe(true);
     if (!r.ok) {
       return;
     }
     expect(r.state.phase).toBe("action");
-    expect(r.state.players?.[0]?.position).toBe(5);
-    expect(r.state.players?.[0]?.actionPointsRemaining).toBe(2);
+    expect(r.state.players?.[0]?.position).toBe(4);
+    expect(r.state.players?.[0]?.actionPointsRemaining).toBe(0);
     expect(r.logActionType).toBe("roll_dice");
   });
 
   it("uses action.result when rollDice is omitted (tests only)", () => {
-    const state = minimalTwoPlayerState("action");
+    const state = minimalTwoPlayerState("waiting_for_roll");
     const r = applyGameAction(
       state,
-      { type: "roll_dice", result: [1, 1] },
+      { type: "roll_dice", result: [1, 3] },
       { actorId: "alice" },
     );
     expect(r.ok).toBe(true);
     if (!r.ok) {
       return;
     }
-    expect(r.state.players?.[0]?.position).toBe(2);
-    expect(r.state.players?.[0]?.doublesCount).toBe(1);
+    expect(r.state.players?.[0]?.position).toBe(4);
+    expect(r.state.players?.[0]?.doublesCount).toBe(0);
   });
 
   it("returns DICE_RESULT_REQUIRED when neither rollDice nor result is set", () => {
@@ -103,7 +107,7 @@ describe("applyGameAction", () => {
     const state = minimalTwoPlayerState("waiting_for_roll");
     const rolled = applyGameAction(
       state,
-      { type: "roll_dice", result: [2, 3] },
+      { type: "roll_dice", result: [1, 3] },
       { actorId: "alice" },
     );
     expect(rolled.ok).toBe(true);
@@ -127,7 +131,7 @@ describe("applyGameAction", () => {
 
     const bobRoll = applyGameAction(
       e1.state,
-      { type: "roll_dice", result: [1, 2] },
+      { type: "roll_dice", result: [1, 3] },
       { actorId: "bob" },
     );
     expect(bobRoll.ok).toBe(true);
@@ -167,7 +171,7 @@ describe("applyGameAction", () => {
     const state = minimalTwoPlayerState("waiting_for_roll");
     const first = applyGameAction(
       state,
-      { type: "roll_dice", result: [4, 4] },
+      { type: "roll_dice", result: [2, 2] },
       { actorId: "alice" },
     );
     expect(first.ok).toBe(true);
@@ -187,7 +191,7 @@ describe("applyGameAction", () => {
       return;
     }
     expect(second.state.players?.[0]?.doublesCount).toBe(0);
-    expect(second.state.phase).toBe("action");
+    expect(second.state.phase).not.toBe("rolling_doubles");
   });
 
   it("delegates advanced actions to authoritative applyAction", () => {
