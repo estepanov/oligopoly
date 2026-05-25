@@ -33,6 +33,29 @@ export function auctionSettleDelayToMs(delay: string | undefined): number {
   }
 }
 
+export function auctionExtensionWindowToMs(window: string | undefined): number {
+  switch (window) {
+    case "10s":
+      return 10 * SECOND_MS;
+    case "30s":
+      return 30 * SECOND_MS;
+    case "15s":
+    default:
+      return 15 * SECOND_MS;
+  }
+}
+
+export function computeLiveAuctionExtensionDeadline(
+  nowMs: number,
+  settings: Record<string, unknown> | undefined,
+): number {
+  const window = settings?.auctionExtensionWindow;
+  return (
+    nowMs +
+    auctionExtensionWindowToMs(typeof window === "string" ? window : undefined)
+  );
+}
+
 export function computeAuctionBidDeadline(
   nowMs: number,
   settings: Record<string, unknown> | undefined,

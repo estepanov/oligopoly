@@ -132,6 +132,7 @@ export type {
 export {
   allEligiblePlayersSubmitted,
   closeAuctionBidWindowIfReady,
+  currentAuctionHighBid,
   finalizeAuctionSettleIfReady,
   getActiveEligibleBidders,
   hasAuctionSubmission,
@@ -144,10 +145,16 @@ export {
   suggestAiAuctionBid,
 } from "./engine/auction.js";
 export {
+  isLiveAuction,
+  isVisibleAuction,
+} from "./engine/auctionMode.js";
+export {
   auctionBidWindowToMs,
+  auctionExtensionWindowToMs,
   auctionSettleDelayToMs,
   computeAuctionBidDeadline,
   computeAuctionSettleDeadline,
+  computeLiveAuctionExtensionDeadline,
   isAuctionBidWindowOpen,
   isAuctionSettleDelayActive,
 } from "./engine/auctionTiming.js";

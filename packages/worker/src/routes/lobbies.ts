@@ -309,11 +309,11 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
     db
       .prepare(
         `INSERT INTO lobbies (id, name, host_id, status, max_players, is_private, optional_rule_ids_json, created_at,
-          turn_timeout, auction_bid_window, auction_settle_delay, auction_type,
+          turn_timeout, auction_bid_window, auction_settle_delay, auction_extension_window, auction_type,
           voice_video_enabled, spectator_mode, market_event_deck_json,
           optional_event_card_ids_json, currency_name, currency_symbol, currency_multiplier,
           ai_slots_json)
-         VALUES (?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -326,6 +326,7 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
         body.turnTimeout,
         body.auctionBidWindow,
         body.auctionSettleDelay,
+        body.auctionExtensionWindow,
         body.auctionType,
         body.voiceVideoEnabled ? 1 : 0,
         body.spectatorMode,
@@ -357,6 +358,7 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
     turn_timeout: body.turnTimeout,
     auction_bid_window: body.auctionBidWindow,
     auction_settle_delay: body.auctionSettleDelay,
+    auction_extension_window: body.auctionExtensionWindow,
     auction_type: body.auctionType,
     voice_video_enabled: body.voiceVideoEnabled ? 1 : 0,
     spectator_mode: body.spectatorMode,
@@ -835,6 +837,10 @@ lobbyRoutes.put(
       updates.push("auction_settle_delay = ?");
       values.push(body.auctionSettleDelay);
     }
+    if (body.auctionExtensionWindow !== undefined) {
+      updates.push("auction_extension_window = ?");
+      values.push(body.auctionExtensionWindow);
+    }
     if (body.auctionType !== undefined) {
       updates.push("auction_type = ?");
       values.push(body.auctionType);
@@ -1147,6 +1153,7 @@ lobbyRoutes.post("/:id/start", async (c) => {
       auctionType: lobby.auction_type ?? "sealed_bids",
       auctionBidWindow: lobby.auction_bid_window ?? "1min",
       auctionSettleDelay: lobby.auction_settle_delay ?? "30s",
+      auctionExtensionWindow: lobby.auction_extension_window ?? "15s",
       optionalRuleIds,
       optionalMarketEventCardIds: lobby.optional_event_card_ids_json
         ? JSON.parse(lobby.optional_event_card_ids_json)

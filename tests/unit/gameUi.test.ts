@@ -94,4 +94,30 @@ describe("mergeAuctionClientView", () => {
 
     expect(mergeAuctionClientView(previous, incoming)).toEqual(incoming);
   });
+
+  it("does not preserve mySubmission for live auctions", () => {
+    const previous = auctionState({
+      tilePosition: 3,
+      trigger: "decline",
+      auctionType: "live_bidding",
+      submissions: { p1: 90 },
+      eligiblePlayerIds: ["p1", "p2"],
+      tieBreakRound: 0,
+      resumePhase: "action",
+      submissionCount: 1,
+      mySubmission: 90,
+    });
+    const incoming = auctionState({
+      tilePosition: 3,
+      trigger: "decline",
+      auctionType: "live_bidding",
+      submissions: { p1: 90, p2: 100 },
+      eligiblePlayerIds: ["p1", "p2"],
+      tieBreakRound: 0,
+      resumePhase: "action",
+      submissionCount: 2,
+    });
+
+    expect(mergeAuctionClientView(previous, incoming)).toEqual(incoming);
+  });
 });

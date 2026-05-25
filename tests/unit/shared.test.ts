@@ -2016,6 +2016,104 @@ describe("applyAction — open auction", () => {
   });
 });
 
+describe("applyAction — live auction", () => {
+  const liveAuctionDeadline = Date.now() + 5_000;
+
+  function makeLiveAuctionState(
+    overrides?: Partial<InternalGameState>,
+  ): InternalGameState {
+    return makeTestGameState({
+      phase: "waiting_for_auction_bids",
+      pendingBuyTilePosition: null,
+      settings: {
+        auctionType: "live_bidding",
+        auctionExtensionWindow: "15s",
+      },
+      pendingAuction: {
+        tilePosition: 3,
+        trigger: "decline",
+        auctionType: "live_bidding",
+        submissions: {},
+        eligiblePlayerIds: ["player-1", "player-2"],
+        tieBreakRound: 0,
+        resumePhase: "action",
+        bidDeadlineAt: liveAuctionDeadline,
+      },
+      ...overrides,
+    });
+  }
+
+  it("starts a live auction when lobby settings request live bidding", () => {
+    const state = makeTestGameState({
+      phase: "waiting_for_buy",
+      pendingBuyTilePosition: 3,
+      settings: { auctionType: "live_bidding" },
+    });
+    const result = applyAction(state, "player-1", {
+      type: "decline_tile",
+      tilePosition: 3,
+    });
+    expect(result.state.pendingAuction?.auctionType).toBe("live_bidding");
+  });
+
+  it("extends the timer when a new high bid is placed", () => {
+    const now = Date.now();
+    const state = makeLiveAuctionState({
+      pendingAuction: {
+        tilePosition: 3,
+        trigger: "decline",
+        auctionType: "live_bidding",
+        submissions: { "player-1": 50 },
+        eligiblePlayerIds: ["player-1", "player-2"],
+        tieBreakRound: 0,
+        resumePhase: "action",
+        bidDeadlineAt: now + 5_000,
+      },
+    });
+    const result = applyAction(state, "player-2", {
+      type: "auction_bid",
+      tilePosition: 3,
+      amount: 75,
+    });
+    expect(result.state.phase).toBe("waiting_for_auction_bids");
+    expect(result.state.pendingAuction?.bidDeadlineAt).toBeGreaterThan(
+      now + 5_000,
+    );
+  });
+
+  it("rejects pass actions during live bidding", () => {
+    const state = makeLiveAuctionState();
+    expect(() =>
+      applyAction(state, "player-1", {
+        type: "auction_pass",
+        tilePosition: 3,
+      }),
+    ).toThrow("game.invalid_action");
+  });
+
+  it("settles live auctions when the timer expires", () => {
+    const state = makeLiveAuctionState({
+      pendingAuction: {
+        tilePosition: 3,
+        trigger: "decline",
+        auctionType: "live_bidding",
+        submissions: { "player-1": 80, "player-2": 60 },
+        eligiblePlayerIds: ["player-1", "player-2"],
+        tieBreakRound: 0,
+        resumePhase: "action",
+        bidDeadlineAt: Date.now() - 1,
+      },
+    });
+    const closed = closeAuctionBidWindowIfReady(state, Date.now());
+    expect(closed?.state.phase).toBe("action");
+    expect(closed?.state.pendingAuction).toBeUndefined();
+    const winner = closed?.state.players.find(
+      (player) => player.playerId === "player-1",
+    );
+    expect(winner?.ownedTilePositions).toContain(3);
+  });
+});
+
 describe("applyAction — end_turn", () => {
   it("advances to next player", () => {
     const state = makeTestGameState({ phase: "action" });

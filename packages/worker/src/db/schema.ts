@@ -208,6 +208,9 @@ export const lobbies = sqliteTable("lobbies", {
   turnTimeout: text("turn_timeout").notNull().default("5min"),
   auctionBidWindow: text("auction_bid_window").notNull().default("1min"),
   auctionSettleDelay: text("auction_settle_delay").notNull().default("30s"),
+  auctionExtensionWindow: text("auction_extension_window")
+    .notNull()
+    .default("15s"),
   auctionType: text("auction_type").notNull().default("sealed_bids"),
   voiceVideoEnabled: integer("voice_video_enabled", { mode: "boolean" })
     .notNull()

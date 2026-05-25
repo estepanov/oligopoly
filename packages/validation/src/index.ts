@@ -473,6 +473,7 @@ export const CreateLobbyInputSchema = z.object({
     .enum(["30s", "1min", "5min", "10min", "30min"])
     .default("1min"),
   auctionSettleDelay: z.enum(["10s", "30s", "1min", "5min"]).default("30s"),
+  auctionExtensionWindow: z.enum(["10s", "15s", "30s"]).default("15s"),
   auctionType: AuctionTypeSchema.default("sealed_bids"),
   voiceVideoEnabled: z.boolean().default(false),
   spectatorMode: SpectatorModeSchema.default("disabled"),
@@ -495,6 +496,7 @@ export const UpdateLobbySettingsInputSchema = z.object({
     .enum(["30s", "1min", "5min", "10min", "30min"])
     .optional(),
   auctionSettleDelay: z.enum(["10s", "30s", "1min", "5min"]).optional(),
+  auctionExtensionWindow: z.enum(["10s", "15s", "30s"]).optional(),
   auctionType: AuctionTypeSchema.optional(),
   voiceVideoEnabled: z.boolean().optional(),
   spectatorMode: SpectatorModeSchema.optional(),
@@ -639,7 +641,7 @@ export type RateCard = z.infer<typeof RateCardSchema>;
 export const PendingAuctionSchema = z.object({
   tilePosition: z.union([z.number().int(), z.string()]),
   trigger: z.literal("decline"),
-  auctionType: z.enum(["sealed_bids", "open_bids"]),
+  auctionType: z.enum(["sealed_bids", "open_bids", "live_bidding"]),
   submissions: z.record(
     z.string(),
     z.union([z.number().int().min(1), z.literal("pass")]),
@@ -696,6 +698,7 @@ export const GameStateSchema = z.object({
       auctionType: AuctionTypeSchema.optional(),
       auctionBidWindow: z.string().optional(),
       auctionSettleDelay: z.string().optional(),
+      auctionExtensionWindow: z.string().optional(),
       optionalRuleIds: z.array(z.string()).optional(),
       optionalMarketEventCardIds: z.array(z.string()).optional(),
       marketEventDeckCardIds: z.array(z.string()).nullable().optional(),

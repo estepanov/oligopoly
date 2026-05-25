@@ -1,7 +1,16 @@
 import { getTileByPosition } from "../config/board.js";
 import {
+  type DeclineAuctionType,
+  isLiveAuction,
+  isSealedAuction,
+  isVisibleAuction,
+  resolveDeclineAuctionType,
+  settlesImmediatelyAfterBidWindow,
+} from "./auctionMode.js";
+import {
   computeAuctionBidDeadline,
   computeAuctionSettleDeadline,
+  computeLiveAuctionExtensionDeadline,
   isAuctionBidWindowOpen,
   isAuctionSettleDelayActive,
 } from "./auctionTiming.js";
@@ -13,7 +22,7 @@ import type {
   LogEntry,
 } from "./gameStateMachine.js";
 
-export type DeclineAuctionType = "sealed_bids" | "open_bids";
+export type { DeclineAuctionType } from "./auctionMode.js";
 
 export type PendingAuctionState = {
   tilePosition: number | string;
@@ -43,16 +52,17 @@ function auctionBidDeadline(state: InternalGameState, nowMs: number): number {
   return computeAuctionBidDeadline(nowMs, state.settings);
 }
 
-export function resolveDeclineAuctionType(
-  settings: Record<string, unknown> | undefined,
-): DeclineAuctionType {
-  return settings?.auctionType === "open_bids" ? "open_bids" : "sealed_bids";
-}
+export { isSealedAuction, resolveDeclineAuctionType } from "./auctionMode.js";
 
-export function isSealedAuction(
-  auction: Pick<PendingAuctionState, "auctionType">,
-): boolean {
-  return auction.auctionType === "sealed_bids";
+export function currentAuctionHighBid(auction: PendingAuctionState): number {
+  const floor = (auction.tieBreakMinBid ?? 1) - 1;
+  let high = floor;
+  for (const value of Object.values(auction.submissions)) {
+    if (typeof value === "number" && value > high) {
+      high = value;
+    }
+  }
+  return high;
 }
 
 export function getActiveEligibleBidders(state: InternalGameState): string[] {
@@ -210,7 +220,7 @@ function startTieBreakRound(
   return { state: newState, logEntries: logs };
 }
 
-function resolveOpenAuctionTieWithDice(
+function resolveVisibleAuctionTieWithDice(
   state: InternalGameState,
   topBidders: string[],
   amount: number,
@@ -241,7 +251,7 @@ function resolveOpenAuctionTieWithDice(
   });
 
   if (winners.length > 1) {
-    return resolveOpenAuctionTieWithDice(state, winners, amount, logs);
+    return resolveVisibleAuctionTieWithDice(state, winners, amount, logs);
   }
 
   return awardTileToWinner(state, winners[0], amount, logs);
@@ -284,8 +294,13 @@ export function settlePendingAuction(
     .map(([playerId]) => playerId);
 
   if (topBidders.length > 1) {
-    if (auction.auctionType === "open_bids") {
-      return resolveOpenAuctionTieWithDice(state, topBidders, maxAmount, logs);
+    if (!isSealedAuction(auction)) {
+      return resolveVisibleAuctionTieWithDice(
+        state,
+        topBidders,
+        maxAmount,
+        logs,
+      );
     }
     return startTieBreakRound(state, topBidders, maxAmount, nowMs, logs);
   }
@@ -369,8 +384,14 @@ export function closeAuctionBidWindowIfReady(
     return null;
   }
 
-  const allSubmitted = allEligiblePlayersSubmitted(state);
   const windowOpen = isAuctionBidWindowOpen(auction.bidDeadlineAt, nowMs);
+  if (isLiveAuction(auction)) {
+    if (windowOpen) return null;
+    const settled = settlePendingAuction(state, nowMs);
+    return settled;
+  }
+
+  const allSubmitted = allEligiblePlayersSubmitted(state);
   if (windowOpen && !allSubmitted) {
     return null;
   }
@@ -381,7 +402,7 @@ export function closeAuctionBidWindowIfReady(
     workingState = passForMissingBidders(workingState, logs);
   }
 
-  if (auction.auctionType === "open_bids") {
+  if (settlesImmediatelyAfterBidWindow(auction)) {
     const settled = settlePendingAuction(workingState, nowMs);
     return {
       state: settled.state,
@@ -421,6 +442,10 @@ export function recordAuctionSubmission(
   if (!auction || state.phase !== "waiting_for_auction_bids") {
     throw "game.auction_not_active";
   }
+  if (isLiveAuction(auction)) {
+    return recordLiveAuctionBid(state, playerId, submission, nowMs);
+  }
+
   if (!isAuctionBidWindowOpen(auction.bidDeadlineAt, nowMs)) {
     throw "game.auction_closed";
   }
@@ -448,7 +473,7 @@ export function recordAuctionSubmission(
     position: auction.tilePosition,
     name: tile?.name ?? "Unknown",
   };
-  if (submission !== "pass" && auction.auctionType === "open_bids") {
+  if (submission !== "pass" && isVisibleAuction(auction)) {
     bidPayload.amount = submission;
   }
 
@@ -480,6 +505,74 @@ export function recordAuctionSubmission(
   return { state: newState, logEntries: logs };
 }
 
+function recordLiveAuctionBid(
+  state: InternalGameState,
+  playerId: string,
+  submission: number | "pass",
+  nowMs: number = Date.now(),
+): ApplyActionResult {
+  const auction = state.pendingAuction!;
+  if (submission === "pass") {
+    throw "game.invalid_action";
+  }
+  if (!isAuctionBidWindowOpen(auction.bidDeadlineAt, nowMs)) {
+    throw "game.auction_closed";
+  }
+  if (!getActiveEligibleBidders(state).includes(playerId)) {
+    throw "game.not_auction_eligible";
+  }
+
+  const minBid = Math.max(
+    auction.tieBreakMinBid ?? 1,
+    currentAuctionHighBid(auction) + 1,
+  );
+  if (submission < minBid) {
+    throw "game.auction_bid_too_low";
+  }
+
+  const player = getPlayer(state, playerId);
+  if (!player || player.capital < submission) {
+    throw "game.insufficient_capital";
+  }
+
+  const previousHigh = currentAuctionHighBid(auction);
+  const tile = getTileByPosition(auction.tilePosition);
+  const logs: LogEntry[] = [
+    {
+      playerId,
+      actionType: "auction_bid",
+      payload: {
+        position: auction.tilePosition,
+        name: tile?.name ?? "Unknown",
+        amount: submission,
+      },
+    },
+  ];
+
+  const newState = deepClone(state);
+  newState.pendingAuction = {
+    ...auction,
+    submissions: {
+      ...auction.submissions,
+      [playerId]: submission,
+    },
+    bidDeadlineAt:
+      submission > previousHigh
+        ? computeLiveAuctionExtensionDeadline(nowMs, state.settings)
+        : auction.bidDeadlineAt,
+  };
+
+  const closed = closeAuctionBidWindowIfReady(newState, nowMs);
+  if (closed) {
+    return {
+      state: closed.state,
+      logEntries: [...logs, ...closed.logEntries],
+    };
+  }
+
+  return { state: newState, logEntries: logs };
+}
+
 export function suggestAiAuctionBid(
   state: InternalGameState,
   playerId: string,
@@ -491,14 +584,16 @@ export function suggestAiAuctionBid(
   const tile = getTileByPosition(auction.tilePosition);
   if (!player || !tile?.cost) return "pass";
 
-  const minBid = auction.tieBreakMinBid ?? 1;
+  const minBid = isLiveAuction(auction)
+    ? Math.max(auction.tieBreakMinBid ?? 1, currentAuctionHighBid(auction) + 1)
+    : (auction.tieBreakMinBid ?? 1);
   const reserve = 150;
   const target = Math.max(minBid, Math.floor(tile.cost * 0.85));
 
-  if (player.capital - target < reserve) {
+  if (player.capital < minBid || player.capital - target < reserve) {
     return "pass";
   }
 
   const jitter = rollFairD6();
-  return Math.min(player.capital - reserve, target + jitter);
+  return Math.max(minBid, Math.min(player.capital - reserve, target + jitter));
 }
