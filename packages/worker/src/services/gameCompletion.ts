@@ -3,7 +3,9 @@ import {
   calculateGameRankPoints,
   getRankForPoints,
   hasSectorControl,
+  playerWonGame,
   SECTORS,
+  type CompletedGameSnapshot,
   type InternalGameState,
   type RecentGameSummary,
 } from "@oligopoly/shared";
@@ -24,28 +26,12 @@ type LeaderboardCompletionsEntry = {
 };
 
 function countSectorsControlled(
-  state: InternalGameState,
+  state: CompletedGameSnapshot,
   playerId: string,
 ): number {
   return Object.keys(SECTORS).filter((sectorId) =>
     hasSectorControl(state, playerId, sectorId),
   ).length;
-}
-
-function playerWonGame(
-  state: InternalGameState,
-  playerId: string,
-  winnerId: string,
-): boolean {
-  if (playerId === winnerId) {
-    return true;
-  }
-  const winner = state.players.find((entry) => entry.playerId === winnerId);
-  const player = state.players.find((entry) => entry.playerId === playerId);
-  if (!winner?.syndicateId || !player?.syndicateId) {
-    return false;
-  }
-  return winner.syndicateId === player.syndicateId;
 }
 
 function gameResultForPlayer(
@@ -112,27 +98,26 @@ async function upsertLeaderboardEntry(
 async function unlockAchievementIfNew(
   db: D1Database,
   userId: string,
-  achievementId: string,
+  achievementId: keyof typeof ACHIEVEMENTS_REGISTRY,
   now: number,
-): Promise<number> {
+): Promise<{ statement: D1PreparedStatement | null; rankPoints: number }> {
   const existing = await db
     .prepare("SELECT id FROM achievements WHERE user_id = ? AND id = ?")
     .bind(userId, achievementId)
     .first();
   if (existing) {
-    return 0;
+    return { statement: null, rankPoints: 0 };
   }
 
-  await db
-    .prepare(
-      "INSERT INTO achievements (id, user_id, unlocked_at) VALUES (?, ?, ?)",
-    )
-    .bind(achievementId, userId, now)
-    .run();
-
-  const achievement =
-    ACHIEVEMENTS_REGISTRY[achievementId as keyof typeof ACHIEVEMENTS_REGISTRY];
-  return achievement?.rankPoints ?? 0;
+  const achievement = ACHIEVEMENTS_REGISTRY[achievementId];
+  return {
+    statement: db
+      .prepare(
+        "INSERT INTO achievements (id, user_id, unlocked_at) VALUES (?, ?, ?)",
+      )
+      .bind(achievementId, userId, now),
+    rankPoints: achievement.rankPoints,
+  };
 }
 
 export async function processGameCompletion(
@@ -156,7 +141,18 @@ export async function processGameCompletion(
   }
 
   const playerIds = JSON.parse(gameRow.player_ids_json) as string[];
+  const alreadyProcessed = await db
+    .prepare(
+      "SELECT recent_games_json FROM user_stats WHERE user_id = ? LIMIT 1",
+    )
+    .bind(playerIds[0])
+    .first<{ recent_games_json: string }>();
+  if (alreadyProcessed?.recent_games_json.includes(`"gameId":"${gameId}"`)) {
+    return;
+  }
+
   const statements: D1PreparedStatement[] = [];
+  const achievementStatements: D1PreparedStatement[] = [];
 
   for (const playerId of playerIds) {
     if (state.kickedPlayerIds?.includes(playerId)) {
@@ -222,46 +218,30 @@ export async function processGameCompletion(
     }
 
     let achievementPoints = 0;
-    achievementPoints += await unlockAchievementIfNew(
-      db,
-      playerId,
+    const achievementIds: Array<keyof typeof ACHIEVEMENTS_REGISTRY> = [
       "first_steps",
-      endedAt,
-    );
-    if (won) {
-      achievementPoints += await unlockAchievementIfNew(
-        db,
-        playerId,
-        "champion",
-        endedAt,
-      );
-    }
-    if (gamesPlayed >= 10) {
-      achievementPoints += await unlockAchievementIfNew(
-        db,
-        playerId,
-        "full_house",
-        endedAt,
-      );
-    }
-    if (wins >= 10) {
-      achievementPoints += await unlockAchievementIfNew(
-        db,
-        playerId,
-        "dynasty",
-        endedAt,
-      );
-    }
+    ];
+    if (won) achievementIds.push("champion");
+    if (gamesPlayed >= 10) achievementIds.push("full_house");
+    if (wins >= 10) achievementIds.push("dynasty");
     if (
       won &&
       state.players.find((entry) => entry.playerId === playerId)?.syndicateId
     ) {
-      achievementPoints += await unlockAchievementIfNew(
+      achievementIds.push("kingmaker");
+    }
+
+    for (const achievementId of achievementIds) {
+      const unlocked = await unlockAchievementIfNew(
         db,
         playerId,
-        "kingmaker",
+        achievementId,
         endedAt,
       );
+      if (unlocked.statement) {
+        achievementStatements.push(unlocked.statement);
+      }
+      achievementPoints += unlocked.rankPoints;
     }
 
     const rankPointsEarned = calculateGameRankPoints({
@@ -321,7 +301,7 @@ export async function processGameCompletion(
     }
   }
 
-  if (statements.length > 0) {
-    await db.batch(statements);
+  if (achievementStatements.length > 0 || statements.length > 0) {
+    await db.batch([...achievementStatements, ...statements]);
   }
 }

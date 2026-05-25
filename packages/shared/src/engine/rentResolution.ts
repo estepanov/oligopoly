@@ -1,7 +1,5 @@
 import {
-  ALL_TILES,
   getTileByPosition,
-  HUB_ADJACENT_SECTORS,
   SECTOR_HUB_POSITIONS,
 } from "../config/board.js";
 import {
@@ -9,7 +7,7 @@ import {
   getPlayerAffinityId,
   spectrumHolderUtilityMultiplier,
 } from "./affinity.js";
-import type { InternalGameState } from "./gameStateMachine.js";
+import type { InternalGameState } from "./gameStateTypes.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
 import {
   calculateHubRent,
@@ -128,10 +126,3 @@ export function computeAffinityRentBonusForTile(
   if (!tile) return 0;
   return calculateAffinityRentBonus(state, ownerId, tile, rentPaid);
 }
-
-export {
-  ALL_TILES,
-  controllingPlayerIds,
-  HUB_ADJACENT_SECTORS,
-  SECTOR_HUB_POSITIONS,
-};

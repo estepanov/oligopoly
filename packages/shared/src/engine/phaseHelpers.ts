@@ -1,15 +1,6 @@
 import { TRIPLE_DOUBLES_LIMIT } from "./dice.js";
-import type {
-  InternalGameState,
-  InternalPlayerState,
-} from "./gameStateMachine.js";
-
-export function getPlayerFromState(
-  state: InternalGameState,
-  playerId: string,
-): InternalPlayerState | undefined {
-  return state.players.find((player) => player.playerId === playerId);
-}
+import type { InternalGameState } from "./gameStateTypes.js";
+import { getPlayerFromState } from "./stateUtils.js";
 
 export function resolvePostMovePhase(
   state: InternalGameState,

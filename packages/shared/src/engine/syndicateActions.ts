@@ -3,17 +3,10 @@ import type {
   GameActionInput,
   InternalGameState,
   LogEntry,
-} from "./gameStateMachine.js";
+} from "./gameStateTypes.js";
+import { deepClone, getPlayer } from "./stateUtils.js";
 import { applyWinIfThresholdCrossed } from "./winResolution.js";
 import { formSyndicateApCost, getSyndicateForPlayer } from "./syndicate.js";
-
-function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj)) as T;
-}
-
-function getPlayer(state: InternalGameState, playerId: string) {
-  return state.players.find((player) => player.playerId === playerId);
-}
 
 export function handleFormSyndicate(
   state: InternalGameState,

@@ -14,19 +14,16 @@ import type {
   InternalGameState,
   InternalPlayerState,
   LogEntry,
-} from "./gameStateMachine.js";
+} from "./gameStateTypes.js";
 import { regulationPenaltiesEnabled } from "./optionalRulesEngine.js";
 import { resolvePostMovePhase } from "./phaseHelpers.js";
 import { FLASH_CRASH_LOSS_PCT, FLASH_CRASH_WINDFALL_PCT } from "./setup.js";
+import { deepClone, getPlayer } from "./stateUtils.js";
 
 export type DisruptionTrigger =
   | "tile"
   | "black_market_relay"
   | "disruption_blitz";
-
-function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj)) as T;
-}
 
 export function buildDisruptionDeck(gameId: string): string[] {
   return shuffleDeterministic([...DISRUPTION_DECK_IDS], gameId);
@@ -39,13 +36,6 @@ export function normalizeDisruptionDeck(state: InternalGameState): void {
   if (!state.disruptionDiscard) {
     state.disruptionDiscard = [];
   }
-}
-
-function getPlayer(
-  state: InternalGameState,
-  playerId: string,
-): InternalPlayerState | undefined {
-  return state.players.find((player) => player.playerId === playerId);
 }
 
 function activePlayers(state: InternalGameState): InternalPlayerState[] {

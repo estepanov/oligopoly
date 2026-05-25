@@ -1,5 +1,5 @@
 import { TOTAL_BOARD_MARKET_VALUE } from "../config/board.js";
-import type { InternalGameState, LogEntry } from "./gameStateMachine.js";
+import type { InternalGameState, LogEntry } from "./gameStateTypes.js";
 import {
   findSyndicateWinnerId,
   getSyndicateForPlayer,
@@ -15,13 +15,26 @@ export function playerMarketValue(
   return sumOwnedTileMarketValue(state, [playerId]);
 }
 
-export function checkWinConditions(state: InternalGameState): string | null {
+export interface WinEvaluation {
+  winnerId: string;
+  winType: "syndicate" | "solo" | "last_standing";
+  marketValue: number;
+}
+
+export function evaluateWin(state: InternalGameState): WinEvaluation | null {
   const syndicateWinner = findSyndicateWinnerId(
     state,
     TOTAL_BOARD_MARKET_VALUE,
   );
   if (syndicateWinner) {
-    return syndicateWinner;
+    const syndicate = getSyndicateForPlayer(state, syndicateWinner);
+    return {
+      winnerId: syndicateWinner,
+      winType: "syndicate",
+      marketValue: syndicate
+        ? syndicateMarketValue(state, syndicate.memberIds)
+        : playerMarketValue(state, syndicateWinner),
+    };
   }
 
   for (const player of state.players) {
@@ -29,7 +42,11 @@ export function checkWinConditions(state: InternalGameState): string | null {
     if (getSyndicateForPlayer(state, player.playerId)) continue;
     const marketValue = playerMarketValue(state, player.playerId);
     if (checkSoloWin(marketValue, TOTAL_BOARD_MARKET_VALUE)) {
-      return player.playerId;
+      return {
+        winnerId: player.playerId,
+        winType: "solo",
+        marketValue,
+      };
     }
   }
 
@@ -37,42 +54,38 @@ export function checkWinConditions(state: InternalGameState): string | null {
     (player) => !state.eliminatedPlayerIds.includes(player.playerId),
   );
   if (activePlayers.length === 1) {
-    return activePlayers[0].playerId;
+    const winnerId = activePlayers[0].playerId;
+    const marketValue = playerMarketValue(state, winnerId);
+    return {
+      winnerId,
+      winType: checkSoloWin(marketValue, TOTAL_BOARD_MARKET_VALUE)
+        ? "solo"
+        : "last_standing",
+      marketValue,
+    };
   }
+
   return null;
 }
 
-function winningMarketValue(
-  state: InternalGameState,
-  winnerId: string,
-): number {
-  const syndicate = getSyndicateForPlayer(state, winnerId);
-  if (syndicate && findSyndicateWinnerId(state, TOTAL_BOARD_MARKET_VALUE)) {
-    return syndicateMarketValue(state, syndicate.memberIds);
-  }
-  return playerMarketValue(state, winnerId);
+export function checkWinConditions(state: InternalGameState): string | null {
+  return evaluateWin(state)?.winnerId ?? null;
 }
 
-export function winTypeForPlayer(
+export function playerWonGame(
   state: InternalGameState,
+  playerId: string,
   winnerId: string,
-): "syndicate" | "solo" | "last_standing" {
-  const syndicate = getSyndicateForPlayer(state, winnerId);
-  if (syndicate && findSyndicateWinnerId(state, TOTAL_BOARD_MARKET_VALUE)) {
-    return "syndicate";
+): boolean {
+  if (playerId === winnerId) {
+    return true;
   }
-
-  const activePlayers = state.players.filter(
-    (player) => !state.eliminatedPlayerIds.includes(player.playerId),
-  );
-  if (
-    activePlayers.length === 1 &&
-    activePlayers[0].playerId === winnerId &&
-    !checkSoloWin(playerMarketValue(state, winnerId), TOTAL_BOARD_MARKET_VALUE)
-  ) {
-    return "last_standing";
+  const winner = state.players.find((entry) => entry.playerId === winnerId);
+  const player = state.players.find((entry) => entry.playerId === playerId);
+  if (!winner?.syndicateId || !player?.syndicateId) {
+    return false;
   }
-  return "solo";
+  return winner.syndicateId === player.syndicateId;
 }
 
 export function applyWinIfThresholdCrossed(
@@ -83,20 +96,20 @@ export function applyWinIfThresholdCrossed(
     return state;
   }
 
-  const winnerId = checkWinConditions(state);
-  if (!winnerId) {
+  const evaluation = evaluateWin(state);
+  if (!evaluation) {
     return state;
   }
 
-  state.winnerId = winnerId;
+  state.winnerId = evaluation.winnerId;
   state.phase = "game_over";
   logs.push({
-    playerId: winnerId,
+    playerId: evaluation.winnerId,
     actionType: "game_won",
     payload: {
-      winnerId,
-      type: winTypeForPlayer(state, winnerId),
-      marketValue: winningMarketValue(state, winnerId),
+      winnerId: evaluation.winnerId,
+      type: evaluation.winType,
+      marketValue: evaluation.marketValue,
       totalMarketValue: TOTAL_BOARD_MARKET_VALUE,
     },
   });

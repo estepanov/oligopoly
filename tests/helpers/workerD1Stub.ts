@@ -381,6 +381,16 @@ export function createWorkerD1Stub(): WorkerD1Stub {
 
     if (
       trimmed.startsWith(
+        "SELECT recent_games_json FROM user_stats WHERE user_id = ? LIMIT 1",
+      )
+    ) {
+      const row =
+        tables.user_stats.find((entry) => entry.user_id === binds[0]) ?? null;
+      return { results: row ? [row] : [], first: row };
+    }
+
+    if (
+      trimmed.startsWith(
         "SELECT games_played, wins, trades_completed, auctions_won, recent_games_json FROM user_stats WHERE user_id = ?",
       )
     ) {

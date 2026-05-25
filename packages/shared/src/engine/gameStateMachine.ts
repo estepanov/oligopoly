@@ -71,124 +71,28 @@ import {
 import {
   areSameSyndicate,
   getSyndicateForPlayer,
-  type SyndicateState,
 } from "./syndicate.js";
 import { handleFormSyndicate } from "./syndicateActions.js";
+import { deepClone, getPlayer } from "./stateUtils.js";
 import { applyWinIfThresholdCrossed } from "./winResolution.js";
 
-// ---------------------------------------------------------------------------
-// Deep clone helper (deepClone unavailable in target lib)
-// ---------------------------------------------------------------------------
-function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj)) as T;
-}
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface InternalGameState {
-  gameId: string;
-  round: number;
-  phase: string;
-  currentPlayerIndex: number;
-  turnOrder: string[];
-  freeMarketPool: number;
-  affinityAssignments: Record<string, string>;
-  players: InternalPlayerState[];
-  tiles: InternalTileState[];
-  pendingBuyTilePosition: number | string | null;
-  pendingAuction?: PendingAuctionState;
-  lastDiceRoll: [number, number] | null;
-  winnerId: string | null;
-  eliminatedPlayerIds: string[];
-  kickedPlayerIds?: string[];
-  settings: Record<string, unknown>;
-  aiPlayers?: InternalAiPlayerState[];
-  marketEventDeckRemaining?: string[];
-  marketEventDiscard?: string[];
-  disruptionDeckRemaining?: string[];
-  disruptionDiscard?: string[];
-  syndicates?: Record<string, SyndicateState>;
-  pendingDisruptionNullify?: {
-    cardId: string;
-    drawingPlayerId: string;
-    trigger: string;
-    tilePosition?: number | string;
-    remainingDraws?: number;
-  } | null;
-}
-
-export interface InternalAiPlayerState {
-  playerId: string;
-  name: string;
-  personality: AiPersonality;
-  takeoverForPlayerId?: string | null;
-}
-
-export interface InternalPlayerState {
-  playerId: string;
-  kind?: "human" | "ai";
-  displayName?: string;
-  aiPersonality?: AiPersonality;
-  position: number | string;
-  capital: number;
-  ownedTilePositions: (number | string)[];
-  mortgagedTilePositions: (number | string)[];
-  developmentTokens: Record<string, number>;
-  trustworthiness: number;
-  actionPointsRemaining: number;
-  inRegulation: boolean;
-  doublesCount: number;
-  isOnDiagonal: boolean;
-  syndicateId?: string | null;
-  usedAffinityIds?: string[];
-}
-
-export interface InternalTileState {
-  position: number | string;
-  ownerId: string | null;
-  mortgaged: boolean;
-  developmentTokens: number;
-}
-
-export interface GameActionInput {
-  type: string;
-  result?: [number, number];
-  tilePosition?: number | string;
-  tokenNumber?: number;
-  choice?: "perimeter" | "diagonal";
-  amount?: number;
-  /** Server-injected path-choice die result (1-6) for passing through START */
-  pathChoiceDie?: number;
-  /** Used by auction_pass submissions */
-  pass?: true;
-  memberIds?: string[];
-  affinityId?: string;
-  targetPlayerId?: string;
-}
-
-export interface ApplyActionResult {
-  state: InternalGameState;
-  logEntries: LogEntry[];
-}
-
-export interface LogEntry {
-  playerId: string | null;
-  actionType: string;
-  payload: Record<string, unknown> | null;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function getPlayer(
-  state: InternalGameState,
-  playerId: string,
-): InternalPlayerState | undefined {
-  return state.players.find((p) => p.playerId === playerId);
-}
+export type {
+  ApplyActionResult,
+  GameActionInput,
+  InternalAiPlayerState,
+  InternalGameState,
+  InternalPlayerState,
+  InternalTileState,
+  LogEntry,
+} from "./gameStateTypes.js";
+import type {
+  ApplyActionResult,
+  GameActionInput,
+  InternalGameState,
+  InternalPlayerState,
+  InternalTileState,
+  LogEntry,
+} from "./gameStateTypes.js";
 
 function exitDiagonalAtFreeMarket(
   state: InternalGameState,

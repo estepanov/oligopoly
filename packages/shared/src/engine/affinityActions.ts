@@ -10,15 +10,8 @@ import type {
   GameActionInput,
   InternalGameState,
   LogEntry,
-} from "./gameStateMachine.js";
-
-function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj)) as T;
-}
-
-function getPlayer(state: InternalGameState, playerId: string) {
-  return state.players.find((player) => player.playerId === playerId);
-}
+} from "./gameStateTypes.js";
+import { deepClone, getPlayer } from "./stateUtils.js";
 
 export function handleUseAffinity(
   state: InternalGameState,

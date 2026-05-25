@@ -311,6 +311,8 @@ export {
 export {
   applyWinIfThresholdCrossed,
   checkWinConditions,
+  evaluateWin,
   playerMarketValue,
-  winTypeForPlayer,
+  playerWonGame,
 } from "./engine/winResolution.js";
+export type { CompletedGameSnapshot } from "./engine/gameStateTypes.js";
