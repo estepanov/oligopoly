@@ -258,6 +258,7 @@ export function applyGameAction(
     case "auction_bid":
     case "auction_pass":
     case "start_negotiation":
+    case "propose_contract":
     case "sign_contract":
     case "sign_handshake":
     case "break_handshake":

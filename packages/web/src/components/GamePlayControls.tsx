@@ -1,7 +1,9 @@
 import type { GameAction, GameState } from "@oligopoly/validation";
 import { tileLabel } from "../lib/boardDisplay";
 import { isAuctionPhase, isMyTurn, ownedTilesForPlayer } from "../lib/gameUi";
+import { ActionPhaseExtras } from "./ActionPhaseExtras";
 import { AuctionPanel } from "./AuctionPanel";
+import { CoordinationControls } from "./CoordinationControls";
 
 type GamePlayControlsProps = {
   state: GameState;
@@ -49,9 +51,19 @@ export function GamePlayControls({
         </p>
       )}
 
-      {myPlayerId && !myTurn && !auctionActive && (
-        <p className="muted">Waiting for the current player to act…</p>
-      )}
+      {myPlayerId &&
+        !myTurn &&
+        !auctionActive &&
+        state.phase !== "syndicate_coordination" && (
+          <p className="muted">Waiting for the current player to act…</p>
+        )}
+
+      <CoordinationControls
+        state={state}
+        myPlayerId={myPlayerId}
+        busy={busy}
+        onAction={onAction}
+      />
 
       <AuctionPanel
         state={state}
@@ -165,6 +177,14 @@ export function GamePlayControls({
           End turn
         </button>
       </div>
+
+      <ActionPhaseExtras
+        state={state}
+        myPlayerId={myPlayerId}
+        tileNames={tileNames}
+        busy={busy}
+        onAction={onAction}
+      />
 
       {myTurn && ownedTiles.length > 0 && state.phase === "action" && (
         <div className="ownedTilesPanel">

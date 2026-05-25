@@ -139,6 +139,50 @@ export function mergeAuctionClientView(
   };
 }
 
+export function isCoordinationPhase(state: GameState): boolean {
+  return state.phase === "syndicate_coordination";
+}
+
+export function playerNeedsCoordinationAck(
+  state: GameState,
+  myPlayerId: string | null,
+): boolean {
+  if (!myPlayerId || !isCoordinationPhase(state)) return false;
+  const player = playerById(state, myPlayerId);
+  return player?.coordinationAcknowledged !== true;
+}
+
+export function syndicateAdminIdForPlayer(
+  state: GameState,
+  myPlayerId: string | null,
+): string | null {
+  if (!myPlayerId || !state.syndicates) return null;
+  const player = playerById(state, myPlayerId);
+  const syndicateId = player?.syndicateId;
+  if (!syndicateId) return null;
+  return state.syndicates[syndicateId]?.adminId ?? null;
+}
+
+export function isSyndicateAdmin(
+  state: GameState,
+  myPlayerId: string | null,
+): boolean {
+  if (!myPlayerId) return false;
+  return syndicateAdminIdForPlayer(state, myPlayerId) === myPlayerId;
+}
+
+export function otherHumanPlayers(
+  state: GameState,
+  myPlayerId: string | null,
+): PlayerState[] {
+  if (!myPlayerId) return [];
+  return (state.players ?? []).filter((p) => p.playerId !== myPlayerId);
+}
+
+export function isDisruptionNullifyPhase(state: GameState): boolean {
+  return state.phase === "waiting_for_disruption_nullify";
+}
+
 export function ownedTilesForPlayer(
   state: GameState,
   playerId: string,

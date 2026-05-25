@@ -128,6 +128,7 @@ export const BindingContractSchema = z.object({
   signedAt: z.number(),
   fulfilledAt: z.number().nullable(),
   breachedAt: z.number().nullable(),
+  partySignatures: z.record(z.string(), z.boolean()).optional(),
 });
 export type BindingContract = z.infer<typeof BindingContractSchema>;
 
@@ -170,6 +171,14 @@ export const SyndicateCharterSchema = z.object({
   ratifiedAt: z.number(),
 });
 export type SyndicateCharter = z.infer<typeof SyndicateCharterSchema>;
+
+/** Charter payload when forming a syndicate (syndicate id assigned by engine). */
+export const SyndicateFormationCharterSchema = SyndicateCharterSchema.omit({
+  syndicateId: true,
+});
+export type SyndicateFormationCharter = z.infer<
+  typeof SyndicateFormationCharterSchema
+>;
 
 // ---------------------------------------------------------------------------
 // Negotiation thread status & visibility
@@ -569,6 +578,12 @@ export const GameActionSchema = z.discriminatedUnion("type", [
     targetPlayerIds: z.array(z.string()),
   }),
   z.object({
+    type: z.literal("propose_contract"),
+    partyB: z.string(),
+    terms: z.array(BindingContractTermSchema).min(1),
+    expiresRound: z.number().int().min(1).optional(),
+  }),
+  z.object({
     type: z.literal("sign_contract"),
     contractId: z.string(),
   }),
@@ -583,6 +598,7 @@ export const GameActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("form_syndicate"),
     memberIds: z.array(z.string()),
+    charter: SyndicateFormationCharterSchema.optional(),
   }),
   z.object({
     type: z.literal("call_vote"),
@@ -650,6 +666,9 @@ export const PlayerStateSchema = z.object({
   inRegulation: z.boolean(),
   doublesCount: z.number().int().min(0),
   isOnDiagonal: z.boolean(),
+  syndicateId: z.string().nullable().optional(),
+  outstandingDebt: z.number().int().min(0).optional(),
+  coordinationAcknowledged: z.boolean().optional(),
 });
 export type PlayerState = z.infer<typeof PlayerStateSchema>;
 
@@ -703,6 +722,16 @@ export const GameStateSchema = z.object({
   tiles: z.array(TileStateSchema).optional(),
   freeMarketPool: z.number().optional(),
   activeContracts: z.array(BindingContractSchema).optional(),
+  syndicates: z
+    .record(
+      z.string(),
+      z.object({
+        syndicateId: z.string(),
+        adminId: z.string(),
+        memberIds: z.array(z.string()),
+      }),
+    )
+    .optional(),
   rateCards: z.array(RateCardSchema).optional(),
   turnOrder: z.array(z.string()).optional(),
   aiPlayers: z.array(AiPlayerRuntimeSchema).optional(),

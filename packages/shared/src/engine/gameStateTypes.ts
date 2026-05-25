@@ -129,6 +129,9 @@ export interface GameActionInput {
   multiplier?: number;
   charter?: SyndicateCharterState;
   contractId?: string;
+  partyB?: string;
+  terms?: import("./types.js").BindingContractTerm[];
+  expiresRound?: number;
   handshakeId?: string;
   voteType?: string;
 }

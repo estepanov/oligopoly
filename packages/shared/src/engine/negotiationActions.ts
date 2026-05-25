@@ -11,7 +11,11 @@ import type {
   InternalGameState,
   LogEntry,
 } from "./gameStateTypes.js";
-import { isActionBlockedByContracts } from "./negotiation.js";
+import {
+  isActionBlockedByContracts,
+  validateContractTerms,
+  validateContractTileOwnership,
+} from "./negotiation.js";
 import { ACTION_COSTS } from "./setup.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
 import type { BindingContract } from "./types.js";
@@ -48,6 +52,72 @@ export function handleStartNegotiation(
       playerId,
       actionType: "negotiation_started",
       payload: { partyIds },
+    },
+  ];
+
+  return { state: newState, logEntries: logs };
+}
+
+export function handleProposeContract(
+  state: InternalGameState,
+  playerId: string,
+  action: GameActionInput,
+): ApplyActionResult {
+  if (state.phase !== "action") throw "game.invalid_action";
+
+  const partyB = action.partyB;
+  const terms = action.terms;
+  if (!partyB || partyB === playerId || !terms?.length) {
+    throw "game.invalid_action";
+  }
+
+  const offerer = getPlayer(state, playerId);
+  const counterparty = getPlayer(state, partyB);
+  if (!offerer || !counterparty) throw "game.invalid_action";
+  if (!canCreateBindingContract(offerer.trustworthiness)) {
+    throw NegotiationErrorKeys.BINDING_NOT_ALLOWED_LOW_TRUST;
+  }
+
+  const termCheck = validateContractTerms(terms);
+  if (!termCheck.valid) {
+    throw termCheck.errorKey ?? NegotiationErrorKeys.CONTRACT_INVALID_TERMS;
+  }
+
+  const ownedTilesByParty: Record<string, string[]> = {};
+  for (const player of state.players) {
+    ownedTilesByParty[player.playerId] = player.ownedTilePositions.map(String);
+  }
+  const ownershipCheck = validateContractTileOwnership(
+    terms,
+    ownedTilesByParty,
+  );
+  if (!ownershipCheck.valid) {
+    throw (
+      ownershipCheck.errorKey ?? NegotiationErrorKeys.CONTRACT_TILE_NOT_OWNED
+    );
+  }
+
+  const contract: BindingContract = {
+    id: `contract-${state.gameId}-${(state.activeContracts ?? []).length + 1}`,
+    gameId: state.gameId,
+    partyA: playerId,
+    partyB,
+    terms,
+    status: "active",
+    startsRound: state.round,
+    expiresRound: action.expiresRound ?? state.round + 10,
+    signedAt: 0,
+    fulfilledAt: null,
+    breachedAt: null,
+    partySignatures: { [playerId]: true },
+  };
+
+  const newState = registerActiveContract(state, contract);
+  const logs: LogEntry[] = [
+    {
+      playerId,
+      actionType: "contract_proposed",
+      payload: { contractId: contract.id, partyB },
     },
   ];
 
