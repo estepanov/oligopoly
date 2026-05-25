@@ -231,8 +231,11 @@ export type { MarketEventTrigger } from "./engine/marketEvents.js";
 export {
   buildMarketEventDeck,
   drawAndResolveMarketEvent,
+  handleInsiderDiscardMarketEvent,
+  handleInsiderKeepMarketEvent,
   normalizeMarketEventDeck,
   resolveMarketEventCard,
+  shouldOfferInsiderPeek,
 } from "./engine/marketEvents.js";
 export {
   calculateAbsorptionPrice,

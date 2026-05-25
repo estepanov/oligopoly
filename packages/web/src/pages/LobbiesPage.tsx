@@ -1079,9 +1079,7 @@ export function LobbiesPage() {
                   ),
                 );
               }}
-              onBusy={(next) => {
-                if (next) setBusyStart(true);
-              }}
+              onBusy={setBusyStart}
               onMessage={(text, kind) => setMessage({ text, kind })}
             />
 

@@ -61,6 +61,8 @@ export function handleSignHandshake(
   playerId: string,
   action: GameActionInput,
 ): ApplyActionResult {
+  if (state.phase !== "action") throw "game.invalid_action";
+
   const handshakeId = action.handshakeId;
   if (!handshakeId) throw "game.invalid_action";
 
@@ -103,6 +105,8 @@ export function handleBreakHandshake(
   playerId: string,
   action: GameActionInput,
 ): ApplyActionResult {
+  if (state.phase !== "action") throw "game.invalid_action";
+
   const handshakeId = action.handshakeId;
   if (!handshakeId) throw "game.invalid_action";
 

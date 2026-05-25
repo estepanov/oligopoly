@@ -1,4 +1,5 @@
-import { getTileByPosition, getTilesBySector } from "../config/board.js";
+import { getTileByPosition, getTilesBySector, SECTOR_IDS } from "../config/board.js";
+import { hashSeed } from "./deckShuffle.js";
 import { OPTIONAL_MARKET_EVENT_CARDS_REGISTRY } from "../config/marketEventCards.js";
 import {
   MARKET_EVENT_DECK,
@@ -386,12 +387,18 @@ function resolveSpecificEffect(
         (player) => player.ownedTilePositions.length > 0,
       );
       if (donors.length === 0) return true;
-      const donor = donors[0];
+      const donor =
+        donors[hashSeed(`${state.gameId}:${state.round}:${cardId}:donor`) %
+          donors.length];
+      const recipients = activePlayers(state).filter(
+        (player) => player.playerId !== donor.playerId,
+      );
+      if (recipients.length === 0) return true;
       const recipient =
-        activePlayers(state).find(
-          (player) => player.playerId !== donor.playerId,
-        ) ?? donors[1];
-      if (!recipient) return true;
+        recipients[
+          hashSeed(`${state.gameId}:${state.round}:${cardId}:recipient`) %
+            recipients.length
+        ];
       const tilePosition = donor.ownedTilePositions[0];
       const tileState = state.tiles.find(
         (entry) => String(entry.position) === String(tilePosition),
@@ -498,16 +505,7 @@ function playerControllingMostTilesInAnySector(state: InternalGameState): {
 } | null {
   let best: { playerId: string; sectorId: string; count: number } | null = null;
   for (const player of activePlayers(state)) {
-    for (const sectorId of [
-      "emerging_tech",
-      "big_tech",
-      "finance",
-      "healthcare",
-      "energy",
-      "defense_media",
-      "elite_tech",
-      "fast_track",
-    ] as const) {
+    for (const sectorId of SECTOR_IDS) {
       const sectorTiles = getTilesBySector(sectorId);
       const owned = sectorTiles.filter((tile) =>
         player.ownedTilePositions.some(
@@ -525,8 +523,10 @@ function playerControllingMostTilesInAnySector(state: InternalGameState): {
 export function shouldOfferInsiderPeek(
   state: InternalGameState,
   drawingPlayerId: string,
+  trigger: MarketEventTrigger,
 ): boolean {
   return (
+    trigger === "round_start" &&
     isOptionalRuleEnabled(state.settings, "insider_trading") &&
     drawingPlayerId === state.turnOrder[state.currentPlayerIndex]
   );
@@ -593,18 +593,14 @@ export function handleInsiderDiscardMarketEvent(
   }
 
   const [discarded, ...remaining] = deck;
-  newState.marketEventDeckRemaining = remaining;
-  newState.marketEventDiscard = [
-    ...(newState.marketEventDiscard ?? []),
-    discarded,
-  ];
+  newState.marketEventDeckRemaining = [...remaining, discarded];
   newState.pendingInsiderPeek = null;
 
   const logs: LogEntry[] = [
     {
       playerId,
       actionType: "insider_discarded_market_event",
-      payload: { cardId: discarded },
+      payload: { cardId: discarded, returnedTo: "deck_bottom" },
     },
   ];
 
@@ -677,7 +673,7 @@ export function drawAndResolveMarketEvent(
   const deck = newState.marketEventDeckRemaining ?? [];
   if (
     !options?.skipInsiderPeek &&
-    shouldOfferInsiderPeek(newState, drawingPlayerId) &&
+    shouldOfferInsiderPeek(newState, drawingPlayerId, trigger) &&
     deck.length > 0
   ) {
     newState.pendingInsiderPeek = {
