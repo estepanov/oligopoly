@@ -454,6 +454,17 @@ export const SECTOR_HUB_POSITIONS = {
   media_city: 35,
 } as const;
 
+/** Sectors whose rent qualifies for a hub-adjacent double-rent-district bonus */
+export const HUB_ADJACENT_SECTORS: Record<
+  keyof typeof SECTOR_HUB_POSITIONS,
+  SectorId
+> = {
+  silicon_valley: "emerging_tech",
+  wall_street: "finance",
+  industrial: "energy",
+  media_city: "defense_media",
+} as const;
+
 /** Utility tile positions on the perimeter track */
 export const UTILITY_POSITIONS = [12, 28] as const;
 

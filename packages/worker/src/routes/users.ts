@@ -103,28 +103,46 @@ async function fetchFullProfile(
   db: D1Database,
   userId: string,
 ): Promise<{ profile: FullUserProfile; visibility: ProfileVisibility } | null> {
-  const [userRow, visibilityRow, rankRow, achievementRows] = await Promise.all([
-    db
-      .prepare("SELECT * FROM users WHERE id = ?")
-      .bind(userId)
-      .first<UserRow>(),
-    db
-      .prepare("SELECT * FROM user_visibility WHERE user_id = ?")
-      .bind(userId)
-      .first<VisibilityRow>(),
-    db
-      .prepare("SELECT tier, title FROM user_ranks WHERE user_id = ?")
-      .bind(userId)
-      .first<RankRow>(),
-    db
-      .prepare("SELECT id, unlocked_at FROM achievements WHERE user_id = ?")
-      .bind(userId)
-      .all<AchievementRow>(),
-  ]);
+  const [userRow, visibilityRow, rankRow, achievementRows, statsRow] =
+    await Promise.all([
+      db
+        .prepare("SELECT * FROM users WHERE id = ?")
+        .bind(userId)
+        .first<UserRow>(),
+      db
+        .prepare("SELECT * FROM user_visibility WHERE user_id = ?")
+        .bind(userId)
+        .first<VisibilityRow>(),
+      db
+        .prepare("SELECT tier, title FROM user_ranks WHERE user_id = ?")
+        .bind(userId)
+        .first<RankRow>(),
+      db
+        .prepare("SELECT id, unlocked_at FROM achievements WHERE user_id = ?")
+        .bind(userId)
+        .all<AchievementRow>(),
+      db
+        .prepare(
+          "SELECT games_played, wins, trades_completed, auctions_won, favorite_sector, recent_games_json FROM user_stats WHERE user_id = ?",
+        )
+        .bind(userId)
+        .first<{
+          games_played: number;
+          wins: number;
+          trades_completed: number;
+          auctions_won: number;
+          favorite_sector: string | null;
+          recent_games_json: string;
+        }>(),
+    ]);
 
   if (!userRow) return null;
 
   const visibility = rowToVisibility(visibilityRow);
+  const winRate =
+    statsRow && statsRow.games_played > 0
+      ? statsRow.wins / statsRow.games_played
+      : 0;
 
   const profile: FullUserProfile = {
     id: userRow.id,
@@ -132,12 +150,25 @@ async function fetchFullProfile(
     avatarUrl: userRow.avatar_url,
     rankTier: rankRow?.tier,
     rankTitle: rankRow?.title ?? undefined,
-    careerStats: undefined,
+    careerStats: statsRow
+      ? {
+          gamesPlayed: statsRow.games_played,
+          wins: statsRow.wins,
+          winRate,
+          tradesCompleted: statsRow.trades_completed,
+          auctionsWon: statsRow.auctions_won,
+          favoriteSector: statsRow.favorite_sector,
+        }
+      : undefined,
     achievements: achievementRows.results.map((a) => ({
       id: a.id,
       unlockedAt: a.unlocked_at,
     })),
-    recentGames: [],
+    recentGames: statsRow?.recent_games_json
+      ? (JSON.parse(
+          statsRow.recent_games_json,
+        ) as FullUserProfile["recentGames"])
+      : [],
     onlineStatus: undefined,
     lastSeenAt: undefined,
     viewerContext: {

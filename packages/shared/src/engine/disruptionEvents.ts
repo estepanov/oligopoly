@@ -3,23 +3,27 @@ import {
   DISRUPTION_DECK,
   DISRUPTION_DECK_IDS,
 } from "../config/disruptionDeck.js";
+import {
+  AFFINITY_IDS,
+  canNullifyDisruptionWithBiotech,
+  markAffinityUsed,
+} from "./affinity.js";
 import { shuffleDeterministic } from "./deckShuffle.js";
 import type {
   ApplyActionResult,
   InternalGameState,
   InternalPlayerState,
   LogEntry,
-} from "./gameStateMachine.js";
+} from "./gameStateTypes.js";
+import { regulationPenaltiesEnabled } from "./optionalRulesEngine.js";
+import { resolvePostMovePhase } from "./phaseHelpers.js";
 import { FLASH_CRASH_LOSS_PCT, FLASH_CRASH_WINDFALL_PCT } from "./setup.js";
+import { deepClone, getPlayer } from "./stateUtils.js";
 
 export type DisruptionTrigger =
   | "tile"
   | "black_market_relay"
   | "disruption_blitz";
-
-function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj)) as T;
-}
 
 export function buildDisruptionDeck(gameId: string): string[] {
   return shuffleDeterministic([...DISRUPTION_DECK_IDS], gameId);
@@ -32,13 +36,6 @@ export function normalizeDisruptionDeck(state: InternalGameState): void {
   if (!state.disruptionDiscard) {
     state.disruptionDiscard = [];
   }
-}
-
-function getPlayer(
-  state: InternalGameState,
-  playerId: string,
-): InternalPlayerState | undefined {
-  return state.players.find((player) => player.playerId === playerId);
 }
 
 function activePlayers(state: InternalGameState): InternalPlayerState[] {
@@ -89,6 +86,9 @@ function sendPlayerToRegulation(
   reason: string,
   cardId?: string,
 ): void {
+  if (!regulationPenaltiesEnabled(state.settings)) {
+    return;
+  }
   const player = getPlayer(state, playerId);
   if (!player) return;
   player.position = CORNER_POSITIONS.REGULATION_ZONE;
@@ -418,9 +418,87 @@ export function drawAndResolveDisruptionCards(
         deckRemaining: rest.length,
       },
     });
+    if (canNullifyDisruptionWithBiotech(newState, drawingPlayerId, cardId)) {
+      newState.pendingDisruptionNullify = {
+        cardId,
+        drawingPlayerId,
+        trigger,
+        tilePosition,
+        remainingDraws: drawCount - index - 1,
+      };
+      newState.phase = "waiting_for_disruption_nullify";
+      return { state: newState, logEntries: logs };
+    }
     resolveDisruptionCard(newState, cardId, drawingPlayerId, logs);
   }
 
+  return { state: newState, logEntries: logs };
+}
+
+export function resolvePendingDisruptionCard(
+  state: InternalGameState,
+  nullified: boolean,
+): ApplyActionResult {
+  const pending = state.pendingDisruptionNullify;
+  if (!pending) {
+    throw "game.invalid_action";
+  }
+
+  const logs: LogEntry[] = [];
+  const newState = deepClone(state);
+
+  if (nullified) {
+    markAffinityUsed(
+      newState,
+      pending.drawingPlayerId,
+      AFFINITY_IDS.biotech_ip,
+    );
+    logs.push({
+      playerId: pending.drawingPlayerId,
+      actionType: "disruption_nullified",
+      payload: {
+        cardId: pending.cardId,
+        affinityId: AFFINITY_IDS.biotech_ip,
+      },
+    });
+  } else {
+    resolveDisruptionCard(
+      newState,
+      pending.cardId,
+      pending.drawingPlayerId,
+      logs,
+    );
+  }
+
+  const remainingDraws = pending.remainingDraws ?? 0;
+  newState.pendingDisruptionNullify = null;
+
+  if (remainingDraws > 0) {
+    newState.phase = resolvePostMovePhase(newState, pending.drawingPlayerId);
+    const continued = drawAndResolveDisruptionCards(
+      newState,
+      pending.drawingPlayerId,
+      remainingDraws,
+      pending.trigger as DisruptionTrigger,
+      pending.tilePosition,
+    );
+    const continuedState = continued.state;
+    if (
+      continuedState.phase === "waiting_for_disruption_nullify" &&
+      !continuedState.pendingDisruptionNullify
+    ) {
+      continuedState.phase = resolvePostMovePhase(
+        continuedState,
+        pending.drawingPlayerId,
+      );
+    }
+    return {
+      state: continuedState,
+      logEntries: [...logs, ...continued.logEntries],
+    };
+  }
+
+  newState.phase = resolvePostMovePhase(newState, pending.drawingPlayerId);
   return { state: newState, logEntries: logs };
 }
 

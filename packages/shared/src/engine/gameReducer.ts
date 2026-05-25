@@ -265,6 +265,8 @@ export function applyGameAction(
     case "call_vote":
     case "path_choice":
     case "draw_market_event":
+    case "use_affinity":
+    case "accept_disruption":
       return {
         ok: false,
         errorKey: GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED,

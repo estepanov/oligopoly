@@ -7,6 +7,7 @@ import {
   resolveBlackMarketRelay,
   resolveDisruptionCard,
   resolveFlashCrash,
+  resolvePendingDisruptionCard,
 } from "@oligopoly/shared";
 import { describe, expect, it } from "vitest";
 
@@ -126,6 +127,33 @@ describe("drawAndResolveDisruptionCards", () => {
         (entry) => entry.actionType === "disruption_drawn",
       ),
     ).toHaveLength(2);
+  });
+});
+
+describe("resolvePendingDisruptionCard", () => {
+  it("exits nullify phase after resolving remaining blitz draws", () => {
+    const state = makeDisruptionState({
+      phase: "waiting_for_disruption_nullify",
+      affinityAssignments: { "player-1": "biotech_ip" },
+      pendingDisruptionNullify: {
+        cardId: "disruption_patent_troll",
+        drawingPlayerId: "player-1",
+        trigger: "disruption_blitz",
+        tilePosition: 7,
+        remainingDraws: 1,
+      },
+      disruptionDeckRemaining: ["disruption_golden_parachute"],
+    });
+
+    const result = resolvePendingDisruptionCard(state, true);
+
+    expect(result.state.pendingDisruptionNullify).toBeNull();
+    expect(result.state.phase).not.toBe("waiting_for_disruption_nullify");
+    expect(
+      result.logEntries.some(
+        (entry) => entry.actionType === "disruption_nullified",
+      ),
+    ).toBe(true);
   });
 });
 

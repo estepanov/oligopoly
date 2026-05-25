@@ -1,0 +1,100 @@
+import type { InternalGameState } from "@oligopoly/shared";
+import { initTileStates } from "@oligopoly/shared";
+import { describe, expect, it } from "vitest";
+import { processGameCompletion } from "../../packages/worker/src/services/gameCompletion.js";
+import { createWorkerD1Stub } from "../helpers/workerD1Stub.js";
+
+function makeCompletedState(
+  overrides?: Partial<InternalGameState>,
+): InternalGameState {
+  return {
+    gameId: "game-1",
+    round: 5,
+    phase: "game_over",
+    currentPlayerIndex: 0,
+    turnOrder: ["user-1", "user-2"],
+    freeMarketPool: 0,
+    affinityAssignments: {},
+    pendingBuyTilePosition: null,
+    lastDiceRoll: null,
+    winnerId: "user-1",
+    eliminatedPlayerIds: [],
+    kickedPlayerIds: ["user-2"],
+    tiles: initTileStates(),
+    players: [
+      {
+        playerId: "user-1",
+        position: 0,
+        capital: 5000,
+        ownedTilePositions: [],
+        mortgagedTilePositions: [],
+        developmentTokens: {},
+        trustworthiness: 7,
+        actionPointsRemaining: 0,
+        inRegulation: false,
+        doublesCount: 0,
+        isOnDiagonal: false,
+      },
+      {
+        playerId: "user-2",
+        position: 0,
+        capital: 0,
+        ownedTilePositions: [],
+        mortgagedTilePositions: [],
+        developmentTokens: {},
+        trustworthiness: 7,
+        actionPointsRemaining: 0,
+        inRegulation: false,
+        doublesCount: 0,
+        isOnDiagonal: false,
+      },
+    ],
+    settings: {},
+    ...overrides,
+  };
+}
+
+describe("processGameCompletion", () => {
+  it("records kicked players in recent game history without win stats", async () => {
+    const db = createWorkerD1Stub();
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      status: "completed",
+      started_at: 1,
+      ended_at: 2,
+      winner_id: "user-1",
+      player_ids_json: JSON.stringify(["user-1", "user-2"]),
+      state_json: null,
+    });
+
+    await processGameCompletion(
+      db,
+      undefined,
+      "game-1",
+      makeCompletedState(),
+      1000,
+    );
+
+    const kickedStats = db._tables.user_stats.find(
+      (row) => row.user_id === "user-2",
+    );
+    expect(kickedStats).toBeDefined();
+    const recentGames = JSON.parse(
+      kickedStats?.recent_games_json as string,
+    ) as Array<{ gameId: string; result: string }>;
+    expect(recentGames[0]).toEqual({
+      gameId: "game-1",
+      result: "kicked",
+      endedAt: 1000,
+    });
+    expect(kickedStats?.wins).toBe(0);
+    expect(kickedStats?.games_played).toBe(0);
+
+    const winnerStats = db._tables.user_stats.find(
+      (row) => row.user_id === "user-1",
+    );
+    expect(winnerStats?.games_played).toBe(1);
+    expect(winnerStats?.wins).toBe(1);
+  });
+});

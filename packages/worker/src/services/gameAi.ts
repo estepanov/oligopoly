@@ -66,6 +66,7 @@ export async function stepGameAiTurn(
   db: D1Database,
   gameId: string,
   gameRoom?: DurableObjectNamespace,
+  kv?: KVNamespace,
 ): Promise<StepAiTurnResult> {
   const row = await loadGameRow(db, gameId);
   if (!row) return { applied: false, reason: "not_found" };
@@ -90,6 +91,7 @@ export async function stepGameAiTurn(
 
   await persistGameActionResult(db, gameId, result, {
     gameRoom,
+    kv,
     aiMeta: {
       aiPlayerId: decision.actorId,
       personality: decision.personality,
@@ -105,10 +107,11 @@ export async function runAiTurnLoop(
   gameId: string,
   gameRoom?: DurableObjectNamespace,
   maxSteps = 16,
+  kv?: KVNamespace,
 ): Promise<number> {
   let steps = 0;
   for (let i = 0; i < maxSteps; i++) {
-    const step = await stepGameAiTurn(db, gameId, gameRoom);
+    const step = await stepGameAiTurn(db, gameId, gameRoom, kv);
     if (!step.applied) break;
     steps += 1;
     if (step.result.state.phase === "game_over") break;

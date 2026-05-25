@@ -2,7 +2,7 @@ import type { AiPersonality } from "@oligopoly/validation";
 import type {
   InternalAiPlayerState,
   InternalGameState,
-} from "./gameStateMachine.js";
+} from "./gameStateTypes.js";
 
 const defaultKickPersonality: AiPersonality = "opportunist";
 

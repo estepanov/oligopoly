@@ -7,7 +7,7 @@ import {
   suggestAiAuctionBid,
 } from "./auction.js";
 import { isLiveAuction } from "./auctionMode.js";
-import type { InternalGameState } from "./gameStateMachine.js";
+import type { InternalGameState } from "./gameStateTypes.js";
 
 export type AiDecision = {
   actorId: string;

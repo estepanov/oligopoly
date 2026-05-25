@@ -199,7 +199,9 @@ export {
   resolveBlackMarketRelay,
   resolveDisruptionCard,
   resolveFlashCrash,
+  resolvePendingDisruptionCard,
 } from "./engine/disruptionEvents.js";
+export { collectFreeMarketPool } from "./engine/freeMarket.js";
 export type {
   ApplyGameActionContext,
   ApplyGameActionFailure,
@@ -225,6 +227,7 @@ export {
   initTileStates,
   normalizeGameState,
 } from "./engine/gameStateMachine.js";
+export type { CompletedGameSnapshot } from "./engine/gameStateTypes.js";
 export type { MarketEventTrigger } from "./engine/marketEvents.js";
 export {
   buildMarketEventDeck,
@@ -248,6 +251,10 @@ export {
   validateContractTerms,
   validateContractTileOwnership,
 } from "./engine/negotiation.js";
+export {
+  isOptionalRuleEnabled,
+  regulationPenaltiesEnabled,
+} from "./engine/optionalRulesEngine.js";
 // ---------------------------------------------------------------------------
 // Engine — rent, mortgage, setup, win conditions, contribution, dice
 // ---------------------------------------------------------------------------
@@ -279,6 +286,16 @@ export {
   SPEED_MARKET_MULTIPLIER,
   STARTING_CAPITAL,
 } from "./engine/setup.js";
+export {
+  areSameSyndicate,
+  controllingPlayerIds,
+  findSyndicateWinnerId,
+  getSyndicateForPlayer,
+  hasSectorControl,
+  type SyndicateState,
+  syndicateMarketValue,
+  tileOwnedByController,
+} from "./engine/syndicate.js";
 export type { TrustworthinessRestrictions } from "./engine/trustworthiness.js";
 export {
   applyHandshakeBreach,
@@ -292,3 +309,10 @@ export {
   SOLO_WIN_THRESHOLD,
   SYNDICATE_WIN_THRESHOLD,
 } from "./engine/winCondition.js";
+export {
+  applyWinIfThresholdCrossed,
+  checkWinConditions,
+  evaluateWin,
+  playerMarketValue,
+  playerWonGame,
+} from "./engine/winResolution.js";

@@ -11,13 +11,10 @@ import type {
   InternalGameState,
   InternalPlayerState,
   LogEntry,
-} from "./gameStateMachine.js";
+} from "./gameStateTypes.js";
+import { deepClone, getPlayer } from "./stateUtils.js";
 
 export type MarketEventTrigger = "round_start" | "tile";
-
-function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj)) as T;
-}
 
 function isKnownMarketEventCardId(cardId: string): boolean {
   return (
@@ -71,13 +68,6 @@ export function normalizeMarketEventDeck(state: InternalGameState): void {
   if (!state.marketEventDiscard) {
     state.marketEventDiscard = [];
   }
-}
-
-function getPlayer(
-  state: InternalGameState,
-  playerId: string,
-): InternalPlayerState | undefined {
-  return state.players.find((player) => player.playerId === playerId);
 }
 
 function activePlayers(state: InternalGameState): InternalPlayerState[] {

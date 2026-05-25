@@ -18,9 +18,10 @@ import { rollFairD6 } from "./dice.js";
 import type {
   ApplyActionResult,
   InternalGameState,
-  InternalPlayerState,
   LogEntry,
-} from "./gameStateMachine.js";
+} from "./gameStateTypes.js";
+import { deepClone, getPlayer } from "./stateUtils.js";
+import { applyWinIfThresholdCrossed } from "./winResolution.js";
 
 export type { DeclineAuctionType } from "./auctionMode.js";
 
@@ -36,17 +37,6 @@ export type PendingAuctionState = {
   bidDeadlineAt: number;
   settleDeadlineAt?: number;
 };
-
-function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj)) as T;
-}
-
-function getPlayer(
-  state: InternalGameState,
-  playerId: string,
-): InternalPlayerState | undefined {
-  return state.players.find((player) => player.playerId === playerId);
-}
 
 function auctionBidDeadline(state: InternalGameState, nowMs: number): number {
   return computeAuctionBidDeadline(nowMs, state.settings);
@@ -184,6 +174,8 @@ function awardTileToWinner(
       submissions: auction.submissions,
     },
   });
+
+  applyWinIfThresholdCrossed(newState, logs);
 
   return { state: newState, logEntries: logs };
 }
