@@ -25,7 +25,7 @@ Wrangler emulates D1, KV, and R2 locally via Miniflare — no Cloudflare account
 ### Key caveats
 
 - After `pnpm install`, you must approve build scripts. The root `package.json` includes `pnpm.onlyBuiltDependencies` for `esbuild`, `sharp`, and `workerd` to handle this non-interactively.
-- Build `validation` and `shared` packages before running integration tests that import from them: `pnpm run --filter @oligopoly/validation build && pnpm run --filter @oligopoly/shared build`.
+- Build `validation` and `shared` packages before running integration tests that import from them: `pnpm run ci:build`.
 - The worker exports a Hono `app` object as default; integration tests can call `app.request()` directly without running the server.
 - Cloudflare API credentials (account ID, API token) are **not required** for local development — Wrangler's local mode emulates all bindings.
 - You must create `.env` from `.env.example` (`cp .env.example .env`) before running dev servers. The defaults are sufficient for local dev.

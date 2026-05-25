@@ -34,17 +34,8 @@ jobs:
       - name: Build
         run: pnpm run build
 
-      - name: Typecheck
-        run: pnpm run typecheck
-
-      - name: Lint
-        run: pnpm run lint
-
-      - name: Unit tests
-        run: pnpm run test:unit
-
-      - name: Integration tests
-        run: pnpm run test:integration
+      - name: Local CI parity checks
+        run: pnpm run ci:local
 
       - name: Publish packages
         run: pnpm -r --filter "@oligopoly/shared" --filter "@oligopoly/validation" publish --access public --provenance --no-git-checks
