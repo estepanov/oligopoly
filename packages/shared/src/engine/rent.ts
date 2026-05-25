@@ -53,6 +53,7 @@ export function calculateSectorTileRent(
   developmentTokens: number,
   hasSectorControl: boolean,
   rateCardMultiplier?: number,
+  sectorControlMultiplier?: number,
 ): number {
   let multiplier: number;
 
@@ -65,7 +66,7 @@ export function calculateSectorTileRent(
   } else if (developmentTokens === 1) {
     multiplier = RENT_MULTIPLIERS.DEV_1;
   } else if (hasSectorControl) {
-    multiplier = RENT_MULTIPLIERS.SECTOR_CONTROL;
+    multiplier = sectorControlMultiplier ?? RENT_MULTIPLIERS.SECTOR_CONTROL;
   } else {
     multiplier = 1;
   }

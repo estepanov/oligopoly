@@ -2491,6 +2491,96 @@ describe("applyAction — regulation penalty persists through next turn", () => 
   });
 });
 
+describe("applyAction — syndicates and affinities", () => {
+  it("forms a syndicate and shares sector control", () => {
+    const state = makeTestGameState({ phase: "action" });
+    state.players[0].ownedTilePositions = [1];
+    state.players[1].ownedTilePositions = [3];
+    state.tiles.find((tile) => tile.position === 1)!.ownerId = "player-1";
+    state.tiles.find((tile) => tile.position === 3)!.ownerId = "player-2";
+
+    const formed = applyAction(state, "player-1", {
+      type: "form_syndicate",
+      memberIds: ["player-1", "player-2"],
+    });
+    expect(formed.state.syndicates).toBeDefined();
+    expect(
+      formed.state.players.find((player) => player.playerId === "player-2")
+        ?.syndicateId,
+    ).toBeTruthy();
+
+    formed.state.players[0].position = 1;
+    formed.state.currentPlayerIndex = 0;
+    formed.state.phase = "waiting_for_roll";
+    const rentResult = applyAction(formed.state, "player-1", {
+      type: "roll_dice",
+      result: [0, 1],
+    });
+    expect(
+      rentResult.logEntries.some((entry) => entry.actionType === "paid_rent"),
+    ).toBe(false);
+  });
+
+  it("reveals opponent capital with consumer insights", () => {
+    const state = makeTestGameState({
+      phase: "action",
+      affinityAssignments: { "player-1": "consumer_insights" },
+    });
+    const result = applyAction(state, "player-1", {
+      type: "use_affinity",
+      affinityId: "consumer_insights",
+      targetPlayerId: "player-2",
+    });
+    expect(
+      result.logEntries.some(
+        (entry) => entry.actionType === "capital_revealed",
+      ),
+    ).toBe(true);
+  });
+
+  it("allows biotech nullification of harmful disruption cards", () => {
+    const state = makeTestGameState({
+      phase: "waiting_for_roll",
+      affinityAssignments: { "player-1": "biotech_ip" },
+      disruptionDeckRemaining: ["disruption_patent_troll"],
+    });
+    const drawn = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [3, 4],
+    });
+    expect(drawn.state.phase).toBe("waiting_for_disruption_nullify");
+    const nullified = applyAction(drawn.state, "player-1", {
+      type: "use_affinity",
+      affinityId: "biotech_ip",
+    });
+    expect(nullified.state.phase).toBe("action");
+    expect(
+      nullified.state.players.find((player) => player.playerId === "player-1")
+        ?.capital,
+    ).toBe(1500);
+    expect(
+      nullified.logEntries.some(
+        (entry) => entry.actionType === "disruption_nullified",
+      ),
+    ).toBe(true);
+  });
+
+  it("skips regulation penalties when no_regulation is enabled", () => {
+    const state = makeTestGameState({
+      settings: { optionalRuleIds: ["no_regulation"] },
+    });
+    state.players[0].position = 38;
+    const result = applyAction(state, "player-1", {
+      type: "roll_dice",
+      result: [1, 1],
+    });
+    const player = result.state.players.find(
+      (entry) => entry.playerId === "player-1",
+    )!;
+    expect(player.inRegulation).toBe(false);
+  });
+});
+
 describe("applyAction — path-choice auto-roll when passing through START", () => {
   it("routes to perimeter with odd path-choice die", () => {
     const state = makeTestGameState();

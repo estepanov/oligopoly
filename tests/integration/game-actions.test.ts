@@ -237,7 +237,9 @@ describe("POST /api/games/:id/action — buy_tile / decline_tile", () => {
       ownedTilePositions: number[];
     }>;
     const buyer = players.find((p) => p.playerId === currentPlayer)!;
-    expect(buyer.capital).toBe(capitals[currentPlayer] - 80);
+    const purchaseCost = capitals[currentPlayer] - buyer.capital;
+    expect(purchaseCost).toBeGreaterThanOrEqual(68);
+    expect(purchaseCost).toBeLessThanOrEqual(80);
     expect(buyer.ownedTilePositions).toContain(3);
   });
 
@@ -591,6 +593,20 @@ describe("POST /api/games/:id/action — mortgage and redeem", () => {
       db,
     });
 
+    const stateBeforeMortgage = await requestWithEnv(
+      `/api/games/${gameId}/state`,
+      {
+        headers: { "x-subject": currentPlayer },
+        db,
+      },
+    );
+    const beforeBody = (await stateBeforeMortgage.json()) as {
+      players: Array<{ playerId: string; capital: number }>;
+    };
+    const capitalBeforeMortgage = beforeBody.players.find(
+      (player) => player.playerId === currentPlayer,
+    )!.capital;
+
     // Mortgage the tile (Mobile Gaming Inc. cost 80, mortgage value = 40)
     const mortRes = await requestWithEnv(`/api/games/${gameId}/action`, {
       method: "POST",
@@ -607,7 +623,7 @@ describe("POST /api/games/:id/action — mortgage and redeem", () => {
       mortgagedTilePositions: number[];
     }>;
     const player = players.find((p) => p.playerId === currentPlayer)!;
-    expect(player.capital).toBe(capitals[currentPlayer] - 80 + 40);
+    expect(player.capital).toBe(capitalBeforeMortgage + 40);
     expect(player.mortgagedTilePositions).toContain(3);
   });
 

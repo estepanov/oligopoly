@@ -199,7 +199,9 @@ export {
   resolveBlackMarketRelay,
   resolveDisruptionCard,
   resolveFlashCrash,
+  resolvePendingDisruptionCard,
 } from "./engine/disruptionEvents.js";
+export { collectFreeMarketPool } from "./engine/freeMarket.js";
 export type {
   ApplyGameActionContext,
   ApplyGameActionFailure,
@@ -248,6 +250,10 @@ export {
   validateContractTerms,
   validateContractTileOwnership,
 } from "./engine/negotiation.js";
+export {
+  isOptionalRuleEnabled,
+  regulationPenaltiesEnabled,
+} from "./engine/optionalRulesEngine.js";
 // ---------------------------------------------------------------------------
 // Engine — rent, mortgage, setup, win conditions, contribution, dice
 // ---------------------------------------------------------------------------
@@ -279,6 +285,15 @@ export {
   SPEED_MARKET_MULTIPLIER,
   STARTING_CAPITAL,
 } from "./engine/setup.js";
+export {
+  areSameSyndicate,
+  controllingPlayerIds,
+  findSyndicateWinnerId,
+  getSyndicateForPlayer,
+  type SyndicateState,
+  syndicateMarketValue,
+  tileOwnedByController,
+} from "./engine/syndicate.js";
 export type { TrustworthinessRestrictions } from "./engine/trustworthiness.js";
 export {
   applyHandshakeBreach,

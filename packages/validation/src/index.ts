@@ -556,6 +556,14 @@ export const GameActionSchema = z.discriminatedUnion("type", [
     type: z.literal("draw_market_event"),
   }),
   z.object({
+    type: z.literal("use_affinity"),
+    affinityId: z.string(),
+    targetPlayerId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("accept_disruption"),
+  }),
+  z.object({
     type: z.literal("start_negotiation"),
     targetPlayerIds: z.array(z.string()),
   }),
@@ -603,6 +611,7 @@ export const GamePhaseSchema = z.enum([
   "waiting_for_auction_bids",
   "waiting_for_auction_settle",
   "waiting_for_path_choice",
+  "waiting_for_disruption_nullify",
   "rolling_doubles",
   "game_over",
 ]);

@@ -10,12 +10,21 @@ import {
   CORNER_POSITIONS,
   DIAGONAL_TILES,
   getTileByPosition,
+  HUB_ADJACENT_SECTORS,
+  SECTOR_HUB_POSITIONS,
   TOTAL_BOARD_MARKET_VALUE,
 } from "../config/board.js";
 import {
   AFFINITY_IDS,
+  applyAcquisitionCostAffinity,
   applyLastMileLogisticsTraverseBonus,
+  calculateAffinityRentBonus,
+  canNullifyDisruptionWithBiotech,
+  formSyndicateApCost,
+  getPlayerAffinityId,
   hasPlayerAffinity,
+  markAffinityUsed,
+  spectrumHolderUtilityMultiplier,
 } from "./affinity.js";
 import {
   type PendingAuctionState,
@@ -39,12 +48,18 @@ import {
   normalizeDisruptionDeck,
   resolveBlackMarketRelay,
   resolveFlashCrash,
+  resolvePendingDisruptionCard,
 } from "./disruptionEvents.js";
+import { collectFreeMarketPool } from "./freeMarket.js";
 import {
   drawAndResolveMarketEvent,
   normalizeMarketEventDeck,
 } from "./marketEvents.js";
 import { calculateMortgageValue, calculateRedemptionCost } from "./mortgage.js";
+import {
+  isOptionalRuleEnabled,
+  regulationPenaltiesEnabled,
+} from "./optionalRulesEngine.js";
 import {
   calculateDevelopmentCost,
   calculateHubRent,
@@ -61,6 +76,13 @@ import {
   GOVERNMENT_GRANT,
   PASS_START_BONUS,
 } from "./setup.js";
+import {
+  areSameSyndicate,
+  controllingPlayerIds,
+  findSyndicateWinnerId,
+  getSyndicateForPlayer,
+  tileOwnedByController,
+} from "./syndicate.js";
 import { checkSoloWin } from "./winCondition.js";
 
 // ---------------------------------------------------------------------------
@@ -96,6 +118,17 @@ export interface InternalGameState {
   marketEventDiscard?: string[];
   disruptionDeckRemaining?: string[];
   disruptionDiscard?: string[];
+  syndicates?: Record<
+    string,
+    { syndicateId: string; adminId: string; memberIds: string[] }
+  >;
+  pendingDisruptionNullify?: {
+    cardId: string;
+    drawingPlayerId: string;
+    trigger: string;
+    tilePosition?: number | string;
+    remainingDraws?: number;
+  } | null;
 }
 
 export interface InternalAiPlayerState {
@@ -120,6 +153,8 @@ export interface InternalPlayerState {
   inRegulation: boolean;
   doublesCount: number;
   isOnDiagonal: boolean;
+  syndicateId?: string | null;
+  usedAffinityIds?: string[];
 }
 
 export interface InternalTileState {
@@ -140,6 +175,9 @@ export interface GameActionInput {
   pathChoiceDie?: number;
   /** Used by auction_pass submissions */
   pass?: true;
+  memberIds?: string[];
+  affinityId?: string;
+  targetPlayerId?: string;
 }
 
 export interface ApplyActionResult {
@@ -173,15 +211,7 @@ function exitDiagonalAtFreeMarket(
 ): { skipLandingResolve: boolean } {
   player.isOnDiagonal = false;
   applyLastMileLogisticsTraverseBonus(state, playerId, logs);
-
-  const pool = Math.max(state.freeMarketPool, FREE_MARKET_MINIMUM);
-  player.capital += pool;
-  state.freeMarketPool = 0;
-  logs.push({
-    playerId,
-    actionType: "collected_free_market",
-    payload: { amount: pool },
-  });
+  collectFreeMarketPool(state, playerId, logs);
 
   if (overflowSteps > 0) {
     const { newPosition } = moveOnPerimeter(
@@ -220,10 +250,14 @@ function isTilePurchasable(position: number | string): boolean {
 }
 
 function countHubsOwned(state: InternalGameState, playerId: string): number {
-  const hubPositions = [5, 15, 25, 35];
+  const hubPositions = Object.values(SECTOR_HUB_POSITIONS);
   return hubPositions.filter((pos) => {
     const ts = state.tiles.find((t) => t.position === pos);
-    return ts?.ownerId === playerId && !ts.mortgaged;
+    return (
+      ts?.ownerId &&
+      tileOwnedByController(state, playerId, ts.ownerId) &&
+      !ts.mortgaged
+    );
   }).length;
 }
 
@@ -234,8 +268,33 @@ function countUtilitiesOwned(
   const utilPositions = [12, 28];
   return utilPositions.filter((pos) => {
     const ts = state.tiles.find((t) => t.position === pos);
-    return ts?.ownerId === playerId && !ts.mortgaged;
+    return (
+      ts?.ownerId &&
+      tileOwnedByController(state, playerId, ts.ownerId) &&
+      !ts.mortgaged
+    );
   }).length;
+}
+
+function ownsHubForSector(
+  state: InternalGameState,
+  playerId: string,
+  sectorId: string,
+): boolean {
+  for (const [hubKey, adjacentSector] of Object.entries(HUB_ADJACENT_SECTORS)) {
+    if (adjacentSector !== sectorId) continue;
+    const hubPos =
+      SECTOR_HUB_POSITIONS[hubKey as keyof typeof SECTOR_HUB_POSITIONS];
+    const ts = state.tiles.find((t) => t.position === hubPos);
+    if (
+      ts?.ownerId &&
+      tileOwnedByController(state, playerId, ts.ownerId) &&
+      !ts.mortgaged
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function hasSectorControl(
@@ -243,15 +302,24 @@ function hasSectorControl(
   playerId: string,
   sectorId: string,
 ): boolean {
+  const controllers = controllingPlayerIds(state, playerId);
   const sectorTiles = ALL_TILES.filter(
     (t) => t.sectorId === sectorId && t.type === "sector_tile",
   );
   return sectorTiles.every((t) => {
     const ts = state.tiles.find(
-      (ts) => String(ts.position) === String(t.position),
+      (tile) => String(tile.position) === String(t.position),
     );
-    return ts?.ownerId === playerId && !ts.mortgaged;
+    return ts?.ownerId && controllers.includes(ts.ownerId) && !ts.mortgaged;
   });
+}
+
+function visitorControlsSector(
+  state: InternalGameState,
+  visitorId: string,
+  sectorId: string,
+): boolean {
+  return hasSectorControl(state, visitorId, sectorId);
 }
 
 function playerMarketValue(state: InternalGameState, playerId: string): number {
@@ -264,8 +332,17 @@ function playerMarketValue(state: InternalGameState, playerId: string): number {
 }
 
 function checkWinConditions(state: InternalGameState): string | null {
+  const syndicateWinner = findSyndicateWinnerId(
+    state,
+    TOTAL_BOARD_MARKET_VALUE,
+  );
+  if (syndicateWinner) {
+    return syndicateWinner;
+  }
+
   for (const p of state.players) {
     if (state.eliminatedPlayerIds.includes(p.playerId)) continue;
+    if (getSyndicateForPlayer(state, p.playerId)) continue;
     const mv = playerMarketValue(state, p.playerId);
     if (checkSoloWin(mv, TOTAL_BOARD_MARKET_VALUE)) {
       return p.playerId;
@@ -372,6 +449,13 @@ export function applyAction(
     throw "game.completed";
   }
 
+  if (state.phase === "waiting_for_disruption_nullify") {
+    if (action.type === "use_affinity" || action.type === "accept_disruption") {
+      return handleDisruptionNullifyResponse(state, playerId, action);
+    }
+    throw "game.invalid_phase";
+  }
+
   if (action.type === "auction_bid") {
     return handleAuctionBid(state, playerId, action);
   }
@@ -403,6 +487,10 @@ export function applyAction(
       return handleRedeemTile(state, playerId, action);
     case "draw_market_event":
       return handleDrawMarketEvent(state, playerId);
+    case "form_syndicate":
+      return handleFormSyndicate(state, playerId, action);
+    case "use_affinity":
+      return handleUseAffinity(state, playerId, action);
     default:
       throw "game.invalid_action";
   }
@@ -458,17 +546,19 @@ function handleRollDice(
 
   // Three consecutive doubles -> Regulation Zone
   if (p.doublesCount >= TRIPLE_DOUBLES_LIMIT) {
-    p.position = CORNER_POSITIONS.REGULATION_ZONE;
-    p.inRegulation = true;
     p.doublesCount = 0;
     p.isOnDiagonal = false;
-    newState.phase = "action";
     newState.lastDiceRoll = dice;
-    logs.push({
-      playerId,
-      actionType: "sent_to_regulation",
-      payload: { reason: "triple_doubles" },
-    });
+    if (regulationPenaltiesEnabled(newState.settings)) {
+      p.position = CORNER_POSITIONS.REGULATION_ZONE;
+      p.inRegulation = true;
+      logs.push({
+        playerId,
+        actionType: "sent_to_regulation",
+        payload: { reason: "triple_doubles" },
+      });
+    }
+    newState.phase = "action";
     return { state: newState, logEntries: logs };
   }
 
@@ -567,7 +657,8 @@ function handleRollDice(
   if (
     newState.phase !== "waiting_for_buy" &&
     newState.phase !== "game_over" &&
-    newState.phase !== "waiting_for_path_choice"
+    newState.phase !== "waiting_for_path_choice" &&
+    newState.phase !== "waiting_for_disruption_nullify"
   ) {
     if (doubles && p.doublesCount < TRIPLE_DOUBLES_LIMIT) {
       newState.phase = "rolling_doubles";
@@ -594,26 +685,21 @@ function resolveLanding(
   // Corner effects
   if (typeof pos === "number") {
     if (pos === CORNER_POSITIONS.GO_TO_REGULATION) {
-      p.position = CORNER_POSITIONS.REGULATION_ZONE;
-      p.inRegulation = true;
-      p.isOnDiagonal = false;
-      logs.push({
-        playerId,
-        actionType: "sent_to_regulation",
-        payload: { reason: "go_to_regulation_tile" },
-      });
+      if (regulationPenaltiesEnabled(state.settings)) {
+        p.position = CORNER_POSITIONS.REGULATION_ZONE;
+        p.inRegulation = true;
+        p.isOnDiagonal = false;
+        logs.push({
+          playerId,
+          actionType: "sent_to_regulation",
+          payload: { reason: "go_to_regulation_tile" },
+        });
+      }
       return { state, additionalLogs: logs };
     }
 
     if (pos === CORNER_POSITIONS.FREE_MARKET) {
-      const pool = Math.max(state.freeMarketPool, FREE_MARKET_MINIMUM);
-      p.capital += pool;
-      state.freeMarketPool = 0;
-      logs.push({
-        playerId,
-        actionType: "collected_free_market",
-        payload: { amount: pool },
-      });
+      collectFreeMarketPool(state, playerId, logs);
       return { state, additionalLogs: logs };
     }
   }
@@ -690,7 +776,35 @@ function resolveLanding(
   if (isTilePurchasable(pos)) {
     const owner = getTileOwner(state, pos);
     if (owner === null) {
-      // Unowned - offer right of first refusal
+      if (isOptionalRuleEnabled(state.settings, "auction_everything")) {
+        const resumePhase =
+          p.doublesCount > 0 && p.doublesCount < TRIPLE_DOUBLES_LIMIT
+            ? "rolling_doubles"
+            : "action";
+        const auctionState = startDeclineAuction(state, pos, resumePhase);
+        logs.push({
+          playerId,
+          actionType: "tile_available",
+          payload: {
+            position: pos,
+            name: tile.name,
+            cost: tile.cost,
+            auctionEverything: true,
+          },
+        });
+        logs.push({
+          playerId: null,
+          actionType: "auction_started",
+          payload: {
+            position: pos,
+            name: tile.name,
+            auctionType:
+              auctionState.pendingAuction?.auctionType ?? "sealed_bids",
+            reservePrice: 1,
+          },
+        });
+        return { state: auctionState, additionalLogs: logs };
+      }
       state.pendingBuyTilePosition = pos;
       state.phase = "waiting_for_buy";
       logs.push({
@@ -698,8 +812,10 @@ function resolveLanding(
         actionType: "tile_available",
         payload: { position: pos, name: tile.name, cost: tile.cost },
       });
-    } else if (owner !== playerId) {
-      // Owned by someone else - pay rent
+    } else if (
+      owner !== playerId &&
+      !areSameSyndicate(state, playerId, owner)
+    ) {
       const rentResult = calculateRent(state, pos, playerId);
       p.capital -= rentResult.rent;
       const ownerPlayer = getPlayer(state, owner)!;
@@ -714,6 +830,25 @@ function resolveLanding(
           name: tile.name,
         },
       });
+      const rentBonus = calculateAffinityRentBonus(
+        state,
+        owner,
+        tile,
+        rentResult.rent,
+      );
+      if (rentBonus > 0) {
+        ownerPlayer.capital += rentBonus;
+        logs.push({
+          playerId: owner,
+          actionType: "affinity_bonus",
+          payload: {
+            affinityId: getPlayerAffinityId(state, owner),
+            amount: rentBonus,
+            reason: "rent_subsidy",
+            position: pos,
+          },
+        });
+      }
     }
   }
 
@@ -723,7 +858,7 @@ function resolveLanding(
 function calculateRent(
   state: InternalGameState,
   position: number | string,
-  _visitorId: string,
+  visitorId: string,
 ): { rent: number } {
   const tile = getTileByPosition(position);
   if (!tile || tile.cost === null) return { rent: 0 };
@@ -746,14 +881,39 @@ function calculateRent(
     const diceTotal = state.lastDiceRoll
       ? state.lastDiceRoll[0] + state.lastDiceRoll[1]
       : 7;
-    return { rent: calculateUtilityRent(utilCount, diceTotal) };
+    let rent = calculateUtilityRent(utilCount, diceTotal);
+    const spectrumMultiplier = spectrumHolderUtilityMultiplier(
+      state,
+      ownerId,
+      utilCount,
+    );
+    if (spectrumMultiplier) {
+      rent = Math.floor(rent * spectrumMultiplier);
+    }
+    return { rent };
   }
 
   if (tile.type === "sector_tile" && tile.baseRent !== null && tile.sectorId) {
     const sectorCtrl = hasSectorControl(state, ownerId, tile.sectorId);
     const devTokens = tileState.developmentTokens;
+    let sectorControlMultiplier: number | undefined;
+    if (
+      isOptionalRuleEnabled(state.settings, "double_rent_district") &&
+      sectorCtrl &&
+      devTokens === 0 &&
+      ownsHubForSector(state, ownerId, tile.sectorId) &&
+      !visitorControlsSector(state, visitorId, tile.sectorId)
+    ) {
+      sectorControlMultiplier = 3;
+    }
     return {
-      rent: calculateSectorTileRent(tile.baseRent, devTokens, sectorCtrl),
+      rent: calculateSectorTileRent(
+        tile.baseRent,
+        devTokens,
+        sectorCtrl,
+        undefined,
+        sectorControlMultiplier,
+      ),
     };
   }
 
@@ -779,11 +939,17 @@ function handleBuyTile(
   if (!tile || tile.cost === null) throw "game.tile_not_purchasable";
 
   const p = getPlayer(state, playerId)!;
-  if (p.capital < tile.cost) throw "game.insufficient_capital";
+  const purchaseCost = applyAcquisitionCostAffinity(
+    state,
+    playerId,
+    tile.sectorId,
+    tile.cost,
+  );
+  if (p.capital < purchaseCost) throw "game.insufficient_capital";
 
   const newState = deepClone(state);
   const np = getPlayer(newState, playerId)!;
-  np.capital -= tile.cost;
+  np.capital -= purchaseCost;
   np.ownedTilePositions.push(tile.position);
 
   const ts = newState.tiles.find(
@@ -1187,4 +1353,129 @@ function handleRedeemTile(
   ];
 
   return { state: newState, logEntries: logs };
+}
+
+function handleFormSyndicate(
+  state: InternalGameState,
+  playerId: string,
+  action: GameActionInput,
+): ApplyActionResult {
+  if (state.phase !== "action") throw "game.invalid_action";
+
+  const memberIds = action.memberIds;
+  if (!memberIds || memberIds.length < 2) throw "game.invalid_action";
+  if (!memberIds.includes(playerId)) throw "game.invalid_action";
+
+  const uniqueMembers = [...new Set(memberIds)];
+  if (uniqueMembers.length !== memberIds.length) throw "game.invalid_action";
+
+  for (const memberId of memberIds) {
+    if (!state.players.some((player) => player.playerId === memberId)) {
+      throw "game.invalid_action";
+    }
+    if (getSyndicateForPlayer(state, memberId)) {
+      throw "game.invalid_action";
+    }
+  }
+
+  const apCost = formSyndicateApCost(state, playerId);
+  const player = getPlayer(state, playerId)!;
+  if (player.actionPointsRemaining < apCost) throw "game.insufficient_ap";
+
+  const newState = deepClone(state);
+  if (!newState.syndicates) {
+    newState.syndicates = {};
+  }
+
+  const syndicateId = `syndicate-${newState.gameId}-${Object.keys(newState.syndicates).length + 1}`;
+  newState.syndicates[syndicateId] = {
+    syndicateId,
+    adminId: playerId,
+    memberIds: [...memberIds],
+  };
+
+  for (const memberId of memberIds) {
+    const member = getPlayer(newState, memberId)!;
+    member.syndicateId = syndicateId;
+  }
+
+  const actor = getPlayer(newState, playerId)!;
+  actor.actionPointsRemaining -= apCost;
+
+  const logs: LogEntry[] = [
+    {
+      playerId,
+      actionType: "syndicate_formed",
+      payload: { syndicateId, memberIds },
+    },
+  ];
+
+  return { state: newState, logEntries: logs };
+}
+
+function handleUseAffinity(
+  state: InternalGameState,
+  playerId: string,
+  action: GameActionInput,
+): ApplyActionResult {
+  if (state.phase !== "action") throw "game.invalid_action";
+
+  const affinityId = action.affinityId;
+  if (!affinityId || getPlayerAffinityId(state, playerId) !== affinityId) {
+    throw "game.invalid_action";
+  }
+
+  const player = getPlayer(state, playerId)!;
+  if (player.usedAffinityIds?.includes(affinityId)) {
+    throw "game.invalid_action";
+  }
+
+  if (affinityId === AFFINITY_IDS.consumer_insights) {
+    const targetPlayerId = action.targetPlayerId;
+    if (!targetPlayerId || targetPlayerId === playerId) {
+      throw "game.invalid_action";
+    }
+    const target = getPlayer(state, targetPlayerId);
+    if (!target) throw "game.invalid_action";
+
+    const newState = deepClone(state);
+    markAffinityUsed(newState, playerId, affinityId);
+    const logs: LogEntry[] = [
+      {
+        playerId,
+        actionType: "capital_revealed",
+        payload: {
+          targetPlayerId,
+          capital: target.capital,
+          affinityId,
+        },
+      },
+    ];
+    return { state: newState, logEntries: logs };
+  }
+
+  throw "game.invalid_action";
+}
+
+function handleDisruptionNullifyResponse(
+  state: InternalGameState,
+  playerId: string,
+  action: GameActionInput,
+): ApplyActionResult {
+  const pending = state.pendingDisruptionNullify;
+  if (!pending || pending.drawingPlayerId !== playerId) {
+    throw "game.not_your_turn";
+  }
+
+  if (action.type === "use_affinity") {
+    if (action.affinityId !== AFFINITY_IDS.biotech_ip) {
+      throw "game.invalid_action";
+    }
+    if (!canNullifyDisruptionWithBiotech(state, playerId, pending.cardId)) {
+      throw "game.invalid_action";
+    }
+    return resolvePendingDisruptionCard(state, true);
+  }
+
+  return resolvePendingDisruptionCard(state, false);
 }

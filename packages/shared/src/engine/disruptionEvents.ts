@@ -3,13 +3,20 @@ import {
   DISRUPTION_DECK,
   DISRUPTION_DECK_IDS,
 } from "../config/disruptionDeck.js";
+import {
+  AFFINITY_IDS,
+  canNullifyDisruptionWithBiotech,
+  markAffinityUsed,
+} from "./affinity.js";
 import { shuffleDeterministic } from "./deckShuffle.js";
+import { TRIPLE_DOUBLES_LIMIT } from "./dice.js";
 import type {
   ApplyActionResult,
   InternalGameState,
   InternalPlayerState,
   LogEntry,
 } from "./gameStateMachine.js";
+import { regulationPenaltiesEnabled } from "./optionalRulesEngine.js";
 import { FLASH_CRASH_LOSS_PCT, FLASH_CRASH_WINDFALL_PCT } from "./setup.js";
 
 export type DisruptionTrigger =
@@ -89,6 +96,9 @@ function sendPlayerToRegulation(
   reason: string,
   cardId?: string,
 ): void {
+  if (!regulationPenaltiesEnabled(state.settings)) {
+    return;
+  }
   const player = getPlayer(state, playerId);
   if (!player) return;
   player.position = CORNER_POSITIONS.REGULATION_ZONE;
@@ -418,9 +428,94 @@ export function drawAndResolveDisruptionCards(
         deckRemaining: rest.length,
       },
     });
+    if (canNullifyDisruptionWithBiotech(newState, drawingPlayerId, cardId)) {
+      newState.pendingDisruptionNullify = {
+        cardId,
+        drawingPlayerId,
+        trigger,
+        tilePosition,
+        remainingDraws: drawCount - index - 1,
+      };
+      newState.phase = "waiting_for_disruption_nullify";
+      return { state: newState, logEntries: logs };
+    }
     resolveDisruptionCard(newState, cardId, drawingPlayerId, logs);
   }
 
+  return { state: newState, logEntries: logs };
+}
+
+function resumePhaseAfterDisruption(
+  state: InternalGameState,
+  playerId: string,
+): string {
+  const player = getPlayer(state, playerId);
+  if (
+    player &&
+    player.doublesCount > 0 &&
+    player.doublesCount < TRIPLE_DOUBLES_LIMIT
+  ) {
+    return "rolling_doubles";
+  }
+  return "action";
+}
+
+export function resolvePendingDisruptionCard(
+  state: InternalGameState,
+  nullified: boolean,
+): ApplyActionResult {
+  const pending = state.pendingDisruptionNullify;
+  if (!pending) {
+    throw "game.invalid_action";
+  }
+
+  const logs: LogEntry[] = [];
+  const newState = deepClone(state);
+
+  if (nullified) {
+    markAffinityUsed(
+      newState,
+      pending.drawingPlayerId,
+      AFFINITY_IDS.biotech_ip,
+    );
+    logs.push({
+      playerId: pending.drawingPlayerId,
+      actionType: "disruption_nullified",
+      payload: {
+        cardId: pending.cardId,
+        affinityId: AFFINITY_IDS.biotech_ip,
+      },
+    });
+  } else {
+    resolveDisruptionCard(
+      newState,
+      pending.cardId,
+      pending.drawingPlayerId,
+      logs,
+    );
+  }
+
+  const remainingDraws = pending.remainingDraws ?? 0;
+  newState.pendingDisruptionNullify = null;
+
+  if (remainingDraws > 0) {
+    const continued = drawAndResolveDisruptionCards(
+      newState,
+      pending.drawingPlayerId,
+      remainingDraws,
+      pending.trigger as DisruptionTrigger,
+      pending.tilePosition,
+    );
+    return {
+      state: continued.state,
+      logEntries: [...logs, ...continued.logEntries],
+    };
+  }
+
+  newState.phase = resumePhaseAfterDisruption(
+    newState,
+    pending.drawingPlayerId,
+  );
   return { state: newState, logEntries: logs };
 }
 
