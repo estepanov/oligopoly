@@ -27,6 +27,13 @@ import {
   resolveFlashCrash,
 } from "./disruptionEvents.js";
 import { collectFreeMarketPool } from "./freeMarket.js";
+import type {
+  ApplyActionResult,
+  GameActionInput,
+  InternalGameState,
+  InternalPlayerState,
+  LogEntry,
+} from "./gameStateTypes.js";
 import { drawAndResolveMarketEvent } from "./marketEvents.js";
 import { calculateMortgageValue, calculateRedemptionCost } from "./mortgage.js";
 import {
@@ -52,13 +59,6 @@ import {
   GOVERNMENT_GRANT,
   PASS_START_BONUS,
 } from "./setup.js";
-import type {
-  ApplyActionResult,
-  GameActionInput,
-  InternalGameState,
-  InternalPlayerState,
-  LogEntry,
-} from "./gameStateTypes.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
 import { areSameSyndicate } from "./syndicate.js";
 import {

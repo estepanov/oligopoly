@@ -4,8 +4,16 @@
 // ---------------------------------------------------------------------------
 
 import { ALL_TILES } from "../config/board.js";
-import { handleDisruptionNullifyResponse, handleUseAffinity } from "./affinityActions.js";
-import { computeAuctionBidDeadline, computeAuctionSettleDeadline } from "./auctionTiming.js";
+import {
+  handleDisruptionNullifyResponse,
+  handleUseAffinity,
+} from "./affinityActions.js";
+import {
+  computeAuctionBidDeadline,
+  computeAuctionSettleDeadline,
+} from "./auctionTiming.js";
+import { handlePayDebt } from "./debtActions.js";
+import { normalizeDisruptionDeck } from "./disruptionEvents.js";
 import {
   handleAuctionBid,
   handleAuctionPass,
@@ -19,8 +27,12 @@ import {
   handleRedeemTile,
   handleRollDice,
 } from "./gameStateActionHandlers.js";
-import { handlePayDebt } from "./debtActions.js";
-import { normalizeDisruptionDeck } from "./disruptionEvents.js";
+import type {
+  ApplyActionResult,
+  GameActionInput,
+  InternalGameState,
+  InternalTileState,
+} from "./gameStateTypes.js";
 import { normalizeMarketEventDeck } from "./marketEvents.js";
 import {
   handleBreakHandshake,
@@ -30,12 +42,6 @@ import {
 } from "./negotiationActions.js";
 import { handleInitiateAuction } from "./playerAuctionActions.js";
 import { handleEndCoordination, handleSetRateCard } from "./rateCardActions.js";
-import type {
-  ApplyActionResult,
-  GameActionInput,
-  InternalGameState,
-  InternalTileState,
-} from "./gameStateTypes.js";
 import { handleFormSyndicate } from "./syndicateActions.js";
 
 export type {
