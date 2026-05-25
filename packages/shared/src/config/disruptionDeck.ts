@@ -70,7 +70,7 @@ export const DISRUPTION_DECK: Record<string, DisruptionCard> = {
     id: "disruption_corporate_espionage",
     name: "Corporate Espionage",
     description:
-      "Each player pays 10 Capital for every development token on tiles they own.",
+      "Each player pays 10 Capital for every development token on tiles currently owned by opponents.",
   },
   disruption_regulatory_capture: {
     id: "disruption_regulatory_capture",

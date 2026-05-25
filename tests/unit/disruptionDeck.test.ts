@@ -8,4 +8,10 @@ describe("DISRUPTION_DECK config", () => {
       expect(card.description.length).toBeGreaterThan(0);
     }
   });
+
+  it("matches Corporate Espionage resolution semantics", () => {
+    expect(
+      DISRUPTION_DECK.disruption_corporate_espionage.description,
+    ).toContain("opponents");
+  });
 });
