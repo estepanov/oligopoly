@@ -77,15 +77,6 @@ export function startDeclineAuction(
   };
 }
 
-function tieBreakRoll(state: InternalGameState, playerIds: string[]): number {
-  const seed = `${state.gameId}:${state.round}:${playerIds.join(",")}:${state.pendingAuction?.tieBreakRound ?? 0}`;
-  let hash = 0;
-  for (const ch of seed) {
-    hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  }
-  return hash % playerIds.length;
-}
-
 function finishAuctionWithoutSale(
   state: InternalGameState,
   logs: LogEntry[],
@@ -247,14 +238,10 @@ export function recordAuctionSubmission(
     {
       playerId,
       actionType: submission === "pass" ? "auction_pass" : "auction_bid",
-      payload:
-        submission === "pass"
-          ? { position: auction.tilePosition, name: tile?.name ?? "Unknown" }
-          : {
-              position: auction.tilePosition,
-              name: tile?.name ?? "Unknown",
-              amount: submission,
-            },
+      payload: {
+        position: auction.tilePosition,
+        name: tile?.name ?? "Unknown",
+      },
     },
   ];
 
@@ -268,7 +255,11 @@ export function recordAuctionSubmission(
   };
 
   if (allEligiblePlayersSubmitted(newState)) {
-    return settleSealedAuction(newState);
+    const settled = settleSealedAuction(newState);
+    return {
+      state: settled.state,
+      logEntries: [...logs, ...settled.logEntries],
+    };
   }
 
   return { state: newState, logEntries: logs };

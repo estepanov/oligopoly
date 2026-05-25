@@ -2,6 +2,7 @@ import type { GameAction, GameState } from "@oligopoly/validation";
 import { useState } from "react";
 import { tileLabel } from "../lib/boardDisplay";
 import {
+  activeEligibleAuctionPlayers,
   canParticipateInAuction,
   hasSubmittedAuction,
   isAuctionPhase,
@@ -34,11 +35,8 @@ export function AuctionPanel({
   const minBid = auction.tieBreakMinBid ?? 1;
   const submitted = hasSubmittedAuction(state, myPlayerId);
   const eligible = canParticipateInAuction(state, myPlayerId);
-  const submissionCount =
-    "submissionCount" in auction && typeof auction.submissionCount === "number"
-      ? auction.submissionCount
-      : Object.keys(auction.submissions).length;
-  const eligibleCount = auction.eligiblePlayerIds.length;
+  const submissionCount = auction.submissionCount ?? 0;
+  const eligibleCount = activeEligibleAuctionPlayers(state).length;
 
   return (
     <div className="auctionPanel">

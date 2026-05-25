@@ -145,22 +145,6 @@ describe("POST /api/games/:id/action — roll_dice", () => {
 });
 
 describe("POST /api/games/:id/action — buy_tile / decline_tile", () => {
-  it("allows buying an unowned tile after landing on it", async () => {
-    const db = createD1Stub();
-    const { gameId, currentPlayer } = await createAndStartGame(db);
-
-    // Roll to position 1 (Digital Content Co. — cost 60)
-    const rollRes = await requestWithEnv(`/api/games/${gameId}/action`, {
-      method: "POST",
-      headers: { "x-subject": currentPlayer },
-      body: { type: "roll_dice", result: [1, 0] },
-      db,
-    });
-
-    // Actually, dice are 1-6 each. Let's use result [1,2] to land on pos 3 (Mobile Gaming Inc., cost 80)
-    // Re-create game since state changed
-  });
-
   it("can buy a tile from position 1 (Digital Content Co., cost 60)", async () => {
     const db = createD1Stub();
     const { gameId, currentPlayer } = await createAndStartGame(db);
@@ -245,6 +229,11 @@ describe("POST /api/games/:id/action — buy_tile / decline_tile", () => {
       db,
     });
     expect(bidRes.status).toBe(200);
+    const bidBody = (await bidRes.json()) as Record<string, unknown>;
+    const pendingAuction = bidBody.pendingAuction as Record<string, unknown>;
+    expect(pendingAuction.submissionCount).toBe(1);
+    expect(pendingAuction.mySubmission).toBe(90);
+    expect(pendingAuction.submissions).toEqual({});
 
     const settleRes = await requestWithEnv(`/api/games/${gameId}/action`, {
       method: "POST",

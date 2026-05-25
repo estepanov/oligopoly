@@ -21,6 +21,7 @@ export function GamePlayControls({
   const myTurn = isMyTurn(state, myPlayerId);
   const pendingTile = state.pendingBuyTilePosition ?? null;
   const auctionActive = isAuctionPhase(state);
+  const turnControlsLocked = busy || auctionActive;
   const ownedTiles = myPlayerId ? ownedTilesForPlayer(state, myPlayerId) : [];
   const currency = state.settings?.currencySymbol ?? "¤";
   const gameOver = state.phase === "game_over";
@@ -65,7 +66,7 @@ export function GamePlayControls({
           type="button"
           className="button"
           disabled={
-            busy ||
+            turnControlsLocked ||
             !myTurn ||
             !["waiting_for_roll", "rolling_doubles"].includes(state.phase ?? "")
           }
@@ -77,7 +78,7 @@ export function GamePlayControls({
         <button
           type="button"
           className="button buttonSecondary"
-          disabled={busy || !myTurn || pendingTile === null}
+          disabled={turnControlsLocked || !myTurn || pendingTile === null}
           onClick={() =>
             pendingTile !== null &&
             void onAction("Bought tile", {
@@ -92,7 +93,7 @@ export function GamePlayControls({
         <button
           type="button"
           className="button buttonSecondary"
-          disabled={busy || !myTurn || pendingTile === null}
+          disabled={turnControlsLocked || !myTurn || pendingTile === null}
           onClick={() =>
             pendingTile !== null &&
             void onAction("Declined tile", {
@@ -108,7 +109,9 @@ export function GamePlayControls({
           type="button"
           className="button buttonSecondary"
           disabled={
-            busy || !myTurn || state.phase !== "waiting_for_path_choice"
+            turnControlsLocked ||
+            !myTurn ||
+            state.phase !== "waiting_for_path_choice"
           }
           onClick={() =>
             void onAction("Chose perimeter path", {
@@ -124,7 +127,9 @@ export function GamePlayControls({
           type="button"
           className="button buttonSecondary"
           disabled={
-            busy || !myTurn || state.phase !== "waiting_for_path_choice"
+            turnControlsLocked ||
+            !myTurn ||
+            state.phase !== "waiting_for_path_choice"
           }
           onClick={() =>
             void onAction("Chose diagonal path", {
@@ -139,7 +144,7 @@ export function GamePlayControls({
         <button
           type="button"
           className="button buttonSecondary"
-          disabled={busy || !myTurn || state.phase !== "action"}
+          disabled={turnControlsLocked || !myTurn || state.phase !== "action"}
           onClick={() => void onAction("Ended turn", { type: "end_turn" })}
         >
           End turn

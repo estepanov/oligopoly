@@ -1007,4 +1007,28 @@ describe("GameStateSchema (enhanced)", () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it("preserves redacted auction view fields on client state", () => {
+    const result = GameStateSchema.safeParse({
+      gameId: "game-1",
+      round: 1,
+      phase: "waiting_for_auction_bids",
+      pendingAuction: {
+        tilePosition: 3,
+        trigger: "decline",
+        auctionType: "sealed_bids",
+        submissions: {},
+        eligiblePlayerIds: ["p1", "p2"],
+        tieBreakRound: 0,
+        resumePhase: "action",
+        submissionCount: 1,
+        mySubmission: 90,
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.pendingAuction?.submissionCount).toBe(1);
+      expect(result.data.pendingAuction?.mySubmission).toBe(90);
+    }
+  });
 });

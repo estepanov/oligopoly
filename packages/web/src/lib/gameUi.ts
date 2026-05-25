@@ -32,12 +32,20 @@ export function isAuctionPhase(state: GameState): boolean {
   );
 }
 
+export function activeEligibleAuctionPlayers(state: GameState): string[] {
+  if (!state.pendingAuction) return [];
+  const eliminated = new Set(state.eliminatedPlayerIds ?? []);
+  return state.pendingAuction.eligiblePlayerIds.filter(
+    (playerId) => !eliminated.has(playerId),
+  );
+}
+
 export function canParticipateInAuction(
   state: GameState,
   myPlayerId: string | null,
 ): boolean {
-  if (!myPlayerId || !state.pendingAuction) return false;
-  return state.pendingAuction.eligiblePlayerIds.includes(myPlayerId);
+  if (!myPlayerId) return false;
+  return activeEligibleAuctionPlayers(state).includes(myPlayerId);
 }
 
 export function hasSubmittedAuction(
@@ -45,10 +53,7 @@ export function hasSubmittedAuction(
   myPlayerId: string | null,
 ): boolean {
   if (!myPlayerId || !state.pendingAuction) return false;
-  const auction = state.pendingAuction as typeof state.pendingAuction & {
-    mySubmission?: number | "pass";
-  };
-  return auction.mySubmission !== undefined;
+  return state.pendingAuction.mySubmission !== undefined;
 }
 
 export function ownedTilesForPlayer(

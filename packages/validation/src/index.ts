@@ -647,6 +647,12 @@ export const PendingAuctionSchema = z.object({
   tieBreakMinBid: z.number().int().min(1).optional(),
   tieBreakRound: z.number().int().min(0).optional(),
   resumePhase: z.enum(["action", "rolling_doubles"]),
+  /** Present in redacted client views; omitted from persisted engine state. */
+  submissionCount: z.number().int().min(0).optional(),
+  /** Present in redacted player views; omitted from persisted engine state. */
+  mySubmission: z
+    .union([z.number().int().min(1), z.literal("pass")])
+    .optional(),
 });
 export type PendingAuction = z.infer<typeof PendingAuctionSchema>;
 

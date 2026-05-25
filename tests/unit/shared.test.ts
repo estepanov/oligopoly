@@ -1756,6 +1756,49 @@ describe("applyAction — auction_bid / auction_pass", () => {
       }),
     ).toThrow("game.auction_bid_too_low");
   });
+
+  it("keeps sealed bid amounts out of submission logs", () => {
+    const state = makeAuctionState();
+    const result = applyAction(state, "player-1", {
+      type: "auction_bid",
+      tilePosition: 3,
+      amount: 90,
+    });
+    const bidLog = result.logEntries.find(
+      (entry) => entry.actionType === "auction_bid",
+    );
+    expect(bidLog?.payload).toEqual({
+      position: 3,
+      name: expect.any(String),
+    });
+  });
+
+  it("preserves the final submission log when auto-settling", () => {
+    const state = makeAuctionState({
+      pendingAuction: {
+        tilePosition: 3,
+        trigger: "decline",
+        auctionType: "sealed_bids",
+        submissions: { "player-1": 90 },
+        eligiblePlayerIds: ["player-1", "player-2"],
+        tieBreakRound: 0,
+        resumePhase: "action",
+      },
+    });
+    const settled = applyAction(state, "player-2", {
+      type: "auction_bid",
+      tilePosition: 3,
+      amount: 50,
+    });
+    expect(
+      settled.logEntries.some((entry) => entry.actionType === "auction_bid"),
+    ).toBe(true);
+    expect(
+      settled.logEntries.some(
+        (entry) => entry.actionType === "auction_settled",
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("applyAction — end_turn", () => {
