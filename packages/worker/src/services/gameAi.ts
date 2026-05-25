@@ -19,7 +19,7 @@ type ActiveGameRow = {
   state_json: string | null;
 };
 
-export type StepAiTurnFailureReason = "not_found" | "not_ai_turn";
+export type StepAiTurnFailureReason = "not_found" | "completed" | "not_ai_turn";
 
 export type StepAiTurnResult =
   | {
@@ -32,18 +32,23 @@ export type StepAiTurnResult =
       reason: StepAiTurnFailureReason;
     };
 
-async function loadActiveGame(
+async function loadGameRow(
   db: D1Database,
   gameId: string,
 ): Promise<ActiveGameRow | null> {
   return db
     .prepare("SELECT id, status, state_json FROM games WHERE id = ?")
     .bind(gameId)
-    .first<ActiveGameRow>()
-    .then((row) => {
-      if (!row || row.status !== "active" || !row.state_json) return null;
-      return row;
-    });
+    .first<ActiveGameRow>();
+}
+
+async function loadActiveGame(
+  db: D1Database,
+  gameId: string,
+): Promise<ActiveGameRow | null> {
+  const row = await loadGameRow(db, gameId);
+  if (!row || row.status !== "active" || !row.state_json) return null;
+  return row;
 }
 
 function buildEngineInput(action: GameAction) {
@@ -60,11 +65,17 @@ export async function stepGameAiTurn(
   gameId: string,
   gameRoom?: DurableObjectNamespace,
 ): Promise<StepAiTurnResult> {
-  const row = await loadActiveGame(db, gameId);
+  const row = await loadGameRow(db, gameId);
   if (!row) return { applied: false, reason: "not_found" };
+  if (row.status === "completed") {
+    return { applied: false, reason: "completed" };
+  }
+  if (row.status !== "active" || !row.state_json) {
+    return { applied: false, reason: "not_found" };
+  }
 
   const gameState = normalizeGameState(
-    JSON.parse(row.state_json!) as Record<string, unknown>,
+    JSON.parse(row.state_json) as Record<string, unknown>,
   );
   const decision = chooseAiAction(gameState);
   if (!decision) return { applied: false, reason: "not_ai_turn" };

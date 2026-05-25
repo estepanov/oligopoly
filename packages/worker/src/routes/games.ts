@@ -437,6 +437,9 @@ gameRoutes.post("/:id/ai/step", async (c) => {
     if (step.reason === "not_found") {
       return c.json({ error: GameErrorKeys.NOT_FOUND }, 404);
     }
+    if (step.reason === "completed") {
+      return c.json({ error: GameErrorKeys.GAME_COMPLETED }, 409);
+    }
     return c.json({ error: GameErrorKeys.NOT_AI_TURN }, 409);
   }
 

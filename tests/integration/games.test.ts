@@ -425,4 +425,30 @@ describe("POST /api/games/:id/ai/step", () => {
     expect(body.aiPlayerId).toBe("ai:bot");
     expect(body.aiAction.type).toBe("roll_dice");
   });
+
+  it("returns game.completed for finished games", async () => {
+    const completedGame = {
+      id: "game-completed",
+      status: "completed",
+      player_ids_json: JSON.stringify(["ai:bot"]),
+      started_at: 2000,
+      ended_at: 3000,
+      winner_id: "ai:bot",
+      state_json: JSON.stringify({
+        gameId: "game-completed",
+        phase: "game_over",
+      }),
+    };
+    const env = makeEnv({ games: [completedGame], game_log: [] });
+
+    const res = await app.request(
+      "/api/games/game-completed/ai/step",
+      { method: "POST" },
+      env,
+    );
+
+    expect(res.status).toBe(409);
+    const body = await res.json<{ error: string }>();
+    expect(body.error).toBe("game.completed");
+  });
 });

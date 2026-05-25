@@ -180,6 +180,7 @@ export class GameRoom extends RealtimeRoom {
       );
     } finally {
       await this.state.storage.delete("aiLoopRunning");
+      await this.resyncFromDatabase(gameId);
     }
   }
 
@@ -213,6 +214,23 @@ export class GameRoom extends RealtimeRoom {
     const gameState = normalizeGameState(raw);
     const { affinityAssignments: _hidden, ...publicState } = gameState;
     return { ...publicState, gameId, spectator };
+  }
+
+  private async resyncFromDatabase(gameId: string) {
+    if (!this.env.DB) return;
+
+    const row = await this.env.DB.prepare(
+      "SELECT state_json FROM games WHERE id = ?",
+    )
+      .bind(gameId)
+      .first<{ state_json: string | null }>();
+
+    if (!row?.state_json) return;
+
+    await this.syncAfterStateChange(
+      gameId,
+      JSON.parse(row.state_json) as Record<string, unknown>,
+    );
   }
 
   private async syncAfterStateChange(
