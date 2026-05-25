@@ -393,7 +393,7 @@ Keep release verification aligned with workflow by running build once, then veri
 
 ```bash
 pnpm run build
-pnpm run ci:verify
+pnpm run ci:verify   # release verification gate
 pnpm -r --filter "@oligopoly/*" publish --access public --provenance --no-git-checks
 ```
 
