@@ -394,8 +394,7 @@ export function createWorkerD1Stub(): WorkerD1Stub {
         "SELECT games_played, wins, trades_completed, auctions_won, recent_games_json FROM user_stats WHERE user_id = ?",
       )
     ) {
-      const row =
-        tables.user_stats.find((r) => r.user_id === binds[0]) ?? null;
+      const row = tables.user_stats.find((r) => r.user_id === binds[0]) ?? null;
       return { results: row ? [row] : [], first: row };
     }
 
@@ -404,8 +403,14 @@ export function createWorkerD1Stub(): WorkerD1Stub {
         "INSERT INTO user_stats (user_id, games_played, wins, trades_completed, auctions_won, recent_games_json) VALUES (?, ?, ?, ?, ?, ?)",
       )
     ) {
-      const [user_id, games_played, wins, trades_completed, auctions_won, recent_games_json] =
-        binds as [string, number, number, number, number, string];
+      const [
+        user_id,
+        games_played,
+        wins,
+        trades_completed,
+        auctions_won,
+        recent_games_json,
+      ] = binds as [string, number, number, number, number, string];
       tables.user_stats.push({
         user_id,
         games_played,
@@ -453,7 +458,9 @@ export function createWorkerD1Stub(): WorkerD1Stub {
       return { results: [], success: true };
     }
 
-    if (trimmed.startsWith("SELECT rank_points FROM user_ranks WHERE user_id = ?")) {
+    if (
+      trimmed.startsWith("SELECT rank_points FROM user_ranks WHERE user_id = ?")
+    ) {
       const row = tables.user_ranks.find((r) => r.user_id === binds[0]) ?? null;
       return {
         results: row ? [row] : [],

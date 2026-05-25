@@ -5,8 +5,8 @@ import type {
   LogEntry,
 } from "./gameStateTypes.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
-import { applyWinIfThresholdCrossed } from "./winResolution.js";
 import { formSyndicateApCost, getSyndicateForPlayer } from "./syndicate.js";
+import { applyWinIfThresholdCrossed } from "./winResolution.js";
 
 export function handleFormSyndicate(
   state: InternalGameState,

@@ -1,15 +1,15 @@
+import type { GameResult } from "@oligopoly/shared";
 import {
   ACHIEVEMENTS_REGISTRY,
+  type CompletedGameSnapshot,
   calculateGameRankPoints,
   getRankForPoints,
   hasSectorControl,
-  playerWonGame,
-  SECTORS,
-  type CompletedGameSnapshot,
   type InternalGameState,
+  playerWonGame,
   type RecentGameSummary,
+  SECTORS,
 } from "@oligopoly/shared";
-import type { GameResult } from "@oligopoly/shared";
 
 const MAX_RECENT_GAMES = 20;
 
@@ -45,10 +45,7 @@ function gameResultForPlayer(
   return playerWonGame(state, playerId, winnerId) ? "won" : "lost";
 }
 
-async function fetchUsername(
-  db: D1Database,
-  userId: string,
-): Promise<string> {
+async function fetchUsername(db: D1Database, userId: string): Promise<string> {
   const row = await db
     .prepare("SELECT username FROM users WHERE id = ?")
     .bind(userId)
@@ -61,7 +58,7 @@ async function upsertLeaderboardEntry(
   key: "leaderboard:wins" | "leaderboard:completions",
   userId: string,
   username: string,
-  metricKey: "wins" | "completions",
+  _metricKey: "wins" | "completions",
   increment: number,
 ): Promise<void> {
   const raw = await kv.get(key);

@@ -3,8 +3,8 @@ import type { InternalGameState, LogEntry } from "./gameStateTypes.js";
 import {
   findSyndicateWinnerId,
   getSyndicateForPlayer,
-  syndicateMarketValue,
   sumOwnedTileMarketValue,
+  syndicateMarketValue,
 } from "./syndicate.js";
 import { checkSoloWin } from "./winCondition.js";
 

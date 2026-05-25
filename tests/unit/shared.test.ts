@@ -1709,16 +1709,16 @@ describe("applyAction — auction_bid / auction_pass", () => {
 
     const finalized = finalizeAuctionSettleIfReady(
       settled.state,
-      settled.state.pendingAuction!.settleDeadlineAt! + 1,
+      (settled.state.pendingAuction?.settleDeadlineAt ?? 0) + 1,
     );
     expect(finalized?.state.phase).toBe("action");
     expect(finalized?.state.pendingAuction).toBeUndefined();
 
-    const winner = finalized!.state.players.find(
+    const winner = finalized?.state.players.find(
       (p) => p.playerId === "player-1",
-    )!;
-    expect(winner.capital).toBe(1500 - 90);
-    expect(winner.ownedTilePositions).toContain(3);
+    );
+    expect(winner?.capital).toBe(1500 - 90);
+    expect(winner?.ownedTilePositions).toContain(3);
   });
 
   it("leaves tile unowned when every eligible player passes", () => {
@@ -1734,11 +1734,11 @@ describe("applyAction — auction_bid / auction_pass", () => {
     expect(settled.state.phase).toBe("waiting_for_auction_settle");
     const finalized = finalizeAuctionSettleIfReady(
       settled.state,
-      settled.state.pendingAuction!.settleDeadlineAt! + 1,
+      (settled.state.pendingAuction?.settleDeadlineAt ?? 0) + 1,
     );
     expect(finalized?.state.phase).toBe("action");
     expect(finalized?.state.pendingAuction).toBeUndefined();
-    const tile = finalized!.state.tiles.find((entry) => entry.position === 3);
+    const tile = finalized?.state.tiles.find((entry) => entry.position === 3);
     expect(tile?.ownerId).toBeNull();
   });
 
@@ -1757,7 +1757,7 @@ describe("applyAction — auction_bid / auction_pass", () => {
     expect(settling.state.phase).toBe("waiting_for_auction_settle");
     const tieBreak = finalizeAuctionSettleIfReady(
       settling.state,
-      settling.state.pendingAuction!.settleDeadlineAt! + 1,
+      (settling.state.pendingAuction?.settleDeadlineAt ?? 0) + 1,
     );
     expect(tieBreak?.state.phase).toBe("waiting_for_auction_bids");
     expect(tieBreak?.state.pendingAuction?.tieBreakRound).toBe(1);
@@ -1832,10 +1832,10 @@ describe("applyAction — auction_bid / auction_pass", () => {
     ).toBe(true);
     const finalized = finalizeAuctionSettleIfReady(
       settled.state,
-      settled.state.pendingAuction!.settleDeadlineAt! + 1,
+      (settled.state.pendingAuction?.settleDeadlineAt ?? 0) + 1,
     );
     expect(
-      finalized!.logEntries.some(
+      finalized?.logEntries.some(
         (entry) => entry.actionType === "auction_settled",
       ),
     ).toBe(true);
@@ -1857,8 +1857,8 @@ describe("applyAction — auction_bid / auction_pass", () => {
     const closed = closeAuctionBidWindowIfReady(state, Date.now());
     expect(closed?.state.phase).toBe("waiting_for_auction_settle");
     const finalized = finalizeAuctionSettleIfReady(
-      closed!.state,
-      closed!.state.pendingAuction!.settleDeadlineAt! + 1,
+      closed?.state,
+      (closed?.state.pendingAuction?.settleDeadlineAt ?? 0) + 1,
     );
     expect(finalized?.state.phase).toBe("action");
     const winner = finalized?.state.players.find(
@@ -1866,7 +1866,7 @@ describe("applyAction — auction_bid / auction_pass", () => {
     );
     expect(winner?.ownedTilePositions).toContain(3);
     expect(
-      closed!.logEntries.filter(
+      closed?.logEntries.filter(
         (entry) => entry.actionType === "auction_bids_closed",
       ),
     ).toHaveLength(1);
@@ -2182,7 +2182,7 @@ describe("applyAction — disruption tiles", () => {
     });
 
     expect(
-      result.state.players.find((p) => p.playerId === "player-1")!.position,
+      result.state.players.find((p) => p.playerId === "player-1")?.position,
     ).toBe(7);
     expect(result.state.disruptionDiscard).toEqual(["disruption_patent_troll"]);
     expect(
@@ -2191,7 +2191,7 @@ describe("applyAction — disruption tiles", () => {
       ),
     ).toBe(true);
     expect(
-      result.state.players.find((p) => p.playerId === "player-1")!.capital,
+      result.state.players.find((p) => p.playerId === "player-1")?.capital,
     ).toBe(1450);
   });
 });
@@ -2598,7 +2598,7 @@ describe("applyAction — path-choice auto-roll when passing through START", () 
       (e) => e.actionType === "path_choice_auto",
     );
     expect(pathLog).toBeDefined();
-    expect((pathLog!.payload as Record<string, unknown>).choice).toBe(
+    expect((pathLog?.payload as Record<string, unknown>).choice).toBe(
       "perimeter",
     );
   });
@@ -2619,7 +2619,7 @@ describe("applyAction — path-choice auto-roll when passing through START", () 
       (e) => e.actionType === "path_choice_auto",
     );
     expect(pathLog).toBeDefined();
-    expect((pathLog!.payload as Record<string, unknown>).choice).toBe(
+    expect((pathLog?.payload as Record<string, unknown>).choice).toBe(
       "diagonal",
     );
   });

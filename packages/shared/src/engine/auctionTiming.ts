@@ -39,7 +39,6 @@ export function auctionExtensionWindowToMs(window: string | undefined): number {
       return 10 * SECOND_MS;
     case "30s":
       return 30 * SECOND_MS;
-    case "15s":
     default:
       return 15 * SECOND_MS;
   }

@@ -77,13 +77,7 @@ export async function persistGameActionResult(
   await db.batch(statements);
 
   if (result.state.phase === "game_over" && result.state.winnerId) {
-    await processGameCompletion(
-      db,
-      options.kv,
-      gameId,
-      result.state,
-      now,
-    );
+    await processGameCompletion(db, options.kv, gameId, result.state, now);
   }
 
   const publicState = publicStateForBroadcast(result.state);

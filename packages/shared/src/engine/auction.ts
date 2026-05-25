@@ -18,7 +18,6 @@ import { rollFairD6 } from "./dice.js";
 import type {
   ApplyActionResult,
   InternalGameState,
-  InternalPlayerState,
   LogEntry,
 } from "./gameStateTypes.js";
 import { deepClone, getPlayer } from "./stateUtils.js";

@@ -1,10 +1,6 @@
-import {
-  getTileByPosition,
-  SECTOR_HUB_POSITIONS,
-} from "../config/board.js";
+import { getTileByPosition, SECTOR_HUB_POSITIONS } from "../config/board.js";
 import {
   calculateAffinityRentBonus,
-  getPlayerAffinityId,
   spectrumHolderUtilityMultiplier,
 } from "./affinity.js";
 import type { InternalGameState } from "./gameStateTypes.js";
@@ -15,7 +11,6 @@ import {
   calculateUtilityRent,
 } from "./rent.js";
 import {
-  controllingPlayerIds,
   hasSectorControl,
   ownsHubForSector,
   tileOwnedByController,

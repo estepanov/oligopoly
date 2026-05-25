@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   advanceAuctionSettle,
   createAndStartGame,
@@ -176,7 +176,7 @@ describe("POST /api/games/:id/action — roll_dice", () => {
     }>;
     const movedPlayer = players.find((p) => p.playerId === currentPlayer);
     expect(movedPlayer).toBeDefined();
-    expect(movedPlayer!.position).toBe(5);
+    expect(movedPlayer?.position).toBe(5);
   });
 
   it("returns 400 when trying to roll again without doubles", async () => {
@@ -605,7 +605,7 @@ describe("POST /api/games/:id/action — mortgage and redeem", () => {
     };
     const capitalBeforeMortgage = beforeBody.players.find(
       (player) => player.playerId === currentPlayer,
-    )!.capital;
+    )?.capital;
 
     // Mortgage the tile (Mobile Gaming Inc. cost 80, mortgage value = 40)
     const mortRes = await requestWithEnv(`/api/games/${gameId}/action`, {

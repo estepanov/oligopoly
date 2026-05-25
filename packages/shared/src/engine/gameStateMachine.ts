@@ -4,7 +4,6 @@
 // Takes current state + action -> returns new state or error string.
 // ---------------------------------------------------------------------------
 
-import type { AiPersonality } from "@oligopoly/validation";
 import {
   ALL_TILES,
   CORNER_POSITIONS,
@@ -21,11 +20,7 @@ import {
   handleDisruptionNullifyResponse,
   handleUseAffinity,
 } from "./affinityActions.js";
-import {
-  type PendingAuctionState,
-  recordAuctionSubmission,
-  startDeclineAuction,
-} from "./auction.js";
+import { recordAuctionSubmission, startDeclineAuction } from "./auction.js";
 import {
   computeAuctionBidDeadline,
   computeAuctionSettleDeadline,
@@ -68,12 +63,9 @@ import {
   GOVERNMENT_GRANT,
   PASS_START_BONUS,
 } from "./setup.js";
-import {
-  areSameSyndicate,
-  getSyndicateForPlayer,
-} from "./syndicate.js";
-import { handleFormSyndicate } from "./syndicateActions.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
+import { areSameSyndicate } from "./syndicate.js";
+import { handleFormSyndicate } from "./syndicateActions.js";
 import { applyWinIfThresholdCrossed } from "./winResolution.js";
 
 export type {
@@ -85,6 +77,7 @@ export type {
   InternalTileState,
   LogEntry,
 } from "./gameStateTypes.js";
+
 import type {
   ApplyActionResult,
   GameActionInput,
@@ -118,7 +111,7 @@ function exitDiagonalAtFreeMarket(
   return { skipLandingResolve: true };
 }
 
-function getCurrentPlayer(state: InternalGameState): InternalPlayerState {
+function _getCurrentPlayer(state: InternalGameState): InternalPlayerState {
   const pid = state.turnOrder[state.currentPlayerIndex];
   return state.players.find((p) => p.playerId === pid)!;
 }
@@ -309,7 +302,7 @@ function handleRollDice(
   const total = d1 + d2;
   const doubles = isDoubles(dice);
 
-  const player = getPlayer(state, playerId)!;
+  const _player = getPlayer(state, playerId)!;
   const logs: LogEntry[] = [];
 
   let newState = deepClone(state);
@@ -457,7 +450,7 @@ function handleRollDice(
 function resolveLanding(
   state: InternalGameState,
   playerId: string,
-  existingLogs: LogEntry[],
+  _existingLogs: LogEntry[],
 ): { state: InternalGameState; additionalLogs: LogEntry[] } {
   const logs: LogEntry[] = [];
   const p = getPlayer(state, playerId)!;

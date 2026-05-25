@@ -1,15 +1,13 @@
-import { describe, expect, it } from "vitest";
+import type { InternalGameState, LogEntry } from "@oligopoly/shared";
 import {
   applyWinIfThresholdCrossed,
   checkWinConditions,
   initTileStates,
   TOTAL_BOARD_MARKET_VALUE,
 } from "@oligopoly/shared";
-import type { InternalGameState, LogEntry } from "@oligopoly/shared";
+import { describe, expect, it } from "vitest";
 
-function makeState(
-  overrides?: Partial<InternalGameState>,
-): InternalGameState {
+function makeState(overrides?: Partial<InternalGameState>): InternalGameState {
   return {
     gameId: "game-1",
     round: 1,
@@ -63,8 +61,10 @@ function givePlayerFullBoard(state: InternalGameState, playerId: string) {
     tile.ownerId = playerId;
     owned.push(tile.position);
   }
-  const player = state.players.find((entry) => entry.playerId === playerId)!;
-  player.ownedTilePositions = owned;
+  const player = state.players.find((entry) => entry.playerId === playerId);
+  if (player) {
+    player.ownedTilePositions = owned;
+  }
 }
 
 describe("winResolution", () => {

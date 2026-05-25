@@ -227,6 +227,7 @@ export {
   initTileStates,
   normalizeGameState,
 } from "./engine/gameStateMachine.js";
+export type { CompletedGameSnapshot } from "./engine/gameStateTypes.js";
 export type { MarketEventTrigger } from "./engine/marketEvents.js";
 export {
   buildMarketEventDeck,
@@ -315,4 +316,3 @@ export {
   playerMarketValue,
   playerWonGame,
 } from "./engine/winResolution.js";
-export type { CompletedGameSnapshot } from "./engine/gameStateTypes.js";

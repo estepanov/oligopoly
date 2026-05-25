@@ -310,7 +310,13 @@ export class GameRoom extends RealtimeRoom {
 
     await this.state.storage.put("aiLoopRunning", true);
     try {
-      await runAiTurnLoop(this.env.DB, gameId, this.env.GAME_ROOM, 16, this.env.KV);
+      await runAiTurnLoop(
+        this.env.DB,
+        gameId,
+        this.env.GAME_ROOM,
+        16,
+        this.env.KV,
+      );
       const row = await this.env.DB.prepare(
         "SELECT state_json FROM games WHERE id = ?",
       )

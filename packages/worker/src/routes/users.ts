@@ -105,36 +105,36 @@ async function fetchFullProfile(
 ): Promise<{ profile: FullUserProfile; visibility: ProfileVisibility } | null> {
   const [userRow, visibilityRow, rankRow, achievementRows, statsRow] =
     await Promise.all([
-    db
-      .prepare("SELECT * FROM users WHERE id = ?")
-      .bind(userId)
-      .first<UserRow>(),
-    db
-      .prepare("SELECT * FROM user_visibility WHERE user_id = ?")
-      .bind(userId)
-      .first<VisibilityRow>(),
-    db
-      .prepare("SELECT tier, title FROM user_ranks WHERE user_id = ?")
-      .bind(userId)
-      .first<RankRow>(),
-    db
-      .prepare("SELECT id, unlocked_at FROM achievements WHERE user_id = ?")
-      .bind(userId)
-      .all<AchievementRow>(),
-    db
-      .prepare(
-        "SELECT games_played, wins, trades_completed, auctions_won, favorite_sector, recent_games_json FROM user_stats WHERE user_id = ?",
-      )
-      .bind(userId)
-      .first<{
-        games_played: number;
-        wins: number;
-        trades_completed: number;
-        auctions_won: number;
-        favorite_sector: string | null;
-        recent_games_json: string;
-      }>(),
-  ]);
+      db
+        .prepare("SELECT * FROM users WHERE id = ?")
+        .bind(userId)
+        .first<UserRow>(),
+      db
+        .prepare("SELECT * FROM user_visibility WHERE user_id = ?")
+        .bind(userId)
+        .first<VisibilityRow>(),
+      db
+        .prepare("SELECT tier, title FROM user_ranks WHERE user_id = ?")
+        .bind(userId)
+        .first<RankRow>(),
+      db
+        .prepare("SELECT id, unlocked_at FROM achievements WHERE user_id = ?")
+        .bind(userId)
+        .all<AchievementRow>(),
+      db
+        .prepare(
+          "SELECT games_played, wins, trades_completed, auctions_won, favorite_sector, recent_games_json FROM user_stats WHERE user_id = ?",
+        )
+        .bind(userId)
+        .first<{
+          games_played: number;
+          wins: number;
+          trades_completed: number;
+          auctions_won: number;
+          favorite_sector: string | null;
+          recent_games_json: string;
+        }>(),
+    ]);
 
   if (!userRow) return null;
 
@@ -165,7 +165,9 @@ async function fetchFullProfile(
       unlockedAt: a.unlocked_at,
     })),
     recentGames: statsRow?.recent_games_json
-      ? (JSON.parse(statsRow.recent_games_json) as FullUserProfile["recentGames"])
+      ? (JSON.parse(
+          statsRow.recent_games_json,
+        ) as FullUserProfile["recentGames"])
       : [],
     onlineStatus: undefined,
     lastSeenAt: undefined,
