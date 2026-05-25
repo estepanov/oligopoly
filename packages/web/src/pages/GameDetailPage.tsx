@@ -1,10 +1,11 @@
-import type { GameState, GameSummary } from "@oligopoly/validation";
+import type { GameAction, GameState, GameSummary } from "@oligopoly/validation";
 import {
   GameRealtimeEventSchema,
   GameStateSchema,
 } from "@oligopoly/validation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { buildTileNameMap, fetchGameConfig } from "../api/gameConfig";
 import {
   fetchGameState,
   fetchGameSummary,
@@ -13,17 +14,37 @@ import {
   submitGameAction,
 } from "../api/games";
 import { ApiError } from "../api/http";
+import { useAuth } from "../components/AuthContext";
+import { GameBoardPanel } from "../components/GameBoardPanel";
+import { GamePlayControls } from "../components/GamePlayControls";
+import { currentActorId, isMyTurn } from "../lib/gameUi";
 
 export function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
   const [game, setGame] = useState<GameSummary | null>(null);
   const [state, setState] = useState<GameState | null>(null);
+  const [tileNames, setTileNames] = useState<Map<string, string>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState(false);
   const [wsStatus, setWsStatus] = useState("disconnected");
   const [turnDeadline, setTurnDeadline] = useState<number | null>(null);
   const [lastAction, setLastAction] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchGameConfig()
+      .then((config) => {
+        if (!cancelled) setTileNames(buildTileNameMap(config));
+      })
+      .catch(() => {
+        if (!cancelled) setTileNames(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!id) {
@@ -105,19 +126,15 @@ export function GameDetailPage() {
     return () => socket.close();
   }, [id]);
 
-  const refreshState = async () => {
-    if (!id) return;
-    setState(await fetchGameState(id));
-  };
+  const myPlayerId = useMemo(() => {
+    if (!user || !state?.players) return null;
+    const match = state.players.find(
+      (player) => player.playerId === user.userId,
+    );
+    return match ? user.userId : null;
+  }, [state?.players, user]);
 
-  const runAction = async (
-    label: string,
-    action:
-      | { type: "roll_dice" }
-      | { type: "buy_tile"; tilePosition: number | string }
-      | { type: "decline_tile"; tilePosition: number | string }
-      | { type: "end_turn" },
-  ) => {
+  const runAction = async (label: string, action: GameAction) => {
     if (!id) return;
     setBusyAction(true);
     setError(null);
@@ -151,12 +168,13 @@ export function GameDetailPage() {
     }
   };
 
-  const currentPlayerId =
-    state?.turnOrder?.[state.currentPlayerIndex ?? -1] ?? null;
-  const currentPlayer = state?.players?.find(
-    (player) => player.playerId === currentPlayerId,
-  );
-  const pendingTile = state?.pendingBuyTilePosition ?? null;
+  const refreshState = async () => {
+    if (!id) return;
+    setState(await fetchGameState(id));
+  };
+
+  const currentPlayerId = state ? currentActorId(state) : null;
+  const myTurn = state ? isMyTurn(state, myPlayerId) : false;
 
   if (!id) {
     return (
@@ -171,6 +189,8 @@ export function GameDetailPage() {
     <div>
       <p style={{ marginBottom: "1rem" }}>
         <Link to="/games">← All games</Link>
+        {" · "}
+        <Link to="/lobbies">Lobbies</Link>
       </p>
       <h1 className="pageTitle">Game</h1>
       <p className="tagline">
@@ -207,6 +227,17 @@ export function GameDetailPage() {
         )}
       </div>
 
+      {state && (
+        <div className="card">
+          <h2>Board</h2>
+          <GameBoardPanel
+            state={state}
+            tileNames={tileNames}
+            myPlayerId={myPlayerId}
+          />
+        </div>
+      )}
+
       <div className="card">
         <h2>Play</h2>
         {state ? (
@@ -214,6 +245,8 @@ export function GameDetailPage() {
             <dl className="detailsGrid">
               <dt className="muted">Realtime</dt>
               <dd>{wsStatus}</dd>
+              <dt className="muted">Your turn</dt>
+              <dd>{myTurn ? "Yes" : "No"}</dd>
               <dt className="muted">Turn deadline</dt>
               <dd>
                 {turnDeadline
@@ -224,77 +257,22 @@ export function GameDetailPage() {
               <dd>{state.round}</dd>
               <dt className="muted">Phase</dt>
               <dd>{state.phase ?? "unknown"}</dd>
-              <dt className="muted">Current turn</dt>
+              <dt className="muted">Current actor</dt>
               <dd>
                 <code className="inline">{currentPlayerId ?? "—"}</code>
-                {currentPlayer?.kind === "ai" ? " (AI)" : ""}
               </dd>
-              <dt className="muted">Pending tile</dt>
-              <dd>{pendingTile ?? "—"}</dd>
             </dl>
 
-            <div className="buttonRow">
-              <button
-                type="button"
-                className="button"
-                disabled={
-                  busyAction ||
-                  !["waiting_for_roll", "rolling_doubles"].includes(
-                    state.phase ?? "",
-                  )
-                }
-                onClick={() =>
-                  void runAction("Rolled dice", { type: "roll_dice" })
-                }
-              >
-                Roll dice
-              </button>
-              <button
-                type="button"
-                className="button buttonSecondary"
-                disabled={busyAction || pendingTile === null}
-                onClick={() =>
-                  pendingTile !== null &&
-                  void runAction("Bought tile", {
-                    type: "buy_tile",
-                    tilePosition: pendingTile,
-                  })
-                }
-              >
-                Buy tile
-              </button>
-              <button
-                type="button"
-                className="button buttonSecondary"
-                disabled={busyAction || pendingTile === null}
-                onClick={() =>
-                  pendingTile !== null &&
-                  void runAction("Declined tile", {
-                    type: "decline_tile",
-                    tilePosition: pendingTile,
-                  })
-                }
-              >
-                Decline tile
-              </button>
-              <button
-                type="button"
-                className="button buttonSecondary"
-                disabled={busyAction || state.phase !== "action"}
-                onClick={() =>
-                  void runAction("Ended turn", { type: "end_turn" })
-                }
-              >
-                End turn
-              </button>
-              <button
-                type="button"
-                className="button buttonSecondary"
-                disabled={busyAction || currentPlayer?.kind !== "ai"}
-                onClick={() => void runAiStep()}
-              >
-                Step AI
-              </button>
+            <GamePlayControls
+              state={state}
+              myPlayerId={myPlayerId}
+              tileNames={tileNames}
+              busy={busyAction}
+              onAction={runAction}
+              onAiStep={runAiStep}
+            />
+
+            <div className="buttonRow" style={{ marginTop: "1rem" }}>
               <button
                 type="button"
                 className="button buttonSecondary"
@@ -310,34 +288,6 @@ export function GameDetailPage() {
           <p className="muted">Sign in as a game participant to load state.</p>
         )}
       </div>
-
-      {state?.players && (
-        <div className="card">
-          <h2>Players</h2>
-          <table className="gamesTable">
-            <thead>
-              <tr>
-                <th>Player</th>
-                <th>Kind</th>
-                <th>Position</th>
-                <th>Capital</th>
-                <th>Tiles</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.players.map((player) => (
-                <tr key={player.playerId}>
-                  <td>{player.displayName ?? player.playerId}</td>
-                  <td>{player.kind ?? "human"}</td>
-                  <td>{player.position}</td>
-                  <td>{player.capital}</td>
-                  <td>{player.ownedTilePositions.length}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 }
