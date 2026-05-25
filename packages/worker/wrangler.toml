@@ -18,3 +18,15 @@ id = "local"
 [[r2_buckets]]
 binding = "ASSETS"
 bucket_name = "oligopoly-assets-dev"
+
+[[durable_objects.bindings]]
+name = "LOBBY_ROOM"
+class_name = "LobbyRoom"
+
+[[durable_objects.bindings]]
+name = "GAME_ROOM"
+class_name = "GameRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LobbyRoom", "GameRoom"]

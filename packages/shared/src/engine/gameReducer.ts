@@ -237,8 +237,8 @@ function applyEndTurn(
 }
 
 /**
- * Pure transition used by the worker after authZ. Mutates nothing; returns a
- * deep-cloned next state on success.
+ * Incremental roll/end-turn helper for unit tests. HTTP routes use
+ * `applyAction` in `gameStateMachine.ts` as the authoritative engine.
  */
 export function applyGameAction(
   state: EngineGameState,

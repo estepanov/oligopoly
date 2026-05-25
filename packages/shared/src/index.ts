@@ -112,6 +112,8 @@ export {
 // ---------------------------------------------------------------------------
 // Engine — negotiation, charter, trustworthiness
 // ---------------------------------------------------------------------------
+export type { AiDecision } from "./engine/ai.js";
+export { chooseAiAction } from "./engine/ai.js";
 export {
   validateContributionWeights,
   validateRevenueSplit,
@@ -152,6 +154,7 @@ export { applyGameAction } from "./engine/gameReducer.js";
 export type {
   ApplyActionResult,
   GameActionInput,
+  InternalAiPlayerState,
   InternalGameState,
   InternalPlayerState,
   InternalTileState,

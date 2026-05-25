@@ -25,6 +25,8 @@ import { leaderboardRoutes } from "./routes/leaderboard";
 import { lobbyRoutes } from "./routes/lobbies";
 import { userRoutes } from "./routes/users";
 
+export { GameRoom, LobbyRoom } from "./durable/rooms";
+
 type Bindings = {
   ALLOWED_ORIGINS?: string;
   DB?: D1Database;
@@ -34,6 +36,8 @@ type Bindings = {
   WEBAUTHN_RP_ID?: string;
   WEBAUTHN_RP_NAME?: string;
   WEBAUTHN_ORIGIN?: string;
+  LOBBY_ROOM?: DurableObjectNamespace;
+  GAME_ROOM?: DurableObjectNamespace;
 };
 
 type Variables = {

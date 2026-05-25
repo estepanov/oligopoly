@@ -1,4 +1,4 @@
-import { LobbyErrorKeys, type LobbyStatus } from "@oligopoly/validation";
+import { LobbyErrorKeys } from "@oligopoly/validation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import {
@@ -14,6 +14,8 @@ import {
   startLobby,
 } from "../api/lobbies";
 import { useAuth } from "../components/AuthContext";
+import { LobbyAiSettings } from "../components/LobbyAiSettings";
+import { canStartLobby, lobbySeatCount } from "../lib/lobbySeats";
 
 const DEFAULT_MAX_PLAYERS = 4;
 const MAX_ACTIVE_LOBBIES_PER_USER = 2;
@@ -25,9 +27,6 @@ type InviteShare = {
   url: string;
   expiresInSeconds: number;
 };
-
-const canStartLobby = (status: LobbyStatus, playerCount: number) =>
-  status === "waiting" && playerCount >= 2;
 
 const resolveLobbyJoinInput = (rawLobbyId: string, rawToken: string) => {
   const lobbyId = rawLobbyId.trim();
@@ -97,6 +96,10 @@ export function LobbiesPage() {
   const [createName, setCreateName] = useState("New Lobby");
   const [createMaxPlayers, setCreateMaxPlayers] = useState(DEFAULT_MAX_PLAYERS);
   const [createIsPrivate, setCreateIsPrivate] = useState(false);
+  const [createAiCount, setCreateAiCount] = useState(1);
+  const [createAiPersonality, setCreateAiPersonality] = useState<
+    "loyalist" | "opportunist" | "disruptor"
+  >("opportunist");
 
   const [joinLobbyId, setJoinLobbyId] = useState(initialLobbyId);
   const [joinToken, setJoinToken] = useState(initialJoinToken);
@@ -223,6 +226,10 @@ export function LobbiesPage() {
     void refreshMyLobbies();
   }, [loading, refreshMyLobbies, user]);
 
+  useEffect(() => {
+    setCreateAiCount((count) => Math.min(count, createMaxPlayers - 1));
+  }, [createMaxPlayers]);
+
   const selectedLobbyMembership = useMemo(() => {
     if (!selectedLobby || !user) return null;
     return (
@@ -273,8 +280,8 @@ export function LobbiesPage() {
       if (selectedLobby.status !== "waiting") {
         return "You are already in this lobby as an admin, but it is no longer in the waiting state.";
       }
-      if (selectedLobby.players.length < 2) {
-        return "You are already in this lobby as an admin. You can manage invites, but starting still requires at least two players.";
+      if (lobbySeatCount(selectedLobby) < 2) {
+        return "You are already in this lobby as an admin. You can manage invites, but starting still requires at least two seats.";
       }
       return "You are already in this lobby as an admin. You can manage invites and start the game when ready.";
     }
@@ -289,7 +296,7 @@ export function LobbiesPage() {
       return "This lobby has already started, so you cannot join it from here.";
     }
 
-    if (selectedLobby.players.length >= selectedLobby.maxPlayers) {
+    if (lobbySeatCount(selectedLobby) >= selectedLobby.maxPlayers) {
       return "This lobby is full.";
     }
 
@@ -333,8 +340,8 @@ export function LobbiesPage() {
       return "This lobby is no longer waiting, so start is unavailable.";
     }
 
-    if (selectedLobby.players.length < 2) {
-      return "Start unlocks for admins once at least two players are in the lobby.";
+    if (lobbySeatCount(selectedLobby) < 2) {
+      return "Start unlocks for admins once at least two total human or AI seats are in the lobby.";
     }
 
     return "You are an admin in this lobby and can start the game.";
@@ -381,6 +388,11 @@ export function LobbiesPage() {
         maxPlayers: createMaxPlayers,
         isPrivate: createIsPrivate,
         optionalRuleIds: [],
+        aiSlots: Array.from({ length: createAiCount }, (_, index) => ({
+          id: `ai-${index + 1}`,
+          name: `AI ${index + 1}`,
+          personality: createAiPersonality,
+        })),
       });
       setSelectedLobby(lobby);
       setJoinLobbyId(lobby.id);
@@ -637,6 +649,13 @@ export function LobbiesPage() {
             </select>
           </div>
         </div>
+        <LobbyAiSettings
+          aiCount={createAiCount}
+          maxPlayers={createMaxPlayers}
+          personality={createAiPersonality}
+          onAiCountChange={setCreateAiCount}
+          onPersonalityChange={setCreateAiPersonality}
+        />
         <label className="checkboxRow">
           <input
             type="checkbox"
@@ -794,7 +813,7 @@ export function LobbiesPage() {
                         <td>{lobby.name}</td>
                         <td>{membership?.isAdmin ? "Admin" : "Player"}</td>
                         <td>
-                          {lobby.players.length}/{lobby.maxPlayers}
+                          {lobbySeatCount(lobby)}/{lobby.maxPlayers}
                         </td>
                         <td>{lobby.isPrivate ? "Private" : "Public"}</td>
                         <td>
@@ -854,7 +873,7 @@ export function LobbiesPage() {
                 <tr key={lobby.id}>
                   <td>{lobby.name}</td>
                   <td>
-                    {lobby.players.length}/{lobby.maxPlayers}
+                    {lobbySeatCount(lobby)}/{lobby.maxPlayers}
                   </td>
                   <td>{lobby.status}</td>
                   <td>
@@ -898,7 +917,7 @@ export function LobbiesPage() {
               <dd>{selectedLobby.isPrivate ? "Private" : "Public"}</dd>
               <dt className="muted">Players</dt>
               <dd>
-                {selectedLobby.players.length}/{selectedLobby.maxPlayers}
+                {lobbySeatCount(selectedLobby)}/{selectedLobby.maxPlayers}
               </dd>
               <dt className="muted">Your membership</dt>
               <dd>{selectedLobbyMembershipText}</dd>
@@ -1019,6 +1038,18 @@ export function LobbiesPage() {
                 </li>
               ))}
             </ul>
+            {(selectedLobby.aiSlots ?? []).length > 0 && (
+              <>
+                <h3 className="subheading">AI seats</h3>
+                <ul className="plainList">
+                  {(selectedLobby.aiSlots ?? []).map((slot) => (
+                    <li key={slot.id}>
+                      {slot.name} ({slot.personality})
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
 
             <div className="buttonRow">
               {selectedLobbyMembership &&
@@ -1043,7 +1074,7 @@ export function LobbiesPage() {
                   !isCurrentSubjectAdmin ||
                   !canStartLobby(
                     selectedLobby.status,
-                    selectedLobby.players.length,
+                    lobbySeatCount(selectedLobby),
                   )
                 }
               >

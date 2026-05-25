@@ -1,5 +1,6 @@
 import {
   applyAction,
+  chooseAiAction,
   normalizeGameState,
   rollPathChoiceDie,
 } from "@oligopoly/shared";
@@ -14,11 +15,17 @@ import {
   type PersistedGameState,
   toClientGameState,
 } from "../gameStateView.js";
+import { upgradeWebSocket } from "../realtime/upgrade.js";
+import {
+  persistGameActionResult,
+  toActionResponse,
+} from "../services/gamePersistence.js";
 
 type Bindings = {
   ALLOWED_ORIGINS?: string;
   KV?: KVNamespace;
   DB?: D1Database;
+  GAME_ROOM?: DurableObjectNamespace;
 };
 
 type Variables = {
@@ -397,70 +404,12 @@ gameRoutes.post("/:id/action", async (c) => {
   try {
     const result = applyAction(gameState, subject, engineInput);
 
-    const now = Date.now();
-    const stateJson = JSON.stringify(result.state);
-
-    const statements = [
-      db
-        .prepare("UPDATE games SET state_json = ? WHERE id = ?")
-        .bind(stateJson, id),
-    ];
-
-    // If game is over, update the games row
-    if (result.state.phase === "game_over" && result.state.winnerId) {
-      statements.push(
-        db
-          .prepare(
-            "UPDATE games SET status = 'completed', winner_id = ?, ended_at = ? WHERE id = ?",
-          )
-          .bind(result.state.winnerId, now, id),
-      );
-
-      // Update lobby to finished
-      const lobbyRow = await db
-        .prepare("SELECT lobby_id FROM games WHERE id = ?")
-        .bind(id)
-        .first<{ lobby_id: string }>();
-      if (lobbyRow) {
-        statements.push(
-          db
-            .prepare("UPDATE lobbies SET status = 'finished' WHERE id = ?")
-            .bind(lobbyRow.lobby_id),
-        );
-      }
-    }
-
-    // Insert log entries
-    for (const entry of result.logEntries) {
-      const logId = crypto.randomUUID();
-      statements.push(
-        db
-          .prepare(
-            "INSERT INTO game_log (id, game_id, round, player_id, action_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-          )
-          .bind(
-            logId,
-            id,
-            result.state.round,
-            entry.playerId,
-            entry.actionType,
-            entry.payload ? JSON.stringify(entry.payload) : null,
-            now,
-          ),
-      );
-    }
-
-    await db.batch(statements);
-
-    // Return sanitized state (strip affinity assignments for privacy)
-    const { affinityAssignments, ...publicState } = result.state;
-    const myAffinity = affinityAssignments?.[subject] ?? null;
-
-    return c.json({
-      ...publicState,
-      myAffinityCardId: myAffinity,
-      logEntries: result.logEntries,
+    await persistGameActionResult(db, id, result, {
+      gameRoom: c.env?.GAME_ROOM,
+      actorId: subject,
     });
+
+    return c.json(toActionResponse(result, subject));
   } catch (err) {
     if (typeof err === "string") {
       return c.json({ error: err }, 400);
@@ -473,19 +422,96 @@ gameRoutes.post("/:id/action", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/games/:id/ws
-// WebSocket upgrade for real-time game events.
-// Returns 501 — Durable Object implementation is a separate issue.
+// POST /api/games/:id/ai/step
+// Advance exactly one server-owned AI action when the current actor is AI.
 // ---------------------------------------------------------------------------
-gameRoutes.get("/:id/ws", (c) => {
-  return c.json({ error: "WebSocket support not yet implemented" }, 501);
+gameRoutes.post("/:id/ai/step", async (c) => {
+  const id = c.req.param("id");
+  const db = c.env?.DB;
+  if (!db) {
+    return c.json({ error: GameErrorKeys.DB_NOT_CONFIGURED }, 500);
+  }
+
+  const row = await db
+    .prepare(
+      "SELECT id, status, player_ids_json, state_json FROM games WHERE id = ?",
+    )
+    .bind(id)
+    .first<{
+      id: string;
+      status: string;
+      player_ids_json: string;
+      state_json: string | null;
+    }>();
+
+  if (!row) {
+    return c.json({ error: GameErrorKeys.NOT_FOUND }, 404);
+  }
+  if (row.status !== "active") {
+    return c.json({ error: GameErrorKeys.GAME_COMPLETED }, 409);
+  }
+
+  const rawState = row.state_json
+    ? (JSON.parse(row.state_json) as Record<string, unknown>)
+    : { gameId: id, round: 0 };
+  const gameState = normalizeGameState(rawState);
+  const decision = chooseAiAction(gameState);
+  if (!decision) {
+    return c.json({ error: GameErrorKeys.NOT_YOUR_TURN }, 409);
+  }
+
+  const result = applyAction(gameState, decision.actorId, {
+    ...decision.action,
+    ...(decision.action.type === "roll_dice"
+      ? { pathChoiceDie: rollPathChoiceDie() }
+      : {}),
+  });
+
+  await persistGameActionResult(db, id, result, {
+    gameRoom: c.env?.GAME_ROOM,
+    aiMeta: {
+      aiPlayerId: decision.actorId,
+      personality: decision.personality,
+      action: decision.action as Record<string, unknown>,
+    },
+  });
+
+  return c.json(
+    toActionResponse(result, null, {
+      aiAction: decision.action,
+      aiPlayerId: decision.actorId,
+      aiPersonality: decision.personality,
+    }),
+  );
 });
 
-// ---------------------------------------------------------------------------
-// GET /api/games/:id/spectate
-// Alias for /ws with spectator flag.
-// Returns 501 — Durable Object implementation is a separate issue.
-// ---------------------------------------------------------------------------
+gameRoutes.get("/:id/ws", (c) => {
+  const id = c.req.param("id") ?? "";
+  return upgradeWebSocket(c, {
+    room: c.env?.GAME_ROOM,
+    roomId: id,
+    roomParam: "gameId",
+    roomParamValue: id,
+    fallbackEvent: {
+      type: "game.snapshot",
+      gameId: id,
+      payload: { gameId: id, spectator: false, connected: true },
+    },
+  });
+});
+
 gameRoutes.get("/:id/spectate", (c) => {
-  return c.json({ error: "WebSocket support not yet implemented" }, 501);
+  const id = c.req.param("id") ?? "";
+  return upgradeWebSocket(c, {
+    room: c.env?.GAME_ROOM,
+    roomId: id,
+    roomParam: "gameId",
+    roomParamValue: id,
+    extraSearchParams: { spectator: "1" },
+    fallbackEvent: {
+      type: "game.snapshot",
+      gameId: id,
+      payload: { gameId: id, spectator: true, connected: true },
+    },
+  });
 });

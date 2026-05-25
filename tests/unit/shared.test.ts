@@ -23,6 +23,7 @@ import {
   canCreateBindingContract,
   checkSoloWin,
   checkSyndicateWin,
+  chooseAiAction,
   clampTrustworthiness,
   DEFAULT_CONTRIBUTION_WEIGHTS,
   DEFAULT_PROFILE_VISIBILITY,
@@ -73,6 +74,64 @@ describe("clampTrustworthiness", () => {
 
   it("leaves values in range unchanged", () => {
     expect(clampTrustworthiness(7)).toBe(7);
+  });
+});
+
+describe("chooseAiAction", () => {
+  const baseAiState: InternalGameState = {
+    gameId: "game-ai",
+    round: 1,
+    phase: "waiting_for_roll",
+    currentPlayerIndex: 0,
+    turnOrder: ["ai:bot"],
+    freeMarketPool: 0,
+    affinityAssignments: {},
+    players: [
+      {
+        playerId: "ai:bot",
+        kind: "ai",
+        aiPersonality: "opportunist",
+        position: 0,
+        capital: 1500,
+        ownedTilePositions: [],
+        mortgagedTilePositions: [],
+        developmentTokens: {},
+        trustworthiness: 7,
+        actionPointsRemaining: 2,
+        inRegulation: false,
+        doublesCount: 0,
+        isOnDiagonal: false,
+      },
+    ],
+    aiPlayers: [
+      { playerId: "ai:bot", name: "Bot", personality: "opportunist" },
+    ],
+    tiles: initTileStates(),
+    pendingBuyTilePosition: null,
+    lastDiceRoll: null,
+    winnerId: null,
+    eliminatedPlayerIds: [],
+    settings: {},
+  };
+
+  it("chooses deterministic roll actions for AI turns", () => {
+    const decision = chooseAiAction(baseAiState);
+
+    expect(decision?.actorId).toBe("ai:bot");
+    expect(decision?.action.type).toBe("roll_dice");
+  });
+
+  it("does not choose actions for human turns", () => {
+    const decision = chooseAiAction({
+      ...baseAiState,
+      turnOrder: ["human-1"],
+      players: [
+        { ...baseAiState.players[0], playerId: "human-1", kind: "human" },
+      ],
+      aiPlayers: [],
+    });
+
+    expect(decision).toBeNull();
   });
 });
 

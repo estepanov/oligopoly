@@ -14,10 +14,22 @@ import {
   UpdateLobbySettingsInputSchema,
 } from "@oligopoly/validation";
 import { Hono } from "hono";
+import { broadcastLobbyEvent } from "../realtime/notify.js";
+import { upgradeWebSocket } from "../realtime/upgrade.js";
+import {
+  buildAiPlayersFromSlots,
+  countTotalSeats,
+  MAX_TOTAL_PLAYERS,
+  mergePlayerIdsWithAi,
+  parseAiSlots,
+  validateCreateAiSlots,
+  validateSeatCapacity,
+} from "../services/lobbyAi.js";
 
 type Bindings = {
   DB?: D1Database;
   KV?: KVNamespace;
+  LOBBY_ROOM?: DurableObjectNamespace;
 };
 
 type Variables = {
@@ -45,6 +57,7 @@ type LobbyRow = {
   currency_name: string;
   currency_symbol: string;
   currency_multiplier: string;
+  ai_slots_json: string | null;
 };
 
 type LobbyPlayerRow = {
@@ -139,12 +152,26 @@ const toLobbyResponse = (row: LobbyRow, players: LobbyPlayerRow[] = []) => ({
   currencyName: row.currency_name ?? "Capital",
   currencySymbol: row.currency_symbol ?? "¤",
   currencyMultiplier: row.currency_multiplier ?? "1",
+  aiSlots: parseAiSlots(row.ai_slots_json),
 });
 
 type LeaveLobbyResponse = {
   lobbyId: string;
   deleted: boolean;
   lobby?: ReturnType<typeof toLobbyResponse>;
+};
+
+const publishLobbyUpdate = async (
+  env: Bindings,
+  lobbyId: string,
+  payload: unknown,
+) => {
+  await broadcastLobbyEvent(env.LOBBY_ROOM, lobbyId, {
+    type: "lobby.updated",
+    sentAt: Date.now(),
+    lobbyId,
+    payload,
+  });
 };
 
 const isWaitingLobbyStatus = (status: string) => status === "waiting";
@@ -316,6 +343,9 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
   }
 
   const body = c.req.valid("json");
+  if (!validateCreateAiSlots(body.maxPlayers, body.aiSlots.length)) {
+    return c.json({ error: LobbyErrorKeys.FULL }, 409);
+  }
 
   // Enforce rank-gate: host must meet the minimum rank tier for selected rules/cards
   const requiredTier = getRequiredRankTier(
@@ -338,8 +368,9 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
         `INSERT INTO lobbies (id, name, host_id, status, max_players, is_private, optional_rule_ids_json, created_at,
           turn_timeout, auction_bid_window, auction_settle_delay, auction_type,
           voice_video_enabled, spectator_mode, market_event_deck_json,
-          optional_event_card_ids_json, currency_name, currency_symbol, currency_multiplier)
-         VALUES (?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          optional_event_card_ids_json, currency_name, currency_symbol, currency_multiplier,
+          ai_slots_json)
+         VALUES (?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -362,6 +393,7 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
         body.currencyName,
         body.currencySymbol,
         body.currencyMultiplier,
+        JSON.stringify(body.aiSlots),
       ),
     db
       .prepare(
@@ -394,6 +426,7 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
     currency_name: body.currencyName,
     currency_symbol: body.currencySymbol,
     currency_multiplier: body.currencyMultiplier,
+    ai_slots_json: JSON.stringify(body.aiSlots),
   };
 
   const players: LobbyPlayerRow[] = [
@@ -547,7 +580,10 @@ lobbyRoutes.post("/:id/join", async (c) => {
     return c.json({ error: LobbyErrorKeys.MEMBERSHIP_LIMIT_REACHED }, 409);
   }
 
-  if (players.length >= lobby.max_players) {
+  if (
+    countTotalSeats(players.length, parseAiSlots(lobby.ai_slots_json)) >=
+    lobby.max_players
+  ) {
     return c.json({ error: LobbyErrorKeys.FULL }, 409);
   }
 
@@ -564,7 +600,9 @@ lobbyRoutes.post("/:id/join", async (c) => {
     { lobby_id: id, user_id: subject, is_admin: 0, joined_at: now },
   ];
 
-  return c.json(toLobbyResponse(lobby, updatedPlayers));
+  const joinResponse = toLobbyResponse(lobby, updatedPlayers);
+  await publishLobbyUpdate(c.env, id, joinResponse);
+  return c.json(joinResponse);
 });
 
 // POST /:id/join/:token — Join a private lobby via invite token
@@ -624,7 +662,10 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
     return c.json({ error: LobbyErrorKeys.MEMBERSHIP_LIMIT_REACHED }, 409);
   }
 
-  if (players.length >= lobby.max_players) {
+  if (
+    countTotalSeats(players.length, parseAiSlots(lobby.ai_slots_json)) >=
+    lobby.max_players
+  ) {
     return c.json({ error: LobbyErrorKeys.FULL }, 409);
   }
 
@@ -641,7 +682,9 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
     { lobby_id: id, user_id: subject, is_admin: 0, joined_at: now },
   ];
 
-  return c.json(toLobbyResponse(lobby, updatedPlayers));
+  const tokenJoinResponse = toLobbyResponse(lobby, updatedPlayers);
+  await publishLobbyUpdate(c.env, id, tokenJoinResponse);
+  return c.json(tokenJoinResponse);
 });
 
 // POST /:id/invite — Generate an invite token (admin only)
@@ -792,7 +835,28 @@ lobbyRoutes.put(
         .prepare("SELECT COUNT(*) as cnt FROM lobby_players WHERE lobby_id = ?")
         .bind(id)
         .first<{ cnt: number }>();
-      if (countResult && body.maxPlayers < countResult.cnt) {
+      const aiSlots = body.aiSlots ?? parseAiSlots(lobby.ai_slots_json);
+      if (
+        countResult &&
+        !validateSeatCapacity(countResult.cnt, aiSlots, body.maxPlayers)
+      ) {
+        return c.json({ error: LobbyErrorKeys.FULL }, 409);
+      }
+    }
+
+    if (body.aiSlots !== undefined) {
+      const playersResult = await db
+        .prepare("SELECT * FROM lobby_players WHERE lobby_id = ?")
+        .bind(id)
+        .all<LobbyPlayerRow>();
+      const maxPlayers = body.maxPlayers ?? lobby.max_players;
+      if (
+        !validateSeatCapacity(
+          playersResult.results.length,
+          body.aiSlots,
+          maxPlayers,
+        )
+      ) {
         return c.json({ error: LobbyErrorKeys.FULL }, 409);
       }
     }
@@ -864,6 +928,10 @@ lobbyRoutes.put(
     if (body.currencyMultiplier !== undefined) {
       updates.push("currency_multiplier = ?");
       values.push(body.currencyMultiplier);
+    }
+    if (body.aiSlots !== undefined) {
+      updates.push("ai_slots_json = ?");
+      values.push(JSON.stringify(body.aiSlots));
     }
 
     if (updates.length > 0) {
@@ -1041,18 +1109,25 @@ lobbyRoutes.post("/:id/start", async (c) => {
     .all<LobbyPlayerRow>();
 
   const lobbyPlayers = playersResult.results;
-  if (lobbyPlayers.length < 2) {
+  const aiSlots = parseAiSlots(lobby.ai_slots_json);
+  const totalSeats = countTotalSeats(lobbyPlayers.length, aiSlots);
+  if (totalSeats < 2) {
     return c.json({ error: LobbyErrorKeys.NOT_ENOUGH_PLAYERS }, 409);
+  }
+  if (totalSeats > Math.min(lobby.max_players, MAX_TOTAL_PLAYERS)) {
+    return c.json({ error: LobbyErrorKeys.FULL }, 409);
   }
 
   const gameId = generateId();
   const gameStartedLogId = generateId();
   const now = Date.now();
+  const aiPlayers = buildAiPlayersFromSlots(id, aiSlots);
 
   // Randomize turn order
-  const playerIds = [...lobbyPlayers]
-    .sort(() => Math.random() - 0.5)
-    .map((p) => p.user_id);
+  const playerIds = mergePlayerIdsWithAi(
+    lobbyPlayers.map((p) => p.user_id),
+    aiPlayers,
+  ).sort(() => Math.random() - 0.5);
 
   // Assign random affinity cards (one per player, no duplicates)
   const availableAffinityIds = [...AFFINITY_CARD_IDS].sort(
@@ -1091,20 +1166,27 @@ lobbyRoutes.post("/:id/start", async (c) => {
     lastDiceRoll: null as [number, number] | null,
     winnerId: null as string | null,
     eliminatedPlayerIds: [] as string[],
+    aiPlayers,
     tiles: initTileStates(),
-    players: playerIds.map((pid, idx) => ({
-      playerId: pid,
-      position: 0,
-      capital: startingCapital,
-      ownedTilePositions: [] as (number | string)[],
-      mortgagedTilePositions: [] as (number | string)[],
-      developmentTokens: {} as Record<string, number>,
-      trustworthiness: TRUSTWORTHINESS_DEFAULT,
-      actionPointsRemaining: idx === 0 ? ACTION_POINTS_PER_TURN : 0,
-      inRegulation: false,
-      doublesCount: 0,
-      isOnDiagonal: false,
-    })),
+    players: playerIds.map((pid, idx) => {
+      const aiPlayer = aiPlayers.find((ai) => ai.playerId === pid);
+      return {
+        playerId: pid,
+        kind: aiPlayer ? "ai" : "human",
+        displayName: aiPlayer?.name,
+        aiPersonality: aiPlayer?.personality,
+        position: 0,
+        capital: startingCapital,
+        ownedTilePositions: [] as (number | string)[],
+        mortgagedTilePositions: [] as (number | string)[],
+        developmentTokens: {} as Record<string, number>,
+        trustworthiness: TRUSTWORTHINESS_DEFAULT,
+        actionPointsRemaining: idx === 0 ? ACTION_POINTS_PER_TURN : 0,
+        inRegulation: false,
+        doublesCount: 0,
+        isOnDiagonal: false,
+      };
+    }),
     settings: {
       turnTimeout: lobby.turn_timeout ?? "5min",
       auctionType: lobby.auction_type ?? "sealed_bids",
@@ -1149,6 +1231,7 @@ lobbyRoutes.post("/:id/start", async (c) => {
           lobbyId: id,
           startedBy: subject,
           playerIds,
+          aiPlayers,
           startingCapital,
         }),
         now,
@@ -1161,16 +1244,26 @@ lobbyRoutes.post("/:id/start", async (c) => {
     status: "in_game",
   };
 
-  return c.json({
+  const startResponse = {
     ...toLobbyResponse(updated, lobbyPlayers),
     gameId,
-  });
+  };
+  await publishLobbyUpdate(c.env, id, startResponse);
+  return c.json(startResponse);
 });
 
-// GET /:id/ws — WebSocket stub (returns 501)
+// GET /:id/ws — WebSocket upgrade for live lobby events.
 lobbyRoutes.get("/:id/ws", (c) => {
-  return c.json(
-    { error: "WebSocket not implemented — Durable Object pending" },
-    501,
-  );
+  const id = c.req.param("id") ?? "";
+  return upgradeWebSocket(c, {
+    room: c.env?.LOBBY_ROOM,
+    roomId: id,
+    roomParam: "lobbyId",
+    roomParamValue: id,
+    fallbackEvent: {
+      type: "lobby.snapshot",
+      lobbyId: id,
+      payload: { lobbyId: id, connected: true },
+    },
+  });
 });

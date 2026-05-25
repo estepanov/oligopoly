@@ -338,14 +338,91 @@ describe("GET /api/games/:id/replay", () => {
 // ---------------------------------------------------------------------------
 // GET /api/games/:id/ws  and  /spectate
 // ---------------------------------------------------------------------------
-describe("WebSocket stubs", () => {
-  it("GET /api/games/:id/ws returns 501", async () => {
+describe("WebSocket upgrades", () => {
+  it("GET /api/games/:id/ws requires a WebSocket upgrade", async () => {
     const res = await app.request("/api/games/game-active/ws");
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(426);
   });
 
-  it("GET /api/games/:id/spectate returns 501", async () => {
+  it("GET /api/games/:id/spectate requires a WebSocket upgrade", async () => {
     const res = await app.request("/api/games/game-active/spectate");
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(426);
+  });
+});
+
+describe("POST /api/games/:id/ai/step", () => {
+  it("applies one deterministic AI action when the current player is AI", async () => {
+    const aiGame = {
+      id: "game-ai",
+      status: "active",
+      player_ids_json: JSON.stringify(["ai:bot", PLAYER_A]),
+      started_at: 2000,
+      ended_at: null,
+      winner_id: null,
+      state_json: JSON.stringify({
+        gameId: "game-ai",
+        round: 1,
+        phase: "waiting_for_roll",
+        currentPlayerIndex: 0,
+        turnOrder: ["ai:bot", PLAYER_A],
+        freeMarketPool: 0,
+        affinityAssignments: {},
+        aiPlayers: [
+          { playerId: "ai:bot", name: "Bot", personality: "opportunist" },
+        ],
+        players: [
+          {
+            playerId: "ai:bot",
+            kind: "ai",
+            aiPersonality: "opportunist",
+            position: 0,
+            capital: 1500,
+            ownedTilePositions: [],
+            mortgagedTilePositions: [],
+            developmentTokens: {},
+            trustworthiness: 7,
+            actionPointsRemaining: 2,
+            inRegulation: false,
+            doublesCount: 0,
+            isOnDiagonal: false,
+          },
+          {
+            playerId: PLAYER_A,
+            kind: "human",
+            position: 0,
+            capital: 1500,
+            ownedTilePositions: [],
+            mortgagedTilePositions: [],
+            developmentTokens: {},
+            trustworthiness: 7,
+            actionPointsRemaining: 0,
+            inRegulation: false,
+            doublesCount: 0,
+            isOnDiagonal: false,
+          },
+        ],
+        tiles: [],
+        pendingBuyTilePosition: null,
+        lastDiceRoll: null,
+        winnerId: null,
+        eliminatedPlayerIds: [],
+        settings: {},
+      }),
+    };
+    const env = makeEnv({ games: [aiGame], game_log: [] });
+
+    const res = await app.request(
+      "/api/games/game-ai/ai/step",
+      { method: "POST" },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      aiPlayerId: string;
+      aiAction: { type: string };
+    }>();
+    expect(body.aiPlayerId).toBe("ai:bot");
+    expect(body.aiAction.type).toBe("roll_dice");
   });
 });

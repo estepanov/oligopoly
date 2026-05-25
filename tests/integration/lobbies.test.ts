@@ -47,6 +47,7 @@ const createD1Stub = (): D1Stub => {
         currency_name,
         currency_symbol,
         currency_multiplier,
+        ai_slots_json,
       ] = binds as [
         string,
         string,
@@ -62,6 +63,7 @@ const createD1Stub = (): D1Stub => {
         number,
         string,
         string | null,
+        string,
         string,
         string,
         string,
@@ -87,6 +89,7 @@ const createD1Stub = (): D1Stub => {
         currency_name: currency_name ?? "Capital",
         currency_symbol: currency_symbol ?? "¤",
         currency_multiplier: currency_multiplier ?? "1",
+        ai_slots_json: ai_slots_json ?? "[]",
       });
       return { results: [], success: true };
     }
@@ -875,6 +878,37 @@ describe("POST /api/lobbies/:id/start", () => {
     expect(game.status).toBe("active");
     expect(game.playerCount).toBe(2);
   });
+
+  it("starts a solo-vs-AI lobby when AI fills the second seat", async () => {
+    const db = createD1Stub();
+    const createRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Solo vs AI",
+        maxPlayers: 2,
+        isPrivate: false,
+        optionalRuleIds: [],
+        aiSlots: [{ id: "ai-1", name: "OpBot", personality: "opportunist" }],
+      },
+      db,
+    });
+    const lobby = await createRes.json();
+    expect(lobby.aiSlots).toHaveLength(1);
+
+    const res = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      db,
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.gameId).toBeDefined();
+    expect(db._tables.games[0].player_ids_json).toContain("ai:");
+    const state = JSON.parse(db._tables.games[0].state_json as string);
+    expect(state.aiPlayers).toHaveLength(1);
+  });
 });
 
 describe("POST /api/lobbies/:id/invite + join/:token", () => {
@@ -926,9 +960,9 @@ describe("POST /api/lobbies/:id/invite + join/:token", () => {
 });
 
 describe("GET /api/lobbies/:id/ws", () => {
-  it("returns 501 stub", async () => {
+  it("requires a WebSocket upgrade", async () => {
     const res = await requestWithEnv("/api/lobbies/some-id/ws");
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(426);
   });
 });
 

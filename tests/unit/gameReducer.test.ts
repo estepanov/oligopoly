@@ -190,7 +190,7 @@ describe("applyGameAction", () => {
     expect(second.state.phase).toBe("action");
   });
 
-  it("returns ACTION_NOT_IMPLEMENTED for buy_tile", () => {
+  it("returns ACTION_NOT_IMPLEMENTED for non-core actions", () => {
     const state = minimalTwoPlayerState("action");
     const r = applyGameAction(
       state,

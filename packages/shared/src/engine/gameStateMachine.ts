@@ -4,6 +4,7 @@
 // Takes current state + action -> returns new state or error string.
 // ---------------------------------------------------------------------------
 
+import type { AiPersonality } from "@oligopoly/validation";
 import {
   ALL_TILES,
   CORNER_POSITIONS,
@@ -64,10 +65,21 @@ export interface InternalGameState {
   winnerId: string | null;
   eliminatedPlayerIds: string[];
   settings: Record<string, unknown>;
+  aiPlayers?: InternalAiPlayerState[];
+}
+
+export interface InternalAiPlayerState {
+  playerId: string;
+  name: string;
+  personality: AiPersonality;
+  takeoverForPlayerId?: string | null;
 }
 
 export interface InternalPlayerState {
   playerId: string;
+  kind?: "human" | "ai";
+  displayName?: string;
+  aiPersonality?: AiPersonality;
   position: number | string;
   capital: number;
   ownedTilePositions: (number | string)[];
