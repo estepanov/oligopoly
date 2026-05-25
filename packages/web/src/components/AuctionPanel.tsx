@@ -7,6 +7,9 @@ import {
   hasSubmittedAuction,
   isAuctionBiddingPhase,
   isAuctionPhase,
+  isOpenAuctionPhase,
+  isSealedAuctionPhase,
+  playerById,
 } from "../lib/gameUi";
 
 type AuctionPanelProps = {
@@ -32,6 +35,8 @@ export function AuctionPanel({
   }
 
   const bidding = isAuctionBiddingPhase(state);
+  const openAuction = isOpenAuctionPhase(state);
+  const sealedAuction = isSealedAuctionPhase(state);
 
   const currency = state.settings?.currencySymbol ?? "¤";
   const tileName = tileLabel(auction.tilePosition, tileNames);
@@ -40,10 +45,15 @@ export function AuctionPanel({
   const eligible = canParticipateInAuction(state, myPlayerId);
   const submissionCount = auction.submissionCount ?? 0;
   const eligibleCount = activeEligibleAuctionPlayers(state).length;
+  const panelTitle = openAuction
+    ? "Open auction"
+    : bidding
+      ? "Sealed auction"
+      : "Auction settling";
 
   return (
     <div className="auctionPanel">
-      <h3>{bidding ? "Sealed auction" : "Auction settling"}</h3>
+      <h3>{panelTitle}</h3>
       <p>
         Bidding on <strong>{tileName}</strong>
         {auction.tieBreakRound
@@ -70,14 +80,38 @@ export function AuctionPanel({
         )}
       </p>
 
-      {!bidding && <p className="muted">No further bids can be submitted.</p>}
+      {openAuction && bidding && (
+        <ul className="auctionBidList">
+          {Object.entries(auction.submissions).map(([playerId, value]) => {
+            const player = playerById(state, playerId);
+            const label = player?.displayName ?? playerId;
+            const amount =
+              value === "pass"
+                ? "passed"
+                : `${currency}${value.toLocaleString()}`;
+            return (
+              <li key={playerId}>
+                {label}: {amount}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {!bidding && sealedAuction && (
+        <p className="muted">No further bids can be submitted.</p>
+      )}
 
       {bidding && !eligible && (
         <p className="muted">You are not eligible to bid in this auction.</p>
       )}
 
       {bidding && eligible && submitted && (
-        <p className="ok">Your sealed bid has been submitted.</p>
+        <p className="ok">
+          {openAuction
+            ? "Your bid is locked in."
+            : "Your sealed bid has been submitted."}
+        </p>
       )}
 
       {bidding && eligible && !submitted && (

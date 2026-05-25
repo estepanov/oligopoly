@@ -805,7 +805,7 @@ function handleDeclineTile(
       payload: {
         position: action.tilePosition,
         name: tile?.name ?? "Unknown",
-        auctionType: "sealed_bids",
+        auctionType: newState.pendingAuction?.auctionType ?? "sealed_bids",
       },
     },
   ];

@@ -68,4 +68,30 @@ describe("mergeAuctionClientView", () => {
     const merged = mergeAuctionClientView(previous, incoming);
     expect(merged.pendingAuction?.mySubmission).toBeUndefined();
   });
+
+  it("does not preserve mySubmission for open auctions", () => {
+    const previous = auctionState({
+      tilePosition: 3,
+      trigger: "decline",
+      auctionType: "open_bids",
+      submissions: { p1: 90 },
+      eligiblePlayerIds: ["p1", "p2"],
+      tieBreakRound: 0,
+      resumePhase: "action",
+      submissionCount: 1,
+      mySubmission: 90,
+    });
+    const incoming = auctionState({
+      tilePosition: 3,
+      trigger: "decline",
+      auctionType: "open_bids",
+      submissions: { p1: 90, p2: 70 },
+      eligiblePlayerIds: ["p1", "p2"],
+      tieBreakRound: 0,
+      resumePhase: "action",
+      submissionCount: 2,
+    });
+
+    expect(mergeAuctionClientView(previous, incoming)).toEqual(incoming);
+  });
 });
