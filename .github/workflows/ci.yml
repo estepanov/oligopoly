@@ -24,17 +24,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build validation and shared packages
-        run: pnpm run --filter @oligopoly/validation build && pnpm run --filter @oligopoly/shared build
-
-      - name: Typecheck
-        run: pnpm run typecheck
-
-      - name: Lint and format check
-        run: pnpm run lint
-
-      - name: Unit tests
-        run: pnpm run test:unit --coverage
-
-      - name: Integration tests
-        run: pnpm run test:integration
+      - name: Local CI parity checks
+        run: pnpm run ci:local
