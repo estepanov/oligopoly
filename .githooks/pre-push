@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${SKIP_LOCAL_CI_GUARDRAIL:-0}" == "1" ]]; then
+	echo "Skipping local CI guardrail because SKIP_LOCAL_CI_GUARDRAIL=1."
+	exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+pnpm run ci:local

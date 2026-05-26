@@ -25,13 +25,19 @@ Wrangler emulates D1, KV, and R2 locally via Miniflare — no Cloudflare account
 ### Key caveats
 
 - After `pnpm install`, you must approve build scripts. The root `package.json` includes `pnpm.onlyBuiltDependencies` for `esbuild`, `sharp`, and `workerd` to handle this non-interactively.
-- Build `validation` and `shared` packages before running integration tests that import from them: `pnpm run --filter @oligopoly/validation build && pnpm run --filter @oligopoly/shared build`.
+- Build `validation` and `shared` packages before running integration tests that import from them: `pnpm run ci:build`.
 - The worker exports a Hono `app` object as default; integration tests can call `app.request()` directly without running the server.
 - Cloudflare API credentials (account ID, API token) are **not required** for local development — Wrangler's local mode emulates all bindings.
 - You must create `.env` from `.env.example` (`cp .env.example .env`) before running dev servers. The defaults are sufficient for local dev.
 - D1 migrations (`pnpm run db:migrate:dev`) must be applied before the worker can serve lobby/game/auth requests. If you get `duplicate column name` errors, reset with `pnpm run db:reset:dev`.
 - Auth uses WebAuthn passkeys — there is no guest login. To test authenticated API endpoints, insert test users and sessions directly into D1 via `wrangler d1 execute`.
 - `pnpm run test:e2e` currently has no test files and exits with code 1 — this is expected and not a failure.
+
+### Agent push guardrail (Cursor / Claude / Codex)
+
+- You must run `pnpm run ci:local` and get a clean pass before every `git push`.
+- A repository `pre-push` hook enforces this by running `pnpm run ci:local` (canonical check order is defined in `package.json` scripts).
+- Never bypass the guardrail in normal workflow. `SKIP_LOCAL_CI_GUARDRAIL=1` is emergency-only and requires explicit human instruction in the task prompt.
 
 ### Lint / Format / Typecheck / Test
 
