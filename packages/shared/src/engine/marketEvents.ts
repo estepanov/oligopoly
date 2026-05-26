@@ -374,15 +374,25 @@ const MARKET_EVENT_BLOCKING_PHASES = new Set([
   "waiting_for_auction_bids",
   "waiting_for_auction_settle",
 ]);
-const NON_BLOCKING_PENDING_FIELDS = new Set<string>(["pendingBuyTilePosition"]);
+const MARKET_EVENT_BLOCKING_PENDING_FIELDS: Array<
+  keyof Pick<
+    InternalGameState,
+    | "pendingAuction"
+    | "pendingForeclosure"
+    | "pendingInsiderPeek"
+    | "pendingDisruptionNullify"
+    | "pendingSyndicateVote"
+  >
+> = [
+  "pendingAuction",
+  "pendingForeclosure",
+  "pendingInsiderPeek",
+  "pendingDisruptionNullify",
+  "pendingSyndicateVote",
+];
 
 function hasBlockingPendingWork(state: InternalGameState): boolean {
-  for (const [key, value] of Object.entries(state)) {
-    if (!key.startsWith("pending")) continue;
-    if (NON_BLOCKING_PENDING_FIELDS.has(key)) continue;
-    if (value !== null && value !== undefined) return true;
-  }
-  return false;
+  return MARKET_EVENT_BLOCKING_PENDING_FIELDS.some((field) => Boolean(state[field]));
 }
 
 function hasBlockingWorkAfterMarketEventDraw(

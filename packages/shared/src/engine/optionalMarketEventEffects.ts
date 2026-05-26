@@ -162,10 +162,7 @@ export const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
         ),
       },
     );
-    if (auctionState.pendingAuction) {
-      state.phase = auctionState.phase;
-      state.pendingAuction = auctionState.pendingAuction;
-    }
+    Object.assign(state, auctionState);
     logs.push({
       playerId: drawingPlayerId,
       actionType: "optional_leveraged_buyout",

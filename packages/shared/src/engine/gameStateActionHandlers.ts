@@ -34,6 +34,7 @@ import type {
   InternalPlayerState,
   LogEntry,
 } from "./gameStateTypes.js";
+import { syntheticCdoMortgageBoostActive } from "./marketEventModifiers.js";
 import { drawAndResolveMarketEvent } from "./marketEvents.js";
 import { calculateMortgageValue, calculateRedemptionCost } from "./mortgage.js";
 import {
@@ -818,8 +819,7 @@ export function handleMortgageTile(
   const tile = getTileByPosition(pos);
   if (!tile || tile.cost === null) throw "game.invalid_action";
 
-  const syntheticCdoActive =
-    state.marketEventModifiers?.syntheticCdoMortgageRound === state.round;
+  const syntheticCdoActive = syntheticCdoMortgageBoostActive(state);
   const mortgageValue = calculateMortgageValue(tile.cost, syntheticCdoActive);
 
   const newState = deepClone(state);

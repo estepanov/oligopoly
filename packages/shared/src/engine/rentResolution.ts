@@ -4,6 +4,7 @@ import {
   spectrumHolderUtilityMultiplier,
 } from "./affinity.js";
 import type { InternalGameState } from "./gameStateTypes.js";
+import { activeUtilityRentMultiplier } from "./marketEventModifiers.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
 import { getActiveRateCardMultiplier } from "./rateCards.js";
 import {
@@ -79,13 +80,9 @@ export function computeTileRent(
       ? state.lastDiceRoll[0] + state.lastDiceRoll[1]
       : 7;
     let rent = calculateUtilityRent(utilCount, diceTotal);
-    const modifiers = state.marketEventModifiers;
-    if (
-      modifiers?.utilityRentMultiplier &&
-      modifiers.utilityRentMultiplierUntilRound !== undefined &&
-      state.round <= modifiers.utilityRentMultiplierUntilRound
-    ) {
-      rent = Math.floor(rent * modifiers.utilityRentMultiplier);
+    const utilityMultiplier = activeUtilityRentMultiplier(state);
+    if (utilityMultiplier) {
+      rent = Math.floor(rent * utilityMultiplier);
     }
     const spectrumMultiplier = spectrumHolderUtilityMultiplier(
       state,
