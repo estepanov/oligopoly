@@ -9,10 +9,10 @@ import { rollFairD6 } from "./dice.js";
 import type {
   ApplyActionResult,
   InternalGameState,
-  InternalPlayerState,
   LogEntry,
 } from "./gameStateTypes.js";
 import { activePlayers, adjustCapital } from "./marketEventPrimitives.js";
+import { richestPlayerId } from "./marketEventSelectors.js";
 import type { MarketEventTrigger } from "./marketEventTypes.js";
 import {
   OPTIONAL_MARKET_EVENT_HANDLERS,
@@ -78,16 +78,6 @@ export function normalizeMarketEventDeck(state: InternalGameState): void {
   if (!state.marketEventDiscard) {
     state.marketEventDiscard = [];
   }
-}
-
-function richestPlayerId(state: InternalGameState): string | null {
-  let best: InternalPlayerState | null = null;
-  for (const player of activePlayers(state)) {
-    if (!best || player.capital > best.capital) {
-      best = player;
-    }
-  }
-  return best?.playerId ?? null;
 }
 
 function cardMeta(cardId: string): MarketEventCard {

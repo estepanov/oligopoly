@@ -257,6 +257,9 @@ function withPrimaryLogIndex(
   if (result.primaryLogIndex !== undefined) {
     return result;
   }
+  if (result.logEntries.length === 0) {
+    return result;
+  }
 
   const actorLogIndex = result.logEntries.findIndex(
     (entry) => entry.playerId === playerId,
@@ -265,10 +268,10 @@ function withPrimaryLogIndex(
     return { ...result, primaryLogIndex: actorLogIndex };
   }
 
-  if (result.logEntries.length > 0) {
+  if (result.logEntries.length === 1) {
     return { ...result, primaryLogIndex: 0 };
   }
-  return result;
+  throw "game.action_not_implemented";
 }
 
 export function applyAction(

@@ -10,7 +10,7 @@ import type {
   PendingAuctionState,
 } from "./auctionTypes.js";
 import type { SyndicateCharterState, SyndicateState } from "./syndicate.js";
-import type { BindingContract, BindingContractTerm } from "./types.js";
+import type { BindingContract } from "./types.js";
 
 export interface RateCardState {
   sectorId: string;
@@ -157,31 +157,21 @@ type FieldFromAction<K extends PropertyKey> =
   }
     ? V
     : never;
+type GameActionPayloadKey = Exclude<
+  GameAction extends unknown ? keyof GameAction : never,
+  "type"
+>;
 
-export interface GameActionInput {
-  type: GameAction["type"];
-  result?: FieldFromAction<"result">;
-  tilePosition?: FieldFromAction<"tilePosition">;
-  tokenNumber?: FieldFromAction<"tokenNumber">;
-  choice?: FieldFromAction<"choice">;
-  amount?: FieldFromAction<"amount">;
+type ServerInjectedGameActionFields = {
   /** Server-generated when rolling through START to choose perimeter vs diagonal. */
   pathChoiceDie?: number;
-  memberIds?: FieldFromAction<"memberIds">;
-  affinityId?: FieldFromAction<"affinityId">;
-  targetPlayerId?: FieldFromAction<"targetPlayerId">;
-  targetPlayerIds?: FieldFromAction<"targetPlayerIds">;
-  sectorId?: FieldFromAction<"sectorId">;
-  multiplier?: FieldFromAction<"multiplier">;
-  charter?: SyndicateCharterState;
-  contractId?: FieldFromAction<"contractId">;
-  partyB?: FieldFromAction<"partyB">;
-  terms?: BindingContractTerm[];
-  expiresRound?: FieldFromAction<"expiresRound">;
-  handshakeId?: FieldFromAction<"handshakeId">;
-  voteType?: FieldFromAction<"voteType">;
-  summary?: FieldFromAction<"summary">;
-}
+};
+
+export type GameActionInput = {
+  type: GameAction["type"];
+} & {
+  [K in GameActionPayloadKey]?: FieldFromAction<K>;
+} & ServerInjectedGameActionFields;
 
 export interface ApplyActionResult {
   state: InternalGameState;
