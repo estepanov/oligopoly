@@ -381,10 +381,6 @@ const MARKET_EVENT_BLOCKING_PENDING_FIELDS: Array<
   "pendingSyndicateVote",
 ];
 
-function hasBlockingPendingWork(state: InternalGameState): boolean {
-  return blockingPendingSlots(state).length > 0;
-}
-
 function blockingPendingSlots(
   state: InternalGameState,
 ): Array<(typeof MARKET_EVENT_BLOCKING_PENDING_FIELDS)[number]> {
@@ -398,7 +394,7 @@ function hasBlockingWorkAfterMarketEventDraw(
 ): boolean {
   return (
     MARKET_EVENT_BLOCKING_PHASES.has(state.phase) ||
-    hasBlockingPendingWork(state)
+    blockingPendingSlots(state).length > 0
   );
 }
 

@@ -108,6 +108,30 @@ function applyAuctionTransition(
   Object.assign(state, auctionState);
 }
 
+function startLeveragedBuyoutAuction(
+  state: InternalGameState,
+  targetPlayerId: string,
+  tilePosition: number | string,
+  trigger: MarketEventTrigger,
+): void {
+  const auctionState = startDeclineAuction(
+    state,
+    tilePosition,
+    auctionResumePhaseForTrigger(trigger),
+    Date.now(),
+    {
+      reservePrice: 1,
+      tieBreakMinBid: 1,
+      sellerId: targetPlayerId,
+      eligiblePlayerIds: state.turnOrder.filter(
+        (id) =>
+          id !== targetPlayerId && !state.eliminatedPlayerIds.includes(id),
+      ),
+    },
+  );
+  applyAuctionTransition(state, auctionState);
+}
+
 export const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
   string,
   OptionalMarketEventHandler
@@ -117,22 +141,7 @@ export const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
     if (!target) return true;
     const expensive = mostExpensiveOwnedTile(state, target.playerId);
     if (!expensive) return true;
-    const auctionState = startDeclineAuction(
-      state,
-      expensive,
-      auctionResumePhaseForTrigger(trigger),
-      Date.now(),
-      {
-        reservePrice: 1,
-        tieBreakMinBid: 1,
-        sellerId: target.playerId,
-        eligiblePlayerIds: state.turnOrder.filter(
-          (id) =>
-            id !== target.playerId && !state.eliminatedPlayerIds.includes(id),
-        ),
-      },
-    );
-    applyAuctionTransition(state, auctionState);
+    startLeveragedBuyoutAuction(state, target.playerId, expensive, trigger);
     logs.push({
       playerId: drawingPlayerId,
       actionType: "optional_leveraged_buyout",
