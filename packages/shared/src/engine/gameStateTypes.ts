@@ -165,6 +165,7 @@ type ServerInjectedGameActionFields = {
   pathChoiceDie?: number;
 };
 
+/** Engine action input: payload keys are derived from the validated GameAction union. */
 export type GameActionInput = {
   type: GameAction["type"];
 } & {

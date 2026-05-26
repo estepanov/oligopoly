@@ -251,27 +251,16 @@ function applySpecialActionRoute(
 
 function withPrimaryLogIndex(
   result: ApplyActionResult,
-  playerId: string,
+  _playerId: string,
   _actionType: string,
 ): ApplyActionResult {
   if (result.primaryLogIndex !== undefined) {
     return result;
   }
-  if (result.logEntries.length === 0) {
-    return result;
-  }
-
-  const actorLogIndex = result.logEntries.findIndex(
-    (entry) => entry.playerId === playerId,
-  );
-  if (actorLogIndex >= 0) {
-    return { ...result, primaryLogIndex: actorLogIndex };
-  }
-
   if (result.logEntries.length === 1) {
     return { ...result, primaryLogIndex: 0 };
   }
-  throw "game.action_not_implemented";
+  return result;
 }
 
 export function applyAction(

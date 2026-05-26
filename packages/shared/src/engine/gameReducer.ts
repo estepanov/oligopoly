@@ -119,7 +119,9 @@ function applyViaAuthoritativeStateMachine(
     const primary =
       result.primaryLogIndex !== undefined
         ? result.logEntries[result.primaryLogIndex]
-        : result.logEntries[0];
+        : result.logEntries.length === 1
+          ? result.logEntries[0]
+          : undefined;
     return {
       ok: true,
       state: toEngineState(result.state),
