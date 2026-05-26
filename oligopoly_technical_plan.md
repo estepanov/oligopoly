@@ -650,12 +650,9 @@ Contract parity tests:
 
 CI responsibilities:
 
-1. Typecheck
-2. Lint
-3. Unit/integration/e2e tests
-4. Coverage gate
-5. Package build
-6. Versioned release of `@oligopoly/*`
+1. Package build parity checks (`ci:build`)
+2. Verify gate (`ci:verify`): typecheck, lint, unit tests with coverage, integration tests
+3. Release build and publish for public packages (`@oligopoly/shared`, `@oligopoly/validation`)
 
 Example `ci.yml`:
 
@@ -676,13 +673,10 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run typecheck
-      - run: pnpm run lint
-      - run: pnpm run test:unit --coverage
-      - run: pnpm run test:integration
+      - run: pnpm run ci:local
 ```
 
 Example `release.yml`:
@@ -708,11 +702,12 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
-      - run: pnpm -r --filter "@oligopoly/*" publish --access public --provenance --no-git-checks
+      - run: pnpm run ci:verify
+      - run: pnpm -r --filter "@oligopoly/shared" --filter "@oligopoly/validation" publish --access public --provenance --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 ```
