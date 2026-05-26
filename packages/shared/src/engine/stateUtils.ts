@@ -31,6 +31,13 @@ export function transferTileOwnership(
   }
 
   const donor = fromPlayerId ? getPlayer(state, fromPlayerId) : undefined;
+  const tileState = state.tiles.find(
+    (entry) => String(entry.position) === String(tilePosition),
+  );
+  if (!tileState) {
+    return false;
+  }
+
   if (donor) {
     donor.ownedTilePositions = donor.ownedTilePositions.filter(
       (pos) => String(pos) !== String(tilePosition),
@@ -46,13 +53,6 @@ export function transferTileOwnership(
     )
   ) {
     recipient.ownedTilePositions.push(tilePosition);
-  }
-
-  const tileState = state.tiles.find(
-    (entry) => String(entry.position) === String(tilePosition),
-  );
-  if (!tileState) {
-    return false;
   }
 
   tileState.ownerId = toPlayerId;

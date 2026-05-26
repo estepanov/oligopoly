@@ -35,11 +35,8 @@ export function handleStartNegotiation(
     throw "game.insufficient_ap";
   }
 
-  const newState = createNegotiationThread(
-    deepClone(state),
-    playerId,
-    partyIds,
-  );
+  const newState = deepClone(state);
+  createNegotiationThread(newState, playerId, partyIds);
   const actor = getPlayer(newState, playerId)!;
   actor.actionPointsRemaining -= ACTION_COSTS.INITIATE_NEGOTIATION;
 
