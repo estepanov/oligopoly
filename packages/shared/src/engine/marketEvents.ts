@@ -382,7 +382,13 @@ const MARKET_EVENT_BLOCKING_PENDING_FIELDS: Array<
 ];
 
 function hasBlockingPendingWork(state: InternalGameState): boolean {
-  return MARKET_EVENT_BLOCKING_PENDING_FIELDS.some((field) =>
+  return blockingPendingSlots(state).length > 0;
+}
+
+function blockingPendingSlots(
+  state: InternalGameState,
+): Array<(typeof MARKET_EVENT_BLOCKING_PENDING_FIELDS)[number]> {
+  return MARKET_EVENT_BLOCKING_PENDING_FIELDS.filter((field) =>
     Boolean(state[field]),
   );
 }

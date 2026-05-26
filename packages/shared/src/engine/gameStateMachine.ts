@@ -249,11 +249,7 @@ function applySpecialActionRoute(
   return globalHandler(state, playerId, action);
 }
 
-function withPrimaryLogIndex(
-  result: ApplyActionResult,
-  _playerId: string,
-  _actionType: string,
-): ApplyActionResult {
+function finalizePrimaryLogIndex(result: ApplyActionResult): ApplyActionResult {
   if (result.primaryLogIndex !== undefined) {
     return result;
   }
@@ -274,7 +270,7 @@ export function applyAction(
 
   const specialResult = applySpecialActionRoute(state, playerId, action);
   if (specialResult !== null) {
-    return withPrimaryLogIndex(specialResult, playerId, action.type);
+    return finalizePrimaryLogIndex(specialResult);
   }
 
   const currentPid = state.turnOrder[state.currentPlayerIndex];
@@ -286,9 +282,6 @@ export function applyAction(
   if (!turnHandler) {
     throw "game.invalid_action";
   }
-  return withPrimaryLogIndex(
-    turnHandler(state, playerId, action),
-    playerId,
-    action.type,
-  );
+  const turnResult = turnHandler(state, playerId, action);
+  return finalizePrimaryLogIndex(turnResult);
 }

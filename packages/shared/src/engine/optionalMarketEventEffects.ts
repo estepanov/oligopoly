@@ -101,6 +101,13 @@ function pickSeededOwnedTile(
   return positions[index] ?? null;
 }
 
+function applyAuctionTransition(
+  state: InternalGameState,
+  auctionState: InternalGameState,
+): void {
+  Object.assign(state, auctionState);
+}
+
 export const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
   string,
   OptionalMarketEventHandler
@@ -125,7 +132,7 @@ export const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
         ),
       },
     );
-    Object.assign(state, auctionState);
+    applyAuctionTransition(state, auctionState);
     logs.push({
       playerId: drawingPlayerId,
       actionType: "optional_leveraged_buyout",
