@@ -392,7 +392,9 @@ const MARKET_EVENT_BLOCKING_PENDING_FIELDS: Array<
 ];
 
 function hasBlockingPendingWork(state: InternalGameState): boolean {
-  return MARKET_EVENT_BLOCKING_PENDING_FIELDS.some((field) => Boolean(state[field]));
+  return MARKET_EVENT_BLOCKING_PENDING_FIELDS.some((field) =>
+    Boolean(state[field]),
+  );
 }
 
 function hasBlockingWorkAfterMarketEventDraw(
