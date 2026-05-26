@@ -105,7 +105,9 @@ function applyAuctionTransition(
   state: InternalGameState,
   auctionState: InternalGameState,
 ): void {
-  Object.assign(state, auctionState);
+  state.phase = auctionState.phase;
+  state.pendingAuction = auctionState.pendingAuction;
+  state.pendingBuyTilePosition = auctionState.pendingBuyTilePosition;
 }
 
 function startLeveragedBuyoutAuction(

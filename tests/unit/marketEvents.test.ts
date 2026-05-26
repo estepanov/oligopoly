@@ -252,6 +252,25 @@ describe("drawAndResolveMarketEvent", () => {
     ).toBe(2);
   });
 
+  it("does not let a pending syndicate vote block round-start roll readiness", () => {
+    const state = makeMarketEventState({
+      pendingSyndicateVote: {
+        syndicateId: "s1",
+        voteType: "dissolve_syndicate",
+        votes: { "player-1": true },
+      },
+    });
+
+    const result = drawAndResolveMarketEvent(state, "player-1", "round_start");
+
+    expect(result.state.phase).toBe("waiting_for_roll");
+    expect(result.state.pendingSyndicateVote).toEqual({
+      syndicateId: "s1",
+      voteType: "dissolve_syndicate",
+      votes: { "player-1": true },
+    });
+  });
+
   it("optional_dark_pool_transfer moves a seeded owned tile, not always the first", () => {
     const state = makeMarketEventState({
       gameId: "dark-pool-seed",

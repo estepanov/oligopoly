@@ -93,21 +93,20 @@ export function createNegotiationThread(
   creatorId: string,
   partyIds: string[],
 ): InternalGameState {
-  const newState = deepClone(state);
-  if (!newState.negotiationThreads) {
-    newState.negotiationThreads = [];
+  if (!state.negotiationThreads) {
+    state.negotiationThreads = [];
   }
-  const id = `thread-${newState.gameId}-${newState.negotiationThreads.length + 1}`;
-  newState.negotiationThreads.push({
+  const id = `thread-${state.gameId}-${state.negotiationThreads.length + 1}`;
+  state.negotiationThreads.push({
     id,
     createdBy: creatorId,
     partyIds: [...new Set(partyIds)],
     status: "open",
-    startedRound: newState.round,
-    expiresAfterRound: calcThreadExpiry(newState.round),
-    visibility: isOptionalRuleEnabled(newState.settings, "open_negotiation")
+    startedRound: state.round,
+    expiresAfterRound: calcThreadExpiry(state.round),
+    visibility: isOptionalRuleEnabled(state.settings, "open_negotiation")
       ? "open"
       : "private",
   });
-  return newState;
+  return state;
 }

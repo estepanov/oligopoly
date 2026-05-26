@@ -16,6 +16,7 @@ import {
 } from "../gameStateView.js";
 import { upgradeWebSocket } from "../realtime/upgrade.js";
 import { stepGameAiTurn } from "../services/gameAi.js";
+import { listGames, toGameSummary } from "../services/gameListings.js";
 import {
   persistGameActionResult,
   toActionResponse,
@@ -55,53 +56,12 @@ gameRoutes.get("/", async (c) => {
   }
 
   const subject = c.get("userId");
-
-  let query: string;
-  let params: (string | null)[];
-
-  if (subject) {
-    // Filter to games the requesting user is a participant in.
-    if (parsed.success) {
-      query =
-        "SELECT id, status, player_ids_json, started_at, ended_at, winner_id FROM games WHERE status = ? AND player_ids_json LIKE ? ORDER BY started_at DESC LIMIT 50";
-      params = [parsed.data, `%${subject}%`];
-    } else {
-      query =
-        "SELECT id, status, player_ids_json, started_at, ended_at, winner_id FROM games WHERE player_ids_json LIKE ? ORDER BY started_at DESC LIMIT 50";
-      params = [`%${subject}%`];
-    }
-  } else {
-    if (parsed.success) {
-      query =
-        "SELECT id, status, player_ids_json, started_at, ended_at, winner_id FROM games WHERE status = ? ORDER BY started_at DESC LIMIT 50";
-      params = [parsed.data];
-    } else {
-      query =
-        "SELECT id, status, player_ids_json, started_at, ended_at, winner_id FROM games ORDER BY started_at DESC LIMIT 50";
-      params = [];
-    }
-  }
-
-  const { results } = await db
-    .prepare(query)
-    .bind(...params)
-    .all<{
-      id: string;
-      status: string;
-      player_ids_json: string;
-      started_at: number;
-      ended_at: number | null;
-      winner_id: string | null;
-    }>();
-
-  const games: GameSummary[] = results.map((row) => ({
-    id: row.id,
-    status: row.status as GameSummary["status"],
-    playerCount: (JSON.parse(row.player_ids_json) as string[]).length,
-    startedAt: row.started_at,
-    endedAt: row.ended_at ?? null,
-    winnerId: row.winner_id ?? null,
-  }));
+  const games: GameSummary[] = (
+    await listGames(db, {
+      status: parsed.success ? parsed.data : undefined,
+      participantId: subject,
+    })
+  ).map(toGameSummary);
 
   return c.json({ games });
 });

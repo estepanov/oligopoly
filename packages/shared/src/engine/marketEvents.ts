@@ -371,14 +371,12 @@ const MARKET_EVENT_BLOCKING_PENDING_FIELDS: Array<
     | "pendingForeclosure"
     | "pendingInsiderPeek"
     | "pendingDisruptionNullify"
-    | "pendingSyndicateVote"
   >
 > = [
   "pendingAuction",
   "pendingForeclosure",
   "pendingInsiderPeek",
   "pendingDisruptionNullify",
-  "pendingSyndicateVote",
 ];
 
 function blockingPendingSlots(
