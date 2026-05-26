@@ -157,10 +157,8 @@ type FieldFromAction<K extends PropertyKey> =
   }
     ? V
     : never;
-type GameActionPayloadKey = Exclude<
-  GameAction extends unknown ? keyof GameAction : never,
-  "type"
->;
+type KeysOfUnion<T> = T extends T ? keyof T : never;
+type GameActionPayloadKey = Exclude<KeysOfUnion<GameAction>, "type">;
 
 type ServerInjectedGameActionFields = {
   /** Server-generated when rolling through START to choose perimeter vs diagonal. */
