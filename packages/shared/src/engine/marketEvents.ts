@@ -13,14 +13,16 @@ import type {
   LogEntry,
 } from "./gameStateTypes.js";
 import { activePlayers, adjustCapital } from "./marketEventPrimitives.js";
+import type { MarketEventTrigger } from "./marketEventTypes.js";
 import {
   OPTIONAL_MARKET_EVENT_HANDLERS,
   type OptionalMarketEventContext,
 } from "./optionalMarketEventEffects.js";
-import type { MarketEventTrigger } from "./marketEventTypes.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
 import { enterWaitingForRoll } from "./turnPhase.js";
+
+export type { MarketEventTrigger } from "./marketEventTypes.js";
 
 type MarketEventHandler = (ctx: OptionalMarketEventContext) => boolean;
 
@@ -383,8 +385,13 @@ function hasBlockingPendingWork(state: InternalGameState): boolean {
   return false;
 }
 
-function hasBlockingWorkAfterMarketEventDraw(state: InternalGameState): boolean {
-  return MARKET_EVENT_BLOCKING_PHASES.has(state.phase) || hasBlockingPendingWork(state);
+function hasBlockingWorkAfterMarketEventDraw(
+  state: InternalGameState,
+): boolean {
+  return (
+    MARKET_EVENT_BLOCKING_PHASES.has(state.phase) ||
+    hasBlockingPendingWork(state)
+  );
 }
 
 function advanceAfterMarketEventDraw(
