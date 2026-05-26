@@ -16,8 +16,8 @@ import {
   playerWithFewestTiles,
 } from "./marketEventSelectors.js";
 import type {
-  MarketEventHandler as OptionalMarketEventHandler,
   MarketEventTrigger,
+  MarketEventHandler as OptionalMarketEventHandler,
 } from "./marketEventTypes.js";
 import { getPlayer, transferTileOwnership } from "./stateUtils.js";
 
@@ -190,7 +190,7 @@ export const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
     if (!state.marketEventModifiers) state.marketEventModifiers = {};
     state.marketEventModifiers.utilityRentMultiplier = 2;
     state.marketEventModifiers.utilityRentMultiplierUntilRound =
-      state.round + 2;
+      state.round + 1;
     logs.push({
       playerId: null,
       actionType: "supply_chain_crisis_active",
@@ -289,6 +289,7 @@ export const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
         toPlayerId: recipient.playerId,
         tilePosition,
       },
+      broadcast: false,
     });
     return true;
   },

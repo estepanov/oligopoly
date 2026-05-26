@@ -57,8 +57,9 @@ export function calculateMortgageValueForState(
 export function calculateRedemptionCost(
   tileCost: number,
   hasPropTechAffinity?: boolean,
+  mortgageRate: number = MORTGAGE_RATE,
 ): number {
-  const mortgageValue = calculateMortgageValue(tileCost);
+  const mortgageValue = Math.floor(tileCost * mortgageRate);
   const rate = hasPropTechAffinity ? PROPTECH_REDEMPTION_RATE : REDEMPTION_RATE;
   const raw = mortgageValue * rate;
   // Handle floating-point: if the value is within epsilon of an integer, round to that integer

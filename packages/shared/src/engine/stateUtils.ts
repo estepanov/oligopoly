@@ -58,6 +58,7 @@ export function transferTileOwnership(
   tileState.ownerId = toPlayerId;
   if (options.clearMortgage) {
     tileState.mortgaged = false;
+    tileState.mortgageRate = null;
   }
 
   if (tileState.mortgaged) {
