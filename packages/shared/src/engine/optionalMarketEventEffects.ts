@@ -16,7 +16,7 @@ import {
   adjustCapital,
   transferCapital,
 } from "./marketEventPrimitives.js";
-import type { MarketEventTrigger } from "./marketEvents.js";
+import type { MarketEventTrigger } from "./marketEventTypes.js";
 import { getPlayer, transferTileOwnership } from "./stateUtils.js";
 
 export type OptionalMarketEventContext = {

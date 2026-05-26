@@ -17,11 +17,11 @@ import {
   OPTIONAL_MARKET_EVENT_HANDLERS,
   type OptionalMarketEventContext,
 } from "./optionalMarketEventEffects.js";
+import type { MarketEventTrigger } from "./marketEventTypes.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
 import { enterWaitingForRoll } from "./turnPhase.js";
 
-export type MarketEventTrigger = "round_start" | "tile";
 type MarketEventHandler = (ctx: OptionalMarketEventContext) => boolean;
 
 function isKnownMarketEventCardId(cardId: string): boolean {
@@ -372,20 +372,19 @@ const MARKET_EVENT_BLOCKING_PHASES = new Set([
   "waiting_for_auction_bids",
   "waiting_for_auction_settle",
 ]);
-const MARKET_EVENT_BLOCKING_PENDING_FIELDS = [
-  "pendingAuction",
-  "pendingInsiderPeek",
-  "pendingDisruptionNullify",
-  "pendingForeclosure",
-] as const;
+const NON_BLOCKING_PENDING_FIELDS = new Set<string>(["pendingBuyTilePosition"]);
 
-function hasBlockingWorkAfterMarketEventDraw(
-  state: InternalGameState,
-): boolean {
-  return (
-    MARKET_EVENT_BLOCKING_PHASES.has(state.phase) ||
-    MARKET_EVENT_BLOCKING_PENDING_FIELDS.some((field) => Boolean(state[field]))
-  );
+function hasBlockingPendingWork(state: InternalGameState): boolean {
+  for (const [key, value] of Object.entries(state)) {
+    if (!key.startsWith("pending")) continue;
+    if (NON_BLOCKING_PENDING_FIELDS.has(key)) continue;
+    if (value !== null && value !== undefined) return true;
+  }
+  return false;
+}
+
+function hasBlockingWorkAfterMarketEventDraw(state: InternalGameState): boolean {
+  return MARKET_EVENT_BLOCKING_PHASES.has(state.phase) || hasBlockingPendingWork(state);
 }
 
 function advanceAfterMarketEventDraw(

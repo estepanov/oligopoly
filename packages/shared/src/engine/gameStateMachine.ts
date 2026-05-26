@@ -252,17 +252,10 @@ function applySpecialActionRoute(
 function withPrimaryLogIndex(
   result: ApplyActionResult,
   playerId: string,
-  actionType: string,
+  _actionType: string,
 ): ApplyActionResult {
   if (result.primaryLogIndex !== undefined) {
     return result;
-  }
-
-  const matchingTypeIndex = result.logEntries.findIndex(
-    (entry) => entry.actionType === actionType,
-  );
-  if (matchingTypeIndex >= 0) {
-    return { ...result, primaryLogIndex: matchingTypeIndex };
   }
 
   const actorLogIndex = result.logEntries.findIndex(
