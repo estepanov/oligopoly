@@ -42,6 +42,7 @@ pnpm dev:web      # Web app only
 | Command | Description |
 |---|---|
 | `pnpm build` | Build all packages |
+| `pnpm ci:local` | Run the same checks as CI locally |
 | `pnpm typecheck` | Run TypeScript type checking |
 | `pnpm lint` | Lint with Biome |
 | `pnpm lint:fix` | Lint and auto-fix |
@@ -49,3 +50,9 @@ pnpm dev:web      # Web app only
 | `pnpm test:unit` | Unit tests only |
 | `pnpm test:integration` | Integration tests only |
 | `pnpm test:e2e` | End-to-end tests only |
+
+## Push guardrail
+
+This repo installs a `pre-push` hook (via `pnpm install`/`pnpm prepare`) that runs `pnpm ci:local`. The hook is a policy guardrail and can still be bypassed with `git push --no-verify` (or `SKIP_LOCAL_CI_GUARDRAIL=1`), so agents and contributors should treat running local CI as mandatory workflow, not optional.
+
+`pnpm prepare` configures `core.hooksPath=.githooks`, which means Git uses this repo's managed hooks directory instead of `.git/hooks`.

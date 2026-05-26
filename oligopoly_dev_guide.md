@@ -152,10 +152,7 @@ git checkout -b feature/your-change
 
 pnpm run test:unit --watch
 
-pnpm run typecheck
-pnpm run lint
-pnpm run test:integration
-pnpm run test:e2e
+pnpm run ci:local
 ```
 
 Definition of done:
@@ -385,11 +382,19 @@ CI scope:
 - Build packages
 - Publish packages
 
+Local guardrail:
+
+- `pnpm run ci:local` mirrors CI checks (canonical check order is defined in `package.json` scripts).
+- A repository `pre-push` hook runs `pnpm run ci:local` automatically and blocks the push on failure.
+
 Example release sequence:
+
+Keep release verification aligned with workflow by running build once, then verify checks, then publish.
 
 ```bash
 pnpm run build
-pnpm -r --filter "@oligopoly/*" publish --access public --provenance --no-git-checks
+pnpm run ci:verify   # release verification gate
+pnpm -r --filter "@oligopoly/shared" --filter "@oligopoly/validation" publish --access public --provenance --no-git-checks
 ```
 
 Deployment procedures for environment-specific integrations are out of scope for this guide.
