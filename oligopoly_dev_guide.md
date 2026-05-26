@@ -104,10 +104,7 @@ Local multiplayer uses the same Worker, D1/KV, Durable Object, and Vite runtime 
 ### Validate
 
 ```bash
-pnpm run typecheck
-pnpm run lint
-pnpm run test:unit
-pnpm run test:integration
+pnpm run ci:local
 ```
 
 ---
@@ -376,16 +373,20 @@ Focus:
 
 ## CI and Release Workflow
 
-CI scope:
+PR CI scope:
 
-- Typecheck, lint, tests
-- Build packages
-- Publish packages
+- Run `pnpm run ci:local`
+
+Release scope:
+
+- Run `pnpm run build`
+- Run `pnpm run ci:verify`
+- Publish `@oligopoly/shared` and `@oligopoly/validation`
 
 Local guardrail:
 
 - `pnpm run ci:local` mirrors CI checks (canonical check order is defined in `package.json` scripts).
-- A repository `pre-push` hook runs `pnpm run ci:local` automatically and blocks the push on failure.
+- When `core.hooksPath` is `.githooks`, the repository `pre-push` hook runs `pnpm run ci:local` automatically and blocks the push on failure.
 
 Example release sequence:
 
