@@ -1,9 +1,5 @@
 import { getTileByPosition } from "../config/board.js";
 import {
-  startDeclineAuction,
-  startForeclosureAuction,
-} from "./auctionLifecycle.js";
-import {
   isLiveAuction,
   isSealedAuction,
   isVisibleAuction,

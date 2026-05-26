@@ -37,7 +37,10 @@ export function handleStartNegotiation(
 
   const newState = deepClone(state);
   createNegotiationThread(newState, playerId, partyIds);
-  const actor = getPlayer(newState, playerId)!;
+  const actor = getPlayer(newState, playerId);
+  if (!actor) {
+    throw "game.invalid_action";
+  }
   actor.actionPointsRemaining -= ACTION_COSTS.INITIATE_NEGOTIATION;
 
   const logs: LogEntry[] = [
