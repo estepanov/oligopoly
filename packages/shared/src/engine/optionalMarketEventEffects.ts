@@ -112,7 +112,7 @@ function startLeveragedBuyoutAuction(
   state: InternalGameState,
   targetPlayerId: string,
   tilePosition: number | string,
-  trigger: MarketEventTrigger,
+  trigger: MarketEventTrigger | undefined,
 ): void {
   const auctionState = startDeclineAuction(
     state,
