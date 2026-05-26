@@ -12,19 +12,17 @@ import type {
   LogEntry,
 } from "./gameStateTypes.js";
 import { activePlayers, adjustCapital } from "./marketEventPrimitives.js";
-import { richestPlayerId } from "./marketEventSelectors.js";
-import type { MarketEventTrigger } from "./marketEventTypes.js";
-import {
-  OPTIONAL_MARKET_EVENT_HANDLERS,
-  type OptionalMarketEventContext,
-} from "./optionalMarketEventEffects.js";
+import type {
+  MarketEventHandler,
+  MarketEventTrigger,
+} from "./marketEventTypes.js";
+import { OPTIONAL_MARKET_EVENT_HANDLERS } from "./optionalMarketEventEffects.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
+import { STANDARD_MARKET_EVENT_HANDLERS } from "./standardMarketEventEffects.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
 import { enterWaitingForRoll } from "./turnPhase.js";
 
 export type { MarketEventTrigger } from "./marketEventTypes.js";
-
-type MarketEventHandler = (ctx: OptionalMarketEventContext) => boolean;
 
 function isKnownMarketEventCardId(cardId: string): boolean {
   return (
@@ -158,89 +156,6 @@ function resolveCategoryEffect(
   }
 }
 
-const grant150ToDrawingPlayer: MarketEventHandler = ({
-  state,
-  cardId,
-  drawingPlayerId,
-  logs,
-}) => {
-  const player = getPlayer(state, drawingPlayerId);
-  if (!player) return true;
-  const delta = adjustCapital(player, 150);
-  logs.push({
-    playerId: drawingPlayerId,
-    actionType: "market_event_capital_change",
-    payload: { cardId, delta, capital: player.capital },
-  });
-  return true;
-};
-
-const applyTenPercentCapitalLossToAllPlayers: MarketEventHandler = ({
-  state,
-  cardId,
-  logs,
-}) => {
-  for (const player of activePlayers(state)) {
-    const loss = Math.floor(player.capital * 0.1);
-    const delta = adjustCapital(player, -loss);
-    logs.push({
-      playerId: player.playerId,
-      actionType: "market_event_capital_change",
-      payload: { cardId, delta, capital: player.capital },
-    });
-  }
-  return true;
-};
-
-const STANDARD_MARKET_EVENT_HANDLERS: Record<string, MarketEventHandler> = {
-  stimulus_package: ({ state, cardId, logs }) => {
-    applyToAllPlayers(state, 100, logs, cardId);
-    return true;
-  },
-  tech_boom: ({ state, cardId, logs }) => {
-    applyToAllPlayers(state, 75, logs, cardId);
-    return true;
-  },
-  bull_market: ({ state, cardId, logs }) => {
-    applyToAllPlayers(state, 75, logs, cardId);
-    return true;
-  },
-  innovation_grant: grant150ToDrawingPlayer,
-  ipo_windfall: grant150ToDrawingPlayer,
-  market_crash: applyTenPercentCapitalLossToAllPlayers,
-  financial_meltdown: applyTenPercentCapitalLossToAllPlayers,
-  recession: ({ state, cardId, logs }) => {
-    applyToAllPlayers(state, -75, logs, cardId);
-    return true;
-  },
-  windfall_tax: ({ state, cardId, logs }) => {
-    const targetId = richestPlayerId(state);
-    if (!targetId) return true;
-    const player = getPlayer(state, targetId);
-    if (!player) return true;
-    const delta = adjustCapital(player, -100);
-    const payment = Math.max(0, -delta);
-    state.freeMarketPool += payment;
-    logs.push({
-      playerId: targetId,
-      actionType: "market_event_capital_change",
-      payload: { cardId, delta, capital: player.capital },
-    });
-    return true;
-  },
-  whistleblower: ({ state, cardId, drawingPlayerId, logs }) => {
-    const player = getPlayer(state, drawingPlayerId);
-    if (!player) return true;
-    const delta = adjustCapital(player, -50);
-    logs.push({
-      playerId: drawingPlayerId,
-      actionType: "market_event_capital_change",
-      payload: { cardId, delta, capital: player.capital },
-    });
-    return true;
-  },
-};
-
 const MARKET_EVENT_HANDLERS: Record<string, MarketEventHandler> = {
   ...STANDARD_MARKET_EVENT_HANDLERS,
   ...OPTIONAL_MARKET_EVENT_HANDLERS,
@@ -364,35 +279,18 @@ const MARKET_EVENT_BLOCKING_PHASES = new Set([
   "waiting_for_auction_bids",
   "waiting_for_auction_settle",
 ]);
-const MARKET_EVENT_BLOCKING_PENDING_FIELDS: Array<
-  keyof Pick<
-    InternalGameState,
-    | "pendingAuction"
-    | "pendingForeclosure"
-    | "pendingInsiderPeek"
-    | "pendingDisruptionNullify"
-  >
-> = [
-  "pendingAuction",
-  "pendingForeclosure",
-  "pendingInsiderPeek",
-  "pendingDisruptionNullify",
-];
-
-function blockingPendingSlots(
-  state: InternalGameState,
-): Array<(typeof MARKET_EVENT_BLOCKING_PENDING_FIELDS)[number]> {
-  return MARKET_EVENT_BLOCKING_PENDING_FIELDS.filter((field) =>
-    Boolean(state[field]),
-  );
-}
 
 function hasBlockingWorkAfterMarketEventDraw(
   state: InternalGameState,
 ): boolean {
   return (
     MARKET_EVENT_BLOCKING_PHASES.has(state.phase) ||
-    blockingPendingSlots(state).length > 0
+    Boolean(
+      state.pendingAuction ||
+        state.pendingForeclosure ||
+        state.pendingInsiderPeek ||
+        state.pendingDisruptionNullify,
+    )
   );
 }
 

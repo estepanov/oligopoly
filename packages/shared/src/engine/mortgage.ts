@@ -3,6 +3,9 @@
 // Mortgage value and redemption cost calculations.
 // ---------------------------------------------------------------------------
 
+import type { InternalGameState } from "./gameStateTypes.js";
+import { syntheticCdoMortgageBoostActive } from "./marketEventModifiers.js";
+
 /** Mortgage yields 50% of acquisition cost */
 export const MORTGAGE_RATE = 0.5;
 
@@ -28,6 +31,16 @@ export function calculateMortgageValue(
 ): number {
   const rate = syntheticCdoActive ? 0.6 : MORTGAGE_RATE;
   return Math.floor(tileCost * rate);
+}
+
+export function calculateMortgageValueForState(
+  state: InternalGameState,
+  tileCost: number,
+): number {
+  return calculateMortgageValue(
+    tileCost,
+    syntheticCdoMortgageBoostActive(state),
+  );
 }
 
 /**

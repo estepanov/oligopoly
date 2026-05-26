@@ -5,7 +5,6 @@ import { hashSeed } from "./deckShuffle.js";
 import type {
   InternalGameState,
   InternalPlayerState,
-  LogEntry,
 } from "./gameStateTypes.js";
 import {
   activePlayers,
@@ -16,19 +15,11 @@ import {
   playerControllingMostTilesInAnySector,
   playerWithFewestTiles,
 } from "./marketEventSelectors.js";
-import type { MarketEventTrigger } from "./marketEventTypes.js";
+import type {
+  MarketEventHandler as OptionalMarketEventHandler,
+  MarketEventTrigger,
+} from "./marketEventTypes.js";
 import { getPlayer, transferTileOwnership } from "./stateUtils.js";
-
-export type OptionalMarketEventContext = {
-  state: InternalGameState;
-  cardId: string;
-  drawingPlayerId: string;
-  logs: LogEntry[];
-  trigger?: MarketEventTrigger;
-};
-export type OptionalMarketEventHandler = (
-  ctx: OptionalMarketEventContext,
-) => boolean;
 
 function auctionResumePhaseForTrigger(
   trigger: MarketEventTrigger | undefined,
