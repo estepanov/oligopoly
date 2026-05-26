@@ -21,7 +21,8 @@ export type ListedGame = {
 function parsePlayerIds(raw: string): string[] {
   try {
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) && parsed.every((value) => typeof value === "string")
+    return Array.isArray(parsed) &&
+      parsed.every((value) => typeof value === "string")
       ? parsed
       : [];
   } catch {
@@ -30,7 +31,7 @@ function parsePlayerIds(raw: string): string[] {
 }
 
 function participantLikePattern(participantId: string): string {
-  return `%\"${participantId.replace(/[\\%_]/g, "\\$&")}\"%`;
+  return `%"${participantId.replace(/[\\%_]/g, "\\$&")}"%`;
 }
 
 export async function listGames(
