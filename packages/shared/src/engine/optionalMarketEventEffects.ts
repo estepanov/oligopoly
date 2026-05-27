@@ -132,6 +132,9 @@ function startLeveragedBuyoutAuction(
     },
   );
   applyAuctionTransition(state, auctionState);
+  if (state.pendingAuction) {
+    state.pendingAuction.trigger = "player_initiated";
+  }
 }
 
 export const OPTIONAL_MARKET_EVENT_HANDLERS: Record<

@@ -470,7 +470,7 @@ export function drawAndResolveMarketEvent(
     logs.push({
       playerId: drawingPlayerId,
       actionType: "insider_peek",
-      payload: { cardId: deck[0], trigger, tilePosition },
+      payload: { trigger, tilePosition },
     });
     return { state: newState, logEntries: logs };
   }
