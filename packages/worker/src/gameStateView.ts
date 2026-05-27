@@ -167,7 +167,7 @@ function filterHandshakesForViewer(
   mode: "spectator" | "player",
 ) {
   if (!handshakes?.length) return handshakes;
-  if (mode === "spectator") return handshakes;
+  if (mode === "spectator") return [];
   return handshakes.filter(
     (entry) => entry.partyA === viewerId || entry.partyB === viewerId,
   );

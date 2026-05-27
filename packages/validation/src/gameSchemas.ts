@@ -240,7 +240,7 @@ export type RateCard = z.infer<typeof RateCardSchema>;
 
 export const PendingAuctionSchema = z.object({
   tilePosition: z.union([z.number().int(), z.string()]),
-  trigger: z.enum(["decline", "foreclosure", "player_initiated"]),
+  trigger: z.enum(["decline", "foreclosure", "forced_sale", "player_initiated"]),
   sellerId: z.string().optional(),
   reservePrice: z.number().int().min(1).optional(),
   auctionType: z.enum(["sealed_bids", "open_bids", "live_bidding"]),

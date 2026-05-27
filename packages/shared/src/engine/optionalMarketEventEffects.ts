@@ -113,6 +113,7 @@ function startLeveragedBuyoutAuction(
     auctionResumePhaseForTrigger(trigger),
     Date.now(),
     {
+      trigger: "forced_sale",
       reservePrice: 1,
       tieBreakMinBid: 1,
       sellerId: targetPlayerId,
@@ -123,9 +124,6 @@ function startLeveragedBuyoutAuction(
     },
   );
   applyAuctionTransition(state, auctionState);
-  if (state.pendingAuction) {
-    state.pendingAuction.trigger = "player_initiated";
-  }
 }
 
 export const OPTIONAL_MARKET_EVENT_HANDLERS: Record<

@@ -294,20 +294,12 @@ const MARKET_EVENT_BLOCKING_PENDING_FIELDS: Array<
   "pendingDisruptionNullify",
 ];
 
-function blockingPendingSlots(
-  state: InternalGameState,
-): Array<(typeof MARKET_EVENT_BLOCKING_PENDING_FIELDS)[number]> {
-  return MARKET_EVENT_BLOCKING_PENDING_FIELDS.filter((field) =>
-    Boolean(state[field]),
-  );
-}
-
 function hasBlockingWorkAfterMarketEventDraw(
   state: InternalGameState,
 ): boolean {
   return (
     MARKET_EVENT_BLOCKING_PHASES.has(state.phase) ||
-    blockingPendingSlots(state).length > 0
+    MARKET_EVENT_BLOCKING_PENDING_FIELDS.some((field) => Boolean(state[field]))
   );
 }
 

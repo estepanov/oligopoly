@@ -1,6 +1,10 @@
 import type { DeclineAuctionType } from "./auctionMode.js";
 
-export type AuctionTrigger = "decline" | "foreclosure" | "player_initiated";
+export type AuctionTrigger =
+  | "decline"
+  | "foreclosure"
+  | "forced_sale"
+  | "player_initiated";
 
 export type AuctionResumePhase =
   | "action"

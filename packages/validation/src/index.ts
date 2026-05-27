@@ -50,6 +50,7 @@ export const GameEngineErrorKeys = {
   DICE_ALREADY_ROLLED: "game.dice_already_rolled",
   DICE_RESULT_REQUIRED: "game.dice_result_required",
   INVALID_PLAYER_STATE: "game.invalid_player_state",
+  UNKNOWN_ENGINE_ERROR: "game.unknown_engine_error",
   ACTION_NOT_IMPLEMENTED: "game.action_not_implemented",
   CANNOT_END_TURN: "game.cannot_end_turn",
 } as const;

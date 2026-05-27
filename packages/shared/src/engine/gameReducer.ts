@@ -84,7 +84,7 @@ function mapEngineThrow(err: string): GameEngineErrorKey {
   if (KNOWN_ENGINE_ERROR_KEYS.has(err)) {
     return err as GameEngineErrorKey;
   }
-  return GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED;
+  return GameEngineErrorKeys.UNKNOWN_ENGINE_ERROR;
 }
 
 function toLogPayload(payload: unknown): Record<string, unknown> {

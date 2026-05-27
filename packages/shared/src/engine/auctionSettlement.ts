@@ -165,6 +165,22 @@ function settlePlayerInitiatedAuctionWinner(
   return { state: newState, logEntries: logs };
 }
 
+function settleSellerBackedAuctionWinner(
+  state: InternalGameState,
+  auction: PendingAuctionState,
+  winnerId: string,
+  amount: number,
+  logs: LogEntry[],
+): ApplyActionResult {
+  return settlePlayerInitiatedAuctionWinner(
+    state,
+    auction,
+    winnerId,
+    amount,
+    logs,
+  );
+}
+
 function settleForeclosureAuctionWinner(
   state: InternalGameState,
   auction: PendingAuctionState,
@@ -219,6 +235,7 @@ export function finishAuctionWithoutSale(
       return settleForeclosureAuctionWithoutSale(state, logs);
     case "decline":
       return settleDeclineAuctionWithoutSale(state, auction, logs);
+    case "forced_sale":
     case "player_initiated":
       return settleDeclineAuctionWithoutSale(state, auction, logs);
   }
@@ -251,6 +268,14 @@ export function awardTileToWinner(
       );
     case "player_initiated":
       return settlePlayerInitiatedAuctionWinner(
+        state,
+        auction,
+        winnerId,
+        amount,
+        logs,
+      );
+    case "forced_sale":
+      return settleSellerBackedAuctionWinner(
         state,
         auction,
         winnerId,
