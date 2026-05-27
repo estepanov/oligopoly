@@ -20,6 +20,7 @@ import type {
   MarketEventHandler as OptionalMarketEventHandler,
 } from "./marketEventTypes.js";
 import { getPlayer, transferTileOwnership } from "./stateUtils.js";
+
 function auctionResumePhaseForTrigger(
   trigger: MarketEventTrigger | undefined,
 ): AuctionResumePhase {
