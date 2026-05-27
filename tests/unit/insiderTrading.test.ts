@@ -76,4 +76,15 @@ describe("insider trading", () => {
     expect(discarded.state.marketEventDiscard).not.toContain("tech_boom");
     expect(discarded.state.phase).not.toBe("waiting_for_insider_peek");
   });
+
+  it("does not leak the peeked card in shared logs", () => {
+    const state = marketEventState();
+    const peek = drawAndResolveMarketEvent(state, "p1", "round_start");
+
+    expect(peek.logEntries).toContainEqual({
+      playerId: "p1",
+      actionType: "insider_peek",
+      payload: { trigger: "round_start", tilePosition: undefined },
+    });
+  });
 });
