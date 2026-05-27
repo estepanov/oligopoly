@@ -19,6 +19,114 @@ type PersistOptions = {
   };
 };
 
+type BroadcastGameState = Omit<
+  ApplyActionResult["state"],
+  "affinityAssignments" | "pendingAuction"
+> & {
+  pendingAuction?: ReturnType<typeof redactPendingAuctionForBroadcast>;
+};
+
+export function logEntriesForBroadcast(
+  logEntries: ApplyActionResult["logEntries"],
+) {
+  if (darkPoolTransferPayload(logEntries)) {
+    return [];
+  }
+  return logEntries
+    .filter((entry) => entry.broadcast !== false)
+    .map(({ broadcast: _broadcast, ...entry }) => entry);
+}
+
+type DarkPoolTransferPayload = {
+  fromPlayerId: string;
+  toPlayerId: string;
+  tilePosition: number | string;
+};
+
+function darkPoolTransferPayload(
+  logEntries: ApplyActionResult["logEntries"],
+): DarkPoolTransferPayload | null {
+  const hiddenTransfer = logEntries.find(
+    (entry) =>
+      entry.actionType === "dark_pool_transfer" && entry.broadcast === false,
+  );
+  if (!hiddenTransfer?.payload) {
+    return null;
+  }
+
+  const { fromPlayerId, toPlayerId, tilePosition } = hiddenTransfer.payload;
+  return typeof fromPlayerId === "string" &&
+    typeof toPlayerId === "string" &&
+    (typeof tilePosition === "number" || typeof tilePosition === "string")
+    ? { fromPlayerId, toPlayerId, tilePosition }
+    : null;
+}
+
+export function publicStateForBroadcast(
+  state: ApplyActionResult["state"],
+  logEntries: ApplyActionResult["logEntries"] = [],
+): BroadcastGameState {
+  const { affinityAssignments: _affinity, pendingAuction, ...rest } = state;
+  const publicState = pendingAuction
+    ? {
+        ...rest,
+        pendingAuction: redactPendingAuctionForBroadcast(pendingAuction),
+      }
+    : rest;
+
+  const hiddenTransfer = darkPoolTransferPayload(logEntries);
+  if (!hiddenTransfer) {
+    return publicState;
+  }
+
+  const transferredTile = publicState.tiles.find(
+    (tile) => String(tile.position) === String(hiddenTransfer.tilePosition),
+  );
+  const transferredTileWasMortgaged = transferredTile?.mortgaged === true;
+
+  return {
+    ...publicState,
+    players: publicState.players.map((player) => {
+      if (player.playerId === hiddenTransfer.fromPlayerId) {
+        return {
+          ...player,
+          ownedTilePositions: player.ownedTilePositions.includes(
+            hiddenTransfer.tilePosition,
+          )
+            ? player.ownedTilePositions
+            : [...player.ownedTilePositions, hiddenTransfer.tilePosition],
+          mortgagedTilePositions: transferredTileWasMortgaged
+            ? player.mortgagedTilePositions.includes(
+                hiddenTransfer.tilePosition,
+              )
+              ? player.mortgagedTilePositions
+              : [...player.mortgagedTilePositions, hiddenTransfer.tilePosition]
+            : player.mortgagedTilePositions,
+        };
+      }
+      if (player.playerId === hiddenTransfer.toPlayerId) {
+        return {
+          ...player,
+          ownedTilePositions: player.ownedTilePositions.filter(
+            (position) =>
+              String(position) !== String(hiddenTransfer.tilePosition),
+          ),
+          mortgagedTilePositions: player.mortgagedTilePositions.filter(
+            (position) =>
+              String(position) !== String(hiddenTransfer.tilePosition),
+          ),
+        };
+      }
+      return player;
+    }),
+    tiles: publicState.tiles.map((tile) =>
+      String(tile.position) === String(hiddenTransfer.tilePosition)
+        ? { ...tile, ownerId: hiddenTransfer.fromPlayerId }
+        : tile,
+    ),
+  };
+}
+
 export async function persistGameActionResult(
   db: D1Database,
   gameId: string,
@@ -80,28 +188,16 @@ export async function persistGameActionResult(
     await processGameCompletion(db, options.kv, gameId, result.state, now);
   }
 
-  const publicState = publicStateForBroadcast(result.state);
+  const publicState = publicStateForBroadcast(result.state, result.logEntries);
   await broadcastGameEvent(options.gameRoom, gameId, {
     type: "game.action_applied",
     sentAt: now,
     gameId,
     actorId: options.actorId ?? options.aiMeta?.aiPlayerId ?? "system",
     action: options.aiMeta?.action,
-    logEntries: result.logEntries,
+    logEntries: logEntriesForBroadcast(result.logEntries),
     state: publicState,
   });
-}
-
-function publicStateForBroadcast(state: ApplyActionResult["state"]) {
-  const { affinityAssignments: _affinity, pendingAuction, ...rest } = state;
-  if (!pendingAuction) {
-    return rest;
-  }
-
-  return {
-    ...rest,
-    pendingAuction: redactPendingAuctionForBroadcast(pendingAuction),
-  };
 }
 
 export function toActionResponse(
@@ -110,10 +206,9 @@ export function toActionResponse(
   extra: Record<string, unknown> = {},
 ): Record<string, unknown> {
   if (!subject) {
-    const { affinityAssignments: _affinity, ...publicState } = result.state;
     return {
-      ...publicStateForBroadcast(result.state),
-      logEntries: result.logEntries,
+      ...publicStateForBroadcast(result.state, result.logEntries),
+      logEntries: logEntriesForBroadcast(result.logEntries),
       ...extra,
     };
   }

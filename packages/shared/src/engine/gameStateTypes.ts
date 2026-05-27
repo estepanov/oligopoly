@@ -144,6 +144,7 @@ export interface InternalTileState {
   position: number | string;
   ownerId: string | null;
   mortgaged: boolean;
+  mortgageRate?: number | null;
   developmentTokens: number;
 }
 
@@ -182,6 +183,7 @@ export interface LogEntry {
   playerId: string | null;
   actionType: string;
   payload: Record<string, unknown> | null;
+  broadcast?: boolean;
 }
 
 export type CompletedGameSnapshot = Pick<

@@ -38,28 +38,10 @@ function withSubmissionCount(auction: PendingAuction): ClientPendingAuction {
   };
 }
 
-export function redactPendingAuctionForBroadcast(
+function redactPendingAuctionByMode(
   auction: PendingAuction,
-): PendingAuction & { submissionCount: number } {
-  if (
-    auction.auctionType === "open_bids" ||
-    auction.auctionType === "live_bidding"
-  ) {
-    return withSubmissionCount(auction);
-  }
-
-  const { submissions: _submissions, ...rest } = auction;
-  return {
-    ...rest,
-    submissions: {},
-    submissionCount: Object.keys(auction.submissions).length,
-  };
-}
-
-function redactPendingAuction(
-  auction: PendingAuction,
-  viewerId: string,
-  mode: "spectator" | "player",
+  mode: "broadcast" | "spectator" | "player",
+  viewerId?: string,
 ): ClientPendingAuction {
   if (
     auction.auctionType === "open_bids" ||
@@ -69,11 +51,14 @@ function redactPendingAuction(
   }
 
   const submissionCount = Object.keys(auction.submissions).length;
-  if (mode === "spectator") {
+  if (mode !== "player") {
     const { submissions: _submissions, ...rest } = auction;
     return { ...rest, submissions: {}, submissionCount };
   }
 
+  if (!viewerId) {
+    throw new Error("viewerId is required for player auction redaction");
+  }
   const mySubmission = auction.submissions[viewerId];
   return {
     ...auction,
@@ -83,6 +68,11 @@ function redactPendingAuction(
   };
 }
 
+export function redactPendingAuctionForBroadcast(
+  auction: PendingAuction,
+): ClientPendingAuction {
+  return redactPendingAuctionByMode(auction, "broadcast");
+}
 function buildClientGameStateBase(
   state: PersistedGameState,
   extras: {
@@ -123,7 +113,7 @@ export function toClientGameState(
   playerId: string,
 ): ClientGameState {
   const pendingAuction = state.pendingAuction
-    ? redactPendingAuction(state.pendingAuction, playerId, mode)
+    ? redactPendingAuctionByMode(state.pendingAuction, mode, playerId)
     : undefined;
 
   const negotiationThreads = filterNegotiationThreadsForViewer(

@@ -36,7 +36,11 @@ import type {
 } from "./gameStateTypes.js";
 import { syntheticCdoMortgageBoostActive } from "./marketEventModifiers.js";
 import { drawAndResolveMarketEvent } from "./marketEvents.js";
-import { calculateMortgageValue, calculateRedemptionCost } from "./mortgage.js";
+import {
+  calculateMortgageValueForState,
+  calculateRedemptionCost,
+  MORTGAGE_RATE,
+} from "./mortgage.js";
 import {
   isOptionalRuleEnabled,
   regulationPenaltiesEnabled,
@@ -819,8 +823,7 @@ export function handleMortgageTile(
   const tile = getTileByPosition(pos);
   if (!tile || tile.cost === null) throw "game.invalid_action";
 
-  const syntheticCdoActive = syntheticCdoMortgageBoostActive(state);
-  const mortgageValue = calculateMortgageValue(tile.cost, syntheticCdoActive);
+  const mortgageValue = calculateMortgageValueForState(state, tile.cost);
 
   const newState = deepClone(state);
   const np = getPlayer(newState, playerId)!;
@@ -829,6 +832,9 @@ export function handleMortgageTile(
 
   const nts = newState.tiles.find((t) => String(t.position) === String(pos))!;
   nts.mortgaged = true;
+  nts.mortgageRate = syntheticCdoMortgageBoostActive(state)
+    ? 0.6
+    : MORTGAGE_RATE;
 
   const logs: LogEntry[] = [
     {
@@ -866,6 +872,7 @@ export function handleRedeemTile(
   const redemptionCost = calculateRedemptionCost(
     tile.cost,
     hasPlayerAffinity(state, playerId, AFFINITY_IDS.proptech_pioneer),
+    tileState.mortgageRate ?? MORTGAGE_RATE,
   );
   const p = getPlayer(state, playerId)!;
   if (p.capital < redemptionCost) throw "game.insufficient_capital";
@@ -879,6 +886,7 @@ export function handleRedeemTile(
 
   const nts = newState.tiles.find((t) => String(t.position) === String(pos))!;
   nts.mortgaged = false;
+  nts.mortgageRate = null;
 
   const logs: LogEntry[] = [
     {

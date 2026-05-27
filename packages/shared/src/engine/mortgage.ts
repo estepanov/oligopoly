@@ -3,6 +3,9 @@
 // Mortgage value and redemption cost calculations.
 // ---------------------------------------------------------------------------
 
+import type { InternalGameState } from "./gameStateTypes.js";
+import { syntheticCdoMortgageBoostActive } from "./marketEventModifiers.js";
+
 /** Mortgage yields 50% of acquisition cost */
 export const MORTGAGE_RATE = 0.5;
 
@@ -30,6 +33,16 @@ export function calculateMortgageValue(
   return Math.floor(tileCost * rate);
 }
 
+export function calculateMortgageValueForState(
+  state: InternalGameState,
+  tileCost: number,
+): number {
+  return calculateMortgageValue(
+    tileCost,
+    syntheticCdoMortgageBoostActive(state),
+  );
+}
+
 /**
  * Calculate the cost to redeem (un-mortgage) a tile.
  * Returns ceil(mortgageValue × rate), with floating-point epsilon handling.
@@ -44,8 +57,9 @@ export function calculateMortgageValue(
 export function calculateRedemptionCost(
   tileCost: number,
   hasPropTechAffinity?: boolean,
+  mortgageRate: number = MORTGAGE_RATE,
 ): number {
-  const mortgageValue = calculateMortgageValue(tileCost);
+  const mortgageValue = Math.floor(tileCost * mortgageRate);
   const rate = hasPropTechAffinity ? PROPTECH_REDEMPTION_RATE : REDEMPTION_RATE;
   const raw = mortgageValue * rate;
   // Handle floating-point: if the value is within epsilon of an integer, round to that integer

@@ -1,13 +1,16 @@
 import {
+  applyAction,
   buildMarketEventDeck,
   drawAndResolveMarketEvent,
   type InternalGameState,
   initTileStates,
+  type LogEntry,
   MARKET_EVENT_DECK_IDS,
   recordAuctionSubmission,
   resolveMarketEventCard,
 } from "@oligopoly/shared";
 import { describe, expect, it } from "vitest";
+import { computeTileRent } from "../../packages/shared/src/engine/rentResolution.js";
 
 function makeMarketEventState(
   overrides?: Partial<InternalGameState>,
@@ -318,6 +321,119 @@ describe("drawAndResolveMarketEvent", () => {
         (tile) => String(tile.position) === String(transferred),
       )?.ownerId,
     ).toBe("player-2");
+  });
+  it("optional_supply_chain_crisis doubles utility rent for the configured rounds", () => {
+    const state = makeMarketEventState({
+      marketEventDeckRemaining: ["optional_supply_chain_crisis"],
+      lastDiceRoll: [3, 4],
+      players: [
+        {
+          playerId: "player-1",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 2,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+        {
+          playerId: "player-2",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [12],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 0,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+      ],
+      tiles: initTileStates().map((tile) =>
+        String(tile.position) === "12"
+          ? { ...tile, ownerId: "player-2" }
+          : tile,
+      ),
+    });
+
+    const before = computeTileRent(state, 12, "player-1");
+    const logs: LogEntry[] = [];
+    resolveMarketEventCard(
+      state,
+      "optional_supply_chain_crisis",
+      "player-1",
+      logs,
+      "round_start",
+    );
+
+    expect(state.marketEventModifiers?.utilityRentMultiplier).toBe(2);
+    expect(state.marketEventModifiers?.utilityRentMultiplierUntilRound).toBe(
+      state.round + 1,
+    );
+    expect(computeTileRent(state, 12, "player-1").rent).toBe(before.rent * 2);
+    state.round += 1;
+    expect(computeTileRent(state, 12, "player-1").rent).toBe(before.rent * 2);
+    state.round += 1;
+    expect(computeTileRent(state, 12, "player-1").rent).toBe(before.rent);
+  });
+
+  it("synthetic CDO uses the boosted mortgage basis for same-round redemption", () => {
+    const state = makeMarketEventState({
+      phase: "action",
+      marketEventModifiers: {
+        syntheticCdoMortgageRound: 1,
+      },
+      players: [
+        {
+          playerId: "player-1",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [3],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 2,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+        {
+          playerId: "player-2",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 0,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+      ],
+      tiles: initTileStates().map((tile) =>
+        String(tile.position) === "3" ? { ...tile, ownerId: "player-1" } : tile,
+      ),
+    });
+
+    const mortgaged = applyAction(state, "player-1", {
+      type: "mortgage_tile",
+      tilePosition: 3,
+    });
+    const redeemed = applyAction(mortgaged.state, "player-1", {
+      type: "redeem_tile",
+      tilePosition: 3,
+    });
+
+    expect(
+      redeemed.state.players.find((player) => player.playerId === "player-1")
+        ?.capital,
+    ).toBe(1495);
   });
 });
 

@@ -5,7 +5,6 @@ import { hashSeed } from "./deckShuffle.js";
 import type {
   InternalGameState,
   InternalPlayerState,
-  LogEntry,
 } from "./gameStateTypes.js";
 import {
   activePlayers,
@@ -16,20 +15,11 @@ import {
   playerControllingMostTilesInAnySector,
   playerWithFewestTiles,
 } from "./marketEventSelectors.js";
-import type { MarketEventTrigger } from "./marketEventTypes.js";
+import type {
+  MarketEventTrigger,
+  MarketEventHandler as OptionalMarketEventHandler,
+} from "./marketEventTypes.js";
 import { getPlayer, transferTileOwnership } from "./stateUtils.js";
-
-export type OptionalMarketEventContext = {
-  state: InternalGameState;
-  cardId: string;
-  drawingPlayerId: string;
-  logs: LogEntry[];
-  trigger?: MarketEventTrigger;
-};
-export type OptionalMarketEventHandler = (
-  ctx: OptionalMarketEventContext,
-) => boolean;
-
 function auctionResumePhaseForTrigger(
   trigger: MarketEventTrigger | undefined,
 ): AuctionResumePhase {
@@ -199,7 +189,7 @@ export const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
     if (!state.marketEventModifiers) state.marketEventModifiers = {};
     state.marketEventModifiers.utilityRentMultiplier = 2;
     state.marketEventModifiers.utilityRentMultiplierUntilRound =
-      state.round + 2;
+      state.round + 1;
     logs.push({
       playerId: null,
       actionType: "supply_chain_crisis_active",
@@ -298,6 +288,7 @@ export const OPTIONAL_MARKET_EVENT_HANDLERS: Record<
         toPlayerId: recipient.playerId,
         tilePosition,
       },
+      broadcast: false,
     });
     return true;
   },
