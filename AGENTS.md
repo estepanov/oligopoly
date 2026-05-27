@@ -36,7 +36,7 @@ Wrangler emulates D1, KV, and R2 locally via Miniflare — no Cloudflare account
 ### Agent push guardrail (Cursor / Claude / Codex)
 
 - You must run `pnpm run ci:local` and get a clean pass before every `git push`.
-- A repository `pre-push` hook enforces this by running `pnpm run ci:local` (canonical check order is defined in `package.json` scripts).
+- When `core.hooksPath` is `.githooks`, the repository `pre-push` hook runs `pnpm run ci:local` (canonical check order is defined in `package.json` scripts).
 - Never bypass the guardrail in normal workflow. `SKIP_LOCAL_CI_GUARDRAIL=1` is emergency-only and requires explicit human instruction in the task prompt.
 
 ### Lint / Format / Typecheck / Test
