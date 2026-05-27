@@ -8,10 +8,15 @@
 //   forward-compatible passthrough where possible.
 // ---------------------------------------------------------------------------
 
-import type { GameAction, GameState, PlayerState } from "@oligopoly/validation";
-import { GameEngineErrorKeys } from "@oligopoly/validation";
-import { isDoubles, moveOnPerimeter, TRIPLE_DOUBLES_LIMIT } from "./dice.js";
-import { ACTION_POINTS_PER_TURN, PASS_START_BONUS } from "./setup.js";
+import type {
+  GameAction,
+  GameEngineErrorKey,
+  GameState,
+} from "@oligopoly/validation";
+import { GameEngineErrorKeys, GameErrorKeys } from "@oligopoly/validation";
+import { applyAction, normalizeGameState } from "./gameStateMachine.js";
+import type { GameActionInput } from "./gameStateTypes.js";
+import { deepClone } from "./stateUtils.js";
 
 /** Full row shape stored in `games.state_json` (superset of public `GameState`). */
 export type EngineGameState = GameState & {
@@ -39,42 +44,20 @@ export type ApplyGameActionSuccess = {
 
 export type ApplyGameActionFailure = {
   ok: false;
-  errorKey: (typeof GameEngineErrorKeys)[keyof typeof GameEngineErrorKeys];
+  errorKey: GameEngineErrorKey;
 };
 
 export type ApplyGameActionResult =
   | ApplyGameActionSuccess
   | ApplyGameActionFailure;
 
-function currentPlayerId(state: EngineGameState): string | undefined {
-  const order = state.turnOrder;
-  const idx = state.currentPlayerIndex;
-  if (!order?.length || idx === undefined || idx < 0 || idx >= order.length) {
-    return undefined;
-  }
-  return order[idx];
-}
-
-function playerById(
-  state: EngineGameState,
-  id: string,
-): PlayerState | undefined {
-  return state.players?.find((p) => p.playerId === id);
-}
-
-function cloneState(state: EngineGameState): EngineGameState {
-  return JSON.parse(JSON.stringify(state)) as EngineGameState;
-}
-
-function resolveDiceRoll(
+function resolveRollInput(
   action: Extract<GameAction, { type: "roll_dice" }>,
   ctx: ApplyGameActionContext,
-): [number, number] | ApplyGameActionFailure {
-  if (ctx.rollDice) {
-    return ctx.rollDice();
-  }
-  if (action.result !== undefined) {
-    return action.result;
+): GameActionInput | ApplyGameActionFailure {
+  const result = ctx.rollDice?.() ?? action.result;
+  if (result) {
+    return { ...action, result };
   }
   return {
     ok: false,
@@ -82,203 +65,85 @@ function resolveDiceRoll(
   };
 }
 
-function applyRollDice(
-  state: EngineGameState,
-  action: Extract<GameAction, { type: "roll_dice" }>,
+function toEngineActionInput(
+  action: GameAction,
   ctx: ApplyGameActionContext,
-): ApplyGameActionResult {
-  const expected = currentPlayerId(state);
-  if (!expected || expected !== ctx.actorId) {
-    return { ok: false, errorKey: GameEngineErrorKeys.NOT_YOUR_TURN };
+): GameActionInput | ApplyGameActionFailure {
+  if (action.type !== "roll_dice") {
+    return action;
   }
-
-  const phase = state.phase ?? "action";
-  if (
-    phase !== "action" &&
-    phase !== "market_event" &&
-    phase !== "rolling_doubles"
-  ) {
-    return { ok: false, errorKey: GameEngineErrorKeys.INVALID_PHASE };
-  }
-
-  const me = playerById(state, ctx.actorId);
-  if (!me) {
-    return { ok: false, errorKey: GameEngineErrorKeys.INVALID_PLAYER_STATE };
-  }
-
-  const mayRerollDoubles =
-    state.lastDiceRoll !== undefined &&
-    state.lastDiceRoll !== null &&
-    isDoubles(state.lastDiceRoll) &&
-    me.doublesCount > 0 &&
-    me.doublesCount < TRIPLE_DOUBLES_LIMIT;
-
-  if (me.actionPointsRemaining !== 0 && !mayRerollDoubles) {
-    return { ok: false, errorKey: GameEngineErrorKeys.DICE_ALREADY_ROLLED };
-  }
-
-  const rollOutcome = resolveDiceRoll(action, ctx);
-  if ("ok" in rollOutcome) {
-    return rollOutcome;
-  }
-  const roll = rollOutcome;
-
-  if (typeof me.position !== "number") {
-    return { ok: false, errorKey: GameEngineErrorKeys.INVALID_PLAYER_STATE };
-  }
-  const startPosition = me.position;
-
-  const next = cloneState(state);
-
-  const players = next.players;
-  if (!players) {
-    return { ok: false, errorKey: GameEngineErrorKeys.INVALID_PLAYER_STATE };
-  }
-
-  const idx = players.findIndex((p) => p.playerId === ctx.actorId);
-  if (idx < 0) {
-    return { ok: false, errorKey: GameEngineErrorKeys.INVALID_PLAYER_STATE };
-  }
-
-  const p = { ...players[idx] } as PlayerState;
-  const total = roll[0] + roll[1];
-  const { newPosition, passedStart } = moveOnPerimeter(startPosition, total);
-  p.position = newPosition;
-  if (passedStart) {
-    p.capital += PASS_START_BONUS;
-  }
-
-  let doublesCount = p.doublesCount;
-  if (isDoubles(roll)) {
-    doublesCount += 1;
-    if (doublesCount >= TRIPLE_DOUBLES_LIMIT) {
-      p.inRegulation = true;
-      doublesCount = 0;
-    }
-  } else {
-    doublesCount = 0;
-  }
-  p.doublesCount = doublesCount;
-  p.actionPointsRemaining = ACTION_POINTS_PER_TURN;
-
-  players[idx] = p;
-  next.players = players;
-  next.lastDiceRoll = roll;
-
-  if (
-    isDoubles(roll) &&
-    doublesCount > 0 &&
-    doublesCount < TRIPLE_DOUBLES_LIMIT
-  ) {
-    next.phase = "rolling_doubles";
-  } else {
-    next.phase = "action";
-  }
-
-  return {
-    ok: true,
-    state: next,
-    logActionType: "roll_dice",
-    logPayload: { roll, newPosition, passedStart },
-  };
+  return resolveRollInput(action, ctx);
 }
 
-function applyEndTurn(
+const KNOWN_ENGINE_ERROR_KEYS = new Set<string>([
+  ...Object.values(GameEngineErrorKeys),
+  ...Object.values(GameErrorKeys),
+]);
+
+function mapEngineThrow(err: string): GameEngineErrorKey {
+  if (KNOWN_ENGINE_ERROR_KEYS.has(err)) {
+    return err as GameEngineErrorKey;
+  }
+  return GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED;
+}
+
+function toLogPayload(payload: unknown): Record<string, unknown> {
+  return payload && typeof payload === "object"
+    ? (payload as Record<string, unknown>)
+    : {};
+}
+
+function toInternalState(state: EngineGameState) {
+  return normalizeGameState(deepClone(state));
+}
+
+function toEngineState(
+  state: ReturnType<typeof toInternalState>,
+): EngineGameState {
+  return state as EngineGameState;
+}
+
+function applyViaAuthoritativeStateMachine(
   state: EngineGameState,
-  _action: Extract<GameAction, { type: "end_turn" }>,
+  action: GameAction,
   ctx: ApplyGameActionContext,
 ): ApplyGameActionResult {
-  const expected = currentPlayerId(state);
-  if (!expected || expected !== ctx.actorId) {
-    return { ok: false, errorKey: GameEngineErrorKeys.NOT_YOUR_TURN };
+  const actionInput = toEngineActionInput(action, ctx);
+  if ("ok" in actionInput) {
+    return actionInput;
   }
 
-  const order = state.turnOrder;
-  const curIdx = state.currentPlayerIndex;
-  if (
-    !order?.length ||
-    curIdx === undefined ||
-    curIdx < 0 ||
-    curIdx >= order.length
-  ) {
-    return { ok: false, errorKey: GameEngineErrorKeys.INVALID_PLAYER_STATE };
+  try {
+    const internal = toInternalState(state);
+    const result = applyAction(internal, ctx.actorId, actionInput);
+    const primary =
+      result.primaryLogIndex !== undefined
+        ? result.logEntries[result.primaryLogIndex]
+        : result.logEntries.length === 1
+          ? result.logEntries[0]
+          : undefined;
+    return {
+      ok: true,
+      state: toEngineState(result.state),
+      logActionType: primary?.actionType ?? action.type,
+      logPayload: toLogPayload(primary?.payload),
+    };
+  } catch (err) {
+    if (typeof err !== "string") {
+      throw err;
+    }
+    return { ok: false, errorKey: mapEngineThrow(err) };
   }
-
-  const phase = state.phase ?? "action";
-  if (phase !== "action" || !state.lastDiceRoll) {
-    return { ok: false, errorKey: GameEngineErrorKeys.CANNOT_END_TURN };
-  }
-
-  const next = cloneState(state);
-  const players = next.players?.map((pl) =>
-    pl.playerId === ctx.actorId
-      ? { ...pl, actionPointsRemaining: 0, doublesCount: 0 }
-      : pl,
-  );
-  next.players = players;
-  next.lastDiceRoll = null;
-  next.phase = "market_event";
-
-  const followingIndex = (curIdx + 1) % order.length;
-  next.currentPlayerIndex = followingIndex;
-  if (followingIndex === 0) {
-    next.round = (next.round ?? 1) + 1;
-  }
-
-  return {
-    ok: true,
-    state: next,
-    logActionType: "end_turn",
-    logPayload: {
-      previousPlayerIndex: curIdx,
-      nextPlayerIndex: followingIndex,
-    },
-  };
 }
 
 /**
- * Incremental roll/end-turn helper for unit tests. HTTP routes use
- * `applyAction` in `gameStateMachine.ts` as the authoritative engine.
+ * Thin adapter over authoritative `applyAction` for tests and tools that use
+ * legacy `applyGameAction`.
  */
 export function applyGameAction(
   state: EngineGameState,
   action: GameAction,
   ctx: ApplyGameActionContext,
 ): ApplyGameActionResult {
-  switch (action.type) {
-    case "roll_dice":
-      return applyRollDice(state, action, ctx);
-    case "end_turn":
-      return applyEndTurn(state, action, ctx);
-    case "buy_tile":
-    case "decline_tile":
-    case "develop_tile":
-    case "mortgage_tile":
-    case "redeem_tile":
-    case "auction_bid":
-    case "auction_pass":
-    case "start_negotiation":
-    case "propose_contract":
-    case "sign_contract":
-    case "sign_handshake":
-    case "break_handshake":
-    case "form_syndicate":
-    case "call_vote":
-    case "path_choice":
-    case "draw_market_event":
-    case "use_affinity":
-    case "accept_disruption":
-    case "set_rate_card":
-    case "end_coordination":
-    case "initiate_auction":
-    case "pay_debt":
-      return {
-        ok: false,
-        errorKey: GameEngineErrorKeys.ACTION_NOT_IMPLEMENTED,
-      };
-    default: {
-      const _exhaustive: never = action;
-      return _exhaustive;
-    }
-  }
+  return applyViaAuthoritativeStateMachine(state, action, ctx);
 }

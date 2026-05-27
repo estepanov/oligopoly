@@ -1,9 +1,5 @@
 import { NegotiationErrorKeys } from "@oligopoly/validation";
-import {
-  canCreateBindingContract,
-  clampTrustworthiness,
-  HANDSHAKE_BREACH_PENALTY,
-} from "../trustConstants.js";
+import { canCreateBindingContract } from "../trustConstants.js";
 import { createNegotiationThread } from "./coordinationPhase.js";
 import type {
   ApplyActionResult,
@@ -39,12 +35,12 @@ export function handleStartNegotiation(
     throw "game.insufficient_ap";
   }
 
-  const newState = createNegotiationThread(
-    deepClone(state),
-    playerId,
-    partyIds,
-  );
-  const actor = getPlayer(newState, playerId)!;
+  const newState = deepClone(state);
+  createNegotiationThread(newState, playerId, partyIds);
+  const actor = getPlayer(newState, playerId);
+  if (!actor) {
+    throw "game.invalid_action";
+  }
   actor.actionPointsRemaining -= ACTION_COSTS.INITIATE_NEGOTIATION;
 
   const logs: LogEntry[] = [
@@ -185,30 +181,6 @@ export function handleSignContract(
       playerId,
       actionType: "contract_signed",
       payload: { contractId, bothSigned: !!bothSigned },
-    },
-  ];
-
-  return { state: newState, logEntries: logs };
-}
-
-export function handleBreakHandshake(
-  state: InternalGameState,
-  playerId: string,
-  _action: GameActionInput,
-): ApplyActionResult {
-  const newState = deepClone(state);
-  const player = getPlayer(newState, playerId);
-  if (!player) throw "game.invalid_action";
-
-  player.trustworthiness = clampTrustworthiness(
-    player.trustworthiness + HANDSHAKE_BREACH_PENALTY,
-  );
-
-  const logs: LogEntry[] = [
-    {
-      playerId,
-      actionType: "handshake_broken",
-      payload: { penalty: HANDSHAKE_BREACH_PENALTY },
     },
   ];
 

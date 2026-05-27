@@ -8,13 +8,44 @@ import { checkSyndicateWin } from "./winCondition.js";
 
 export interface SyndicateCharterState {
   governanceModel: "asset_weighted" | "equal_vote";
+  deadlockResolution: "public_dice_roll";
   revenueSplit: Array<{ playerId: string; pct: number }>;
   contributionWeights: {
     assetScorePct: number;
     revenueScorePct: number;
     negotiationCreditPct: number;
   };
+  dissolutionClause: {
+    trustPenaltyPerMember: number;
+    requiresUnanimousVote: true;
+  };
   ratifiedAt: number;
+}
+
+/** Default charter used when forming a syndicate from the client. */
+export function buildDefaultSyndicateCharter(
+  memberIds: string[],
+): SyndicateCharterState {
+  const pct = Math.floor(100 / memberIds.length);
+  const remainder = 100 - pct * memberIds.length;
+  return {
+    governanceModel: "equal_vote",
+    deadlockResolution: "public_dice_roll",
+    revenueSplit: memberIds.map((id, index) => ({
+      playerId: id,
+      pct: pct + (index === 0 ? remainder : 0),
+    })),
+    contributionWeights: {
+      assetScorePct: 35,
+      revenueScorePct: 35,
+      negotiationCreditPct: 30,
+    },
+    dissolutionClause: {
+      trustPenaltyPerMember: -2,
+      requiresUnanimousVote: true,
+    },
+    ratifiedAt: Date.now(),
+  };
 }
 
 export interface SyndicateState {

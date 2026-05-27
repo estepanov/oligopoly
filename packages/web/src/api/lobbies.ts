@@ -12,9 +12,7 @@ import { env } from "../env";
 import { getStoredToken } from "./auth";
 import { ApiError, requestJson } from "./http";
 
-export type Lobby = z.infer<typeof LobbyResponseSchema> & {
-  status: LobbyStatus;
-};
+export type Lobby = z.infer<typeof LobbyResponseSchema>;
 export type CreateLobbyInput = z.input<typeof CreateLobbyInputSchema>;
 export type StartLobbyResponse = z.infer<typeof StartLobbyResponseSchema>;
 export type LobbiesListResponse = z.infer<typeof LobbiesListResponseSchema>;
@@ -109,6 +107,28 @@ export function startLobby(lobbyId: string) {
     StartLobbyResponseSchema,
     {
       method: "POST",
+      headers: authHeaders(),
+    },
+  );
+}
+
+export function setLobbyReady(lobbyId: string) {
+  return requestJson(
+    `${env.apiUrl}/api/lobbies/${encodeURIComponent(lobbyId)}/ready`,
+    LobbyResponseSchema,
+    {
+      method: "POST",
+      headers: authHeaders(),
+    },
+  );
+}
+
+export function clearLobbyReady(lobbyId: string) {
+  return requestJson(
+    `${env.apiUrl}/api/lobbies/${encodeURIComponent(lobbyId)}/ready`,
+    LobbyResponseSchema,
+    {
+      method: "DELETE",
       headers: authHeaders(),
     },
   );

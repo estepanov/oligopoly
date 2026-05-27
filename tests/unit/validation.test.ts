@@ -483,10 +483,10 @@ describe("NegotiationThreadSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts open_negotiation_rule visibility", () => {
+  it("accepts open visibility", () => {
     const result = NegotiationThreadSchema.safeParse({
       ...validThread,
-      visibility: "open_negotiation_rule",
+      visibility: "open",
     });
     expect(result.success).toBe(true);
   });
@@ -1030,6 +1030,37 @@ describe("GameStateSchema (enhanced)", () => {
     if (result.success) {
       expect(result.data.pendingAuction?.submissionCount).toBe(1);
       expect(result.data.pendingAuction?.mySubmission).toBe(90);
+    }
+  });
+
+  it("preserves handshake agreements and insider peek for web UI", () => {
+    const result = GameStateSchema.safeParse({
+      gameId: "game-1",
+      round: 2,
+      phase: "waiting_for_insider_peek",
+      pendingInsiderPeek: {
+        cardId: "tech_boom",
+        drawingPlayerId: "p1",
+        trigger: "round_start",
+      },
+      handshakeAgreements: [
+        {
+          id: "handshake-game-1-1",
+          partyA: "p1",
+          partyB: "p2",
+          summary: "No trades",
+          status: "pending",
+          partySignatures: { p1: true },
+          createdRound: 2,
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.pendingInsiderPeek?.cardId).toBe("tech_boom");
+      expect(result.data.handshakeAgreements?.[0]?.id).toBe(
+        "handshake-game-1-1",
+      );
     }
   });
 });

@@ -10,6 +10,7 @@ import type { ProfileVisibility } from "@oligopoly/validation";
 import { UpdateUserSettingsInputSchema } from "@oligopoly/validation";
 import { Hono } from "hono";
 import { z } from "zod";
+import { listGames } from "../services/gameListings.js";
 
 type Bindings = {
   DB?: D1Database;
@@ -408,8 +409,22 @@ userRoutes.get("/me/games", async (c) => {
     return c.json({ error: "Auth adapter not configured" }, 401);
   }
 
-  // Placeholder: game history table not yet in schema
-  return c.json([]);
+  const db = c.env?.DB;
+  if (!db) {
+    return c.json({ error: "Database not configured" }, 500);
+  }
+
+  return c.json(
+    (await listGames(db, { participantId: userId })).map((game) => ({
+      gameId: game.id,
+      status: game.status,
+      startedAt: game.startedAt,
+      endedAt: game.endedAt,
+      winnerId: game.winnerId,
+      playerIds: game.playerIds,
+      participated: game.playerIds.includes(userId),
+    })),
+  );
 });
 
 // ---------------------------------------------------------------------------

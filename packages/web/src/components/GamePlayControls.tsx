@@ -4,6 +4,7 @@ import { isAuctionPhase, isMyTurn, ownedTilesForPlayer } from "../lib/gameUi";
 import { ActionPhaseExtras } from "./ActionPhaseExtras";
 import { AuctionPanel } from "./AuctionPanel";
 import { CoordinationControls } from "./CoordinationControls";
+import { InsiderPeekPanel } from "./InsiderPeekPanel";
 
 type GamePlayControlsProps = {
   state: GameState;
@@ -27,6 +28,18 @@ export function GamePlayControls({
   const ownedTiles = myPlayerId ? ownedTilesForPlayer(state, myPlayerId) : [];
   const currency = state.settings?.currencySymbol ?? "¤";
   const gameOver = state.phase === "game_over";
+  const insiderPeek = state.pendingInsiderPeek ?? undefined;
+
+  if (state.phase === "waiting_for_insider_peek") {
+    return (
+      <InsiderPeekPanel
+        insiderPeek={insiderPeek}
+        myPlayerId={myPlayerId}
+        busy={busy}
+        onAction={onAction}
+      />
+    );
+  }
 
   if (gameOver) {
     const winner = state.players?.find(
