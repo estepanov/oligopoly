@@ -293,8 +293,12 @@ describe("drawAndResolveMarketEvent", () => {
     const drawn = drawAndResolveMarketEvent(state, "player-1", "round_start");
     const settled = recordAuctionSubmission(drawn.state, "player-1", 1);
 
-    const buyer = settled.state.players.find((player) => player.playerId === "player-1");
-    const seller = settled.state.players.find((player) => player.playerId === "player-2");
+    const buyer = settled.state.players.find(
+      (player) => player.playerId === "player-1",
+    );
+    const seller = settled.state.players.find(
+      (player) => player.playerId === "player-2",
+    );
     const tile = settled.state.tiles.find((entry) => entry.position === 6);
 
     expect(buyer?.capital).toBe(1499);
