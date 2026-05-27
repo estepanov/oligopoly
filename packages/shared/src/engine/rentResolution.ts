@@ -4,6 +4,7 @@ import {
   spectrumHolderUtilityMultiplier,
 } from "./affinity.js";
 import type { InternalGameState } from "./gameStateTypes.js";
+import { activeUtilityRentMultiplier } from "./marketEventModifiers.js";
 import { isOptionalRuleEnabled } from "./optionalRulesEngine.js";
 import { getActiveRateCardMultiplier } from "./rateCards.js";
 import {
@@ -61,6 +62,12 @@ export function computeTileRent(
     return { rent: 0, ownerId: null };
   }
 
+  if (
+    state.frozenTilePositions?.some((pos) => String(pos) === String(position))
+  ) {
+    return { rent: 0, ownerId: null };
+  }
+
   const ownerId = tileState.ownerId;
 
   if (tile.type === "sector_hub") {
@@ -73,6 +80,10 @@ export function computeTileRent(
       ? state.lastDiceRoll[0] + state.lastDiceRoll[1]
       : 7;
     let rent = calculateUtilityRent(utilCount, diceTotal);
+    const utilityMultiplier = activeUtilityRentMultiplier(state);
+    if (utilityMultiplier) {
+      rent = Math.floor(rent * utilityMultiplier);
+    }
     const spectrumMultiplier = spectrumHolderUtilityMultiplier(
       state,
       ownerId,

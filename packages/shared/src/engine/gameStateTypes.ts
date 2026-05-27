@@ -1,10 +1,16 @@
-import type { AiPersonality } from "@oligopoly/validation";
+import type {
+  AiPersonality,
+  GameAction,
+  GamePhase,
+  InGameHandshakeAgreement,
+  PendingInsiderPeek,
+} from "@oligopoly/validation";
 import type {
   AuctionResumePhase,
   PendingAuctionState,
 } from "./auctionTypes.js";
 import type { SyndicateCharterState, SyndicateState } from "./syndicate.js";
-import type { BindingContract, BindingContractTerm } from "./types.js";
+import type { BindingContract } from "./types.js";
 
 export interface RateCardState {
   sectorId: string;
@@ -28,10 +34,28 @@ export interface FinalRoundState {
   remainingTurnPlayerIds: string[];
 }
 
+export type HandshakeAgreementState = InGameHandshakeAgreement;
+
+export interface PendingSyndicateVoteState {
+  syndicateId: string;
+  voteType: "dissolve_syndicate";
+  votes: Record<string, boolean>;
+}
+
+export type PendingInsiderPeekState = PendingInsiderPeek & {
+  trigger: "round_start" | "tile";
+};
+
+export interface MarketEventModifiersState {
+  utilityRentMultiplier?: number;
+  utilityRentMultiplierUntilRound?: number;
+  syntheticCdoMortgageRound?: number;
+}
+
 export interface InternalGameState {
   gameId: string;
   round: number;
-  phase: string;
+  phase: GamePhase;
   currentPlayerIndex: number;
   turnOrder: string[];
   freeMarketPool: number;
@@ -56,6 +80,12 @@ export interface InternalGameState {
   rateCards?: RateCardState[];
   activeContracts?: BindingContract[];
   negotiationThreads?: NegotiationThreadState[];
+  handshakeAgreements?: HandshakeAgreementState[];
+  pendingSyndicateVote?: PendingSyndicateVoteState | null;
+  pendingInsiderPeek?: PendingInsiderPeekState | null;
+  marketEventModifiers?: MarketEventModifiersState;
+  /** tile positions frozen from rent collection until end of round */
+  frozenTilePositions?: (number | string)[];
   finalRound?: FinalRoundState | null;
   pendingDisruptionNullify?: {
     cardId: string;
@@ -73,6 +103,7 @@ export interface NegotiationThreadState {
   status: "open" | "agreed" | "expired" | "cancelled";
   startedRound: number;
   expiresAfterRound: number;
+  visibility?: "private" | "open";
 }
 
 export interface InternalAiPlayerState {
@@ -84,6 +115,10 @@ export interface InternalAiPlayerState {
 
 export interface InternalPlayerState {
   playerId: string;
+  /** Optional rule: hostile takeover used this game */
+  hostileTakeoverUsed?: boolean;
+  /** Optional rule: market manipulation used this round */
+  marketManipulationUsedThisRound?: boolean;
   kind?: "human" | "ai";
   displayName?: string;
   aiPersonality?: AiPersonality;
@@ -109,42 +144,46 @@ export interface InternalTileState {
   position: number | string;
   ownerId: string | null;
   mortgaged: boolean;
+  mortgageRate?: number | null;
   developmentTokens: number;
 }
 
-export interface GameActionInput {
-  type: string;
-  result?: [number, number];
-  tilePosition?: number | string;
-  tokenNumber?: number;
-  choice?: "perimeter" | "diagonal";
-  amount?: number;
+type ActionWithField<K extends PropertyKey> = Extract<
+  GameAction,
+  { [P in K]?: unknown }
+>;
+type FieldFromAction<K extends PropertyKey> =
+  ActionWithField<K> extends {
+    [P in K]?: infer V;
+  }
+    ? V
+    : never;
+type KeysOfUnion<T> = T extends T ? keyof T : never;
+type GameActionPayloadKey = Exclude<KeysOfUnion<GameAction>, "type">;
+
+type ServerInjectedGameActionFields = {
+  /** Server-generated when rolling through START to choose perimeter vs diagonal. */
   pathChoiceDie?: number;
-  pass?: true;
-  memberIds?: string[];
-  affinityId?: string;
-  targetPlayerId?: string;
-  targetPlayerIds?: string[];
-  sectorId?: string;
-  multiplier?: number;
-  charter?: SyndicateCharterState;
-  contractId?: string;
-  partyB?: string;
-  terms?: BindingContractTerm[];
-  expiresRound?: number;
-  handshakeId?: string;
-  voteType?: string;
-}
+};
+
+/** Engine action input: payload keys are derived from the validated GameAction union. */
+export type GameActionInput = {
+  type: GameAction["type"];
+} & {
+  [K in GameActionPayloadKey]?: FieldFromAction<K>;
+} & ServerInjectedGameActionFields;
 
 export interface ApplyActionResult {
   state: InternalGameState;
   logEntries: LogEntry[];
+  primaryLogIndex?: number;
 }
 
 export interface LogEntry {
   playerId: string | null;
   actionType: string;
   payload: Record<string, unknown> | null;
+  broadcast?: boolean;
 }
 
 export type CompletedGameSnapshot = Pick<

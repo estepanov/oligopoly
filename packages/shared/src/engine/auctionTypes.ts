@@ -2,7 +2,10 @@ import type { DeclineAuctionType } from "./auctionMode.js";
 
 export type AuctionTrigger = "decline" | "foreclosure" | "player_initiated";
 
-export type AuctionResumePhase = "action" | "rolling_doubles";
+export type AuctionResumePhase =
+  | "action"
+  | "rolling_doubles"
+  | "waiting_for_roll";
 
 export type PendingAuctionState = {
   tilePosition: number | string;

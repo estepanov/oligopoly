@@ -388,6 +388,11 @@ Local guardrail:
 - `pnpm run ci:local` mirrors CI checks (canonical check order is defined in `package.json` scripts).
 - When `core.hooksPath` is `.githooks`, the repository `pre-push` hook runs `pnpm run ci:local` automatically and blocks the push on failure.
 
+Local guardrail:
+
+- `pnpm run ci:local` mirrors CI checks (canonical check order is defined in `package.json` scripts).
+- A repository `pre-push` hook runs `pnpm run ci:local` automatically and blocks the push on failure.
+
 Example release sequence:
 
 Keep release verification aligned with workflow by running build once, then verify checks, then publish.

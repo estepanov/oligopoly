@@ -1,4 +1,4 @@
-import { LobbyErrorKeys } from "@oligopoly/validation";
+import { LobbyErrorKeys, type LobbyResponse } from "@oligopoly/validation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Link,
@@ -20,9 +20,17 @@ import {
 } from "../api/lobbies";
 import { useAuth } from "../components/AuthContext";
 import { LobbyAiSettings } from "../components/LobbyAiSettings";
+import { LobbyReadyControls } from "../components/LobbyReadyControls";
 import { canStartLobby, lobbySeatCount } from "../lib/lobbySeats";
 
 const DEFAULT_MAX_PLAYERS = 4;
+
+const normalizeLobby = (
+  lobby: Awaited<ReturnType<typeof fetchLobby>>,
+): LobbyResponse => ({
+  ...lobby,
+  aiSlots: lobby.aiSlots ?? [],
+});
 const MAX_ACTIVE_LOBBIES_PER_USER = 2;
 
 type Message = { kind: "ok" | "error"; text: string } | null;
@@ -118,9 +126,9 @@ export function LobbiesPage() {
   const [myLobbies, setMyLobbies] = useState<
     Awaited<ReturnType<typeof listMyLobbies>>["lobbies"]
   >([]);
-  const [selectedLobby, setSelectedLobby] = useState<Awaited<
-    ReturnType<typeof fetchLobby>
-  > | null>(null);
+  const [selectedLobby, setSelectedLobby] = useState<LobbyResponse | null>(
+    null,
+  );
   const [inviteShare, setInviteShare] = useState<InviteShare | null>(null);
 
   const [busyCreate, setBusyCreate] = useState(false);
@@ -183,7 +191,7 @@ export function LobbiesPage() {
     }
     try {
       const lobby = await fetchLobby(id);
-      setSelectedLobby(lobby);
+      setSelectedLobby(normalizeLobby(lobby));
       setJoinLobbyId(lobby.id);
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
@@ -350,6 +358,10 @@ export function LobbiesPage() {
       return "Start unlocks for admins once at least two total human or AI seats are in the lobby.";
     }
 
+    if (!selectedLobby.players.every((player) => player.isReady)) {
+      return "Every human player must mark ready before you can start.";
+    }
+
     return "You are an admin in this lobby and can start the game.";
   }, [selectedLobby, selectedLobbyMembership, user]);
 
@@ -400,7 +412,7 @@ export function LobbiesPage() {
           personality: createAiPersonality,
         })),
       });
-      setSelectedLobby(lobby);
+      setSelectedLobby(normalizeLobby(lobby));
       setJoinLobbyId(lobby.id);
       if (lobby.isPrivate) {
         try {
@@ -460,7 +472,7 @@ export function LobbiesPage() {
       const lobby = resolved.token
         ? await joinLobbyWithToken(resolved.lobbyId, resolved.token)
         : await joinLobby(resolved.lobbyId);
-      setSelectedLobby(lobby);
+      setSelectedLobby(normalizeLobby(lobby));
       setJoinLobbyId(lobby.id);
       setMessage({ kind: "ok", text: `Joined lobby ${lobby.id}` });
       await refreshMyLobbies();
@@ -537,7 +549,7 @@ export function LobbiesPage() {
         if (response.deleted || !response.lobby) {
           setSelectedLobby(null);
         } else {
-          setSelectedLobby(response.lobby);
+          setSelectedLobby(normalizeLobby(response.lobby));
         }
       }
 
@@ -1054,6 +1066,23 @@ export function LobbiesPage() {
               </>
             )}
 
+            <LobbyReadyControls
+              lobby={selectedLobby}
+              userId={user?.userId}
+              busy={busyStart || busyLeave || busyInvite}
+              onUpdated={(updated) => {
+                const normalized = normalizeLobby(updated);
+                setSelectedLobby(normalized);
+                setMyLobbies((current) =>
+                  current.map((lobby) =>
+                    lobby.id === normalized.id ? normalized : lobby,
+                  ),
+                );
+              }}
+              onBusy={setBusyStart}
+              onMessage={(text, kind) => setMessage({ text, kind })}
+            />
+
             <div className="buttonRow">
               {selectedLobbyMembership &&
                 selectedLobby.status === "waiting" && (
@@ -1078,6 +1107,7 @@ export function LobbiesPage() {
                   !canStartLobby(
                     selectedLobby.status,
                     lobbySeatCount(selectedLobby),
+                    selectedLobby.players,
                   )
                 }
               >

@@ -14,6 +14,11 @@ fi
 desired_hooks_path=".githooks"
 existing_hooks_path="$(git config --local --get core.hooksPath || true)"
 
+if [[ "$existing_hooks_path" == "$desired_hooks_path" ]]; then
+	echo "core.hooksPath already configured to $desired_hooks_path."
+	exit 0
+fi
+
 if [[ -n "$existing_hooks_path" && "$existing_hooks_path" != "$desired_hooks_path" ]]; then
 	if [[ "${FORCE_GIT_HOOKS_PATH:-0}" != "1" ]]; then
 		echo "Detected existing core.hooksPath=$existing_hooks_path. Leaving it unchanged."

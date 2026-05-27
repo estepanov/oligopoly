@@ -10,6 +10,9 @@ export function lobbySeatCount(lobby: {
 export function canStartLobby(
   status: LobbyResponse["status"],
   seatCount: number,
+  players: LobbyResponse["players"] = [],
 ) {
-  return status === "waiting" && seatCount >= 2;
+  const allHumansReady =
+    players.length === 0 || players.every((player) => player.isReady);
+  return status === "waiting" && seatCount >= 2 && allHumansReady;
 }

@@ -71,6 +71,22 @@ function deterministicDice(
   return [((hash % 6) + 1) as 1, (((hash >> 3) % 6) + 1) as 1];
 }
 
+function shouldKeepPeekedMarketEvent(
+  state: InternalGameState,
+  actorId: string,
+  personality: AiPersonality,
+): boolean {
+  const peek = state.pendingInsiderPeek;
+  if (!peek) return true;
+
+  const seed = `${state.gameId}:${state.round}:${actorId}:${personality}:${peek.cardId}:${peek.trigger}`;
+  let hash = 0;
+  for (const ch of seed) {
+    hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  }
+  return hash % 2 === 0;
+}
+
 function shouldBuy(
   state: InternalGameState,
   actorId: string,
@@ -139,6 +155,16 @@ export function chooseAiActionForPlayer(
   }
 
   if (actorId !== currentPlayerId(state)) return null;
+
+  if (state.phase === "waiting_for_insider_peek" && state.pendingInsiderPeek) {
+    return {
+      actorId,
+      personality,
+      action: shouldKeepPeekedMarketEvent(state, actorId, personality)
+        ? { type: "insider_keep_market_event" }
+        : { type: "insider_discard_market_event" },
+    };
+  }
 
   if (state.phase === "waiting_for_market_event") {
     return {

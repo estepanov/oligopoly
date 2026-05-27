@@ -370,7 +370,7 @@ export interface NegotiationThread {
   status: "open" | "agreed" | "expired" | "cancelled";
   startedRound: number;
   expiresAfterRound: number; // startedRound + 3
-  visibility: "private" | "open_negotiation_rule";
+  visibility: "private" | "open";
   messages: NegotiationMessage[];
   proposedContract?: BindingContract;
   handshakeRecord?: HandshakeAgreement;
@@ -596,9 +596,9 @@ No deployment-specific delivery or session keys are defined in this plan.
 
 - Persisted state is a superset of the public `GameState` contract: it may include **`affinityAssignments`** (server-only map). Per-player responses replace that map with **`myAffinityCardId`** (see `GET /api/games/:id/state`).
 - **`applyAction`** in `@oligopoly/shared` (`gameStateMachine`) is the primary transition for **`POST /api/games/:id/action`**. Typed game errors use **`GameErrorKeys`** in `@oligopoly/validation`.
-- A slimmer **`applyGameAction`** helper (`gameReducer`) remains exported for incremental roll/end-turn style transitions and tests; HTTP routes use **`applyAction`** unless otherwise noted.
+- **`applyGameAction`** (`gameReducer`) is a thin adapter over **`applyAction`** for tests/tools that expect `{ ok, state | errorKey }`; HTTP routes still call **`applyAction`** directly.
 - **`roll_dice`** may omit **`result`** on the wire; the worker injects **`pathChoiceDie`** where required by the state machine before applying the action.
-- **Declined tile purchase** enters **`waiting_for_auction_bids`** with **`pendingAuction`**. All non-eliminated players in turn order are eligible; **`auction_bid`** / **`auction_pass`** bypass the current-turn check. Auction mode comes from **`settings.auctionType`**: **`sealed_bids`** (default), **`open_bids`**, or **`live_bidding`**. Highest bid wins; sealed ties trigger additional sealed rounds with **`tieBreakMinBid`**, open/live ties resolve by dice roll. All-pass leaves the tile unowned (pass is rejected in live mode). **`resumePhase`** restores **`action`** or **`rolling_doubles`** when the decline happened during a doubles chain.
+- **Declined tile purchase** enters **`waiting_for_auction_bids`** with **`pendingAuction`**. All non-eliminated players in turn order are eligible; **`auction_bid`** / **`auction_pass`** bypass the current-turn check. Auction mode comes from **`settings.auctionType`**: **`sealed_bids`** (default), **`open_bids`**, or **`live_bidding`**. Highest bid wins; sealed ties trigger additional sealed rounds with **`tieBreakMinBid`**, open/live ties resolve by dice roll. All-pass leaves the tile unowned (pass is rejected in live mode). **`resumePhase`** restores **`action`**, **`rolling_doubles`**, or **`waiting_for_roll`** depending on trigger context.
 - Sealed bid amounts are redacted in HTTP/WS player views (`toClientGameState`) and stripped from broadcast snapshots (`publicStateForBroadcast`); only the viewer's own **`mySubmission`** is returned until settlement reveals all bids in the action log. Open and live bids remain visible in **`pendingAuction.submissions`** for all viewers.
 - Per-player **`auction_bid`** log entries omit bid amounts for sealed auctions until **`auction_settled`** reveals all submissions simultaneously. Open/live **`auction_bid`** logs include amounts immediately.
 - **`GameRoom`** AI loop uses **`findNextAiAuctionActor`** / **`chooseAiActionForPlayer`** to submit bids for AI seats without a submission. **`GameRoom.syncAfterStateChange`** runs the AI loop during **`waiting_for_auction_bids`** whenever an AI seat still owes a submission, not only on the current turn actor.
@@ -614,7 +614,11 @@ No deployment-specific delivery or session keys are defined in this plan.
 - **Web client (game detail):** **`GamePlayControls`** exposes coordination (**`end_coordination`**, **`set_rate_card`**), advanced action-phase controls (**`form_syndicate`**, **`start_negotiation`**, **`propose_contract`**, **`sign_contract`**, **`pay_debt`**, **`initiate_auction`**, **`use_affinity`**, disruption nullify) via **`CoordinationControls`** and **`ActionPhaseExtras`**.
 - **Player-initiated auctions:** **`initiate_auction`** (1 AP) sells an owned un-mortgaged tile with configurable reserve (default 50% acquisition cost); seller cannot bid; proceeds go to seller (`trigger: player_initiated`).
 - **Lobby ready flags:** **`POST/DELETE /api/lobbies/:id/ready`**; game start requires all human lobby members ready (`lobby.not_all_ready` otherwise). Migration **`0008_lobby_player_ready.sql`**.
-- **Optional rules (partial):** **`optionalRulesEngine.ts`** exposes **`isOptionalRuleEnabled`**. **`no_regulation`** disables regulation penalties. **`auction_everything`** skips buy windows and starts auctions with reserve 1. **`double_rent_district`** upgrades qualifying sector-control rent to 3× base when the controller also owns the adjacent hub and the visitor does not control that sector.
+- **Optional rules:** **`optionalRulesEngine.ts`** exposes **`isOptionalRuleEnabled`**. **`no_regulation`** disables regulation penalties. **`auction_everything`** skips buy windows and starts auctions with reserve 1. **`double_rent_district`** upgrades qualifying sector-control rent to 3× base when the controller also owns the adjacent hub and the visitor does not control that sector. **`debt_spiral`** accrues interest at coordination phase end. **`hostile_takeover`** and **`market_manipulation`** are handled in **`optionalRuleActions.ts`** (`hostile_takeover`, `market_manipulation` game actions). **`insider_trading`** adds **`waiting_for_insider_peek`** on round-start draws only; discard returns the peeked card to the deck bottom (`insider_discard_market_event` / `insider_keep_market_event`). **`open_negotiation`** marks negotiation threads `visibility: open` and exposes all threads in **`toClientGameState`**.
+- **Optional market event cards:** optional card handlers resolve in **`optionalMarketEventEffects.ts`** (invoked from `marketEvents.ts`) for leveraged buyout, corporate espionage, short squeeze, supply chain crisis, sovereign wealth fund, venture capital boom, algorithmic flash trade, regulatory amnesty, dark pool transfer, synthetic CDO, and black swan event.
+- **Handshakes:** **`handshakeActions.ts`** implements **`propose_handshake`**, **`sign_handshake`**, **`break_handshake`** with in-state **`handshakeAgreements`**.
+- **Syndicate votes:** **`syndicateVoteActions.ts`** implements unanimous **`call_vote`** (`voteType: dissolve_syndicate`).
+- **User game history:** **`GET /api/users/me/games`** queries the **`games`** table by participant id.
 
 ---
 

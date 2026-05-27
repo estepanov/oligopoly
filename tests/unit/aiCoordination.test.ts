@@ -68,4 +68,26 @@ describe("AI syndicate coordination", () => {
     expect(decision?.action.type).toBe("end_coordination");
     expect(decision?.actorId).toBe("ai:p1");
   });
+
+  it("chooses a deterministic insider-peek action for AI players", () => {
+    const insiderState = normalizeGameState({
+      ...state,
+      phase: "waiting_for_insider_peek",
+      pendingInsiderPeek: {
+        cardId: "market_crash",
+        drawingPlayerId: "ai:p1",
+        trigger: "round_start",
+      },
+    });
+
+    const first = chooseAiAction(insiderState);
+    const second = chooseAiAction(insiderState);
+
+    expect(first?.actorId).toBe("ai:p1");
+    expect(second).toEqual(first);
+    expect([
+      "insider_keep_market_event",
+      "insider_discard_market_event",
+    ]).toContain(first?.action.type);
+  });
 });

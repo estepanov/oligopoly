@@ -231,8 +231,11 @@ export type { MarketEventTrigger } from "./engine/marketEvents.js";
 export {
   buildMarketEventDeck,
   drawAndResolveMarketEvent,
+  handleInsiderDiscardMarketEvent,
+  handleInsiderKeepMarketEvent,
   normalizeMarketEventDeck,
   resolveMarketEventCard,
+  shouldOfferInsiderPeek,
 } from "./engine/marketEvents.js";
 export {
   calculateAbsorptionPrice,
@@ -294,6 +297,7 @@ export {
 export type { SyndicateCharterState } from "./engine/syndicate.js";
 export {
   areSameSyndicate,
+  buildDefaultSyndicateCharter,
   controllingPlayerIds,
   findSyndicateWinnerId,
   getSyndicateForPlayer,

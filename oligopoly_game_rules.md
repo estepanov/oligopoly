@@ -761,7 +761,7 @@ These cards may only be active if the game admin has achieved **Sector Investor*
 
 **Dark Pool Transfer** — One random player (selected by the game) may secretly transfer one of their tiles to any other player without public announcement. The transfer is recorded in the action log but no notification is broadcast to other players. Other players see the ownership change only when they check the board state.
 
-**Synthetic CDO** — Each player may mortgage any number of their tiles simultaneously this round. When doing so via this card, players receive **60% of acquisition cost** per mortgaged tile (instead of the standard 50%). This window is available only during this Market Event's resolution.
+**Synthetic CDO** — Each player may mortgage any number of their tiles simultaneously this round. When doing so via this card, players receive **60% of acquisition cost** per mortgaged tile (instead of the standard 50%). This window remains available through the current round.
 
 **Black Swan Event** — All players lose **25% of their current Capital** immediately (rounded down). After this loss, the player with the **least total Capital** receives all the Capital lost by other players combined as compensation, modelling "disaster socialism." Example: Players A (500), B (300), C (200) lose 125, 75, 50 = 250 total. C receives 250, ending at 450.
 
