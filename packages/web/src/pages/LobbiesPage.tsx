@@ -300,6 +300,24 @@ export function LobbiesPage() {
   }, [myLobbies, selectedLobby]);
 
   useEffect(() => {
+    if (!selectedLobby?.id || selectedLobby.status !== "waiting") {
+      return;
+    }
+
+    const intervalId = window.setInterval(async () => {
+      try {
+        applySelectedLobbyUpdate(
+          normalizeLobby(await fetchLobby(selectedLobby.id)),
+        );
+      } catch {
+        // Keep the current lobby visible if a transient refresh fails.
+      }
+    }, 2_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [applySelectedLobbyUpdate, selectedLobby?.id, selectedLobby?.status]);
+
+  useEffect(() => {
     setCreateAiCount((count) => Math.min(count, createMaxPlayers - 1));
   }, [createMaxPlayers]);
 
