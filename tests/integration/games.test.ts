@@ -413,7 +413,7 @@ describe("POST /api/games/:id/ai/step", () => {
 
     const res = await app.request(
       "/api/games/game-ai/ai/step",
-      { method: "POST" },
+      { method: "POST", headers: { "x-subject": PLAYER_A } },
       env,
     );
 
@@ -443,7 +443,7 @@ describe("POST /api/games/:id/ai/step", () => {
 
     const res = await app.request(
       "/api/games/game-completed/ai/step",
-      { method: "POST" },
+      { method: "POST", headers: { "x-subject": PLAYER_A } },
       env,
     );
 
