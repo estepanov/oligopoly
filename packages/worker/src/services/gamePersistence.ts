@@ -71,44 +71,33 @@ function darkPoolTransferPayload(
     : null;
 }
 
-export function publicStateForBroadcast(
-  state: ApplyActionResult["state"],
-  logEntries: ApplyActionResult["logEntries"] = [],
-): BroadcastGameState {
-  const {
-    affinityAssignments: _affinity,
-    pendingAuction,
-    pendingInsiderPeek: _peek,
-    handshakeAgreements: _handshakes,
-    negotiationThreads,
-    ...rest
-  } = state;
-  const openNegotiationThreads = negotiationThreads?.filter(
-    (thread) => thread.visibility === "open",
-  );
-  const publicState = {
-    ...rest,
-    ...(pendingAuction
-      ? { pendingAuction: redactPendingAuctionForBroadcast(pendingAuction) }
-      : {}),
-    ...(openNegotiationThreads?.length
-      ? { negotiationThreads: openNegotiationThreads }
-      : {}),
-  };
-
+function applyDarkPoolTransferRedaction<
+  TState extends {
+    players: Array<{
+      playerId: string;
+      ownedTilePositions: Array<number | string>;
+      mortgagedTilePositions: Array<number | string>;
+    }>;
+    tiles: Array<{
+      position: number | string;
+      ownerId?: string | null;
+      mortgaged?: boolean;
+    }>;
+  },
+>(state: TState, logEntries: ApplyActionResult["logEntries"]): TState {
   const hiddenTransfer = darkPoolTransferPayload(logEntries);
   if (!hiddenTransfer) {
-    return publicState;
+    return state;
   }
 
-  const transferredTile = publicState.tiles.find(
+  const transferredTile = state.tiles.find(
     (tile) => String(tile.position) === String(hiddenTransfer.tilePosition),
   );
   const transferredTileWasMortgaged = transferredTile?.mortgaged === true;
 
   return {
-    ...publicState,
-    players: publicState.players.map((player) => {
+    ...state,
+    players: state.players.map((player) => {
       if (player.playerId === hiddenTransfer.fromPlayerId) {
         return {
           ...player,
@@ -141,12 +130,40 @@ export function publicStateForBroadcast(
       }
       return player;
     }),
-    tiles: publicState.tiles.map((tile) =>
+    tiles: state.tiles.map((tile) =>
       String(tile.position) === String(hiddenTransfer.tilePosition)
         ? { ...tile, ownerId: hiddenTransfer.fromPlayerId }
         : tile,
     ),
   };
+}
+
+export function publicStateForBroadcast(
+  state: ApplyActionResult["state"],
+  logEntries: ApplyActionResult["logEntries"] = [],
+): BroadcastGameState {
+  const {
+    affinityAssignments: _affinity,
+    pendingAuction,
+    pendingInsiderPeek: _peek,
+    handshakeAgreements: _handshakes,
+    negotiationThreads,
+    ...rest
+  } = state;
+  const openNegotiationThreads = negotiationThreads?.filter(
+    (thread) => thread.visibility === "open",
+  );
+  const publicState = {
+    ...rest,
+    ...(pendingAuction
+      ? { pendingAuction: redactPendingAuctionForBroadcast(pendingAuction) }
+      : {}),
+    ...(openNegotiationThreads?.length
+      ? { negotiationThreads: openNegotiationThreads }
+      : {}),
+  };
+
+  return applyDarkPoolTransferRedaction(publicState, logEntries);
 }
 
 export async function persistGameActionResult(
@@ -224,7 +241,7 @@ export async function persistGameActionResult(
 
   const hiddenTransfer = darkPoolTransferPayload(result.logEntries);
   const broadcastState = hiddenTransfer
-    ? publicStateForBroadcast(result.state, result.logEntries)
+    ? applyDarkPoolTransferRedaction(result.state, result.logEntries)
     : result.state;
   const broadcastLogEntries = hiddenTransfer
     ? []
