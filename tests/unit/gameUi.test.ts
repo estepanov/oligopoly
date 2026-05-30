@@ -1,6 +1,6 @@
 import type { GameState } from "@oligopoly/validation";
 import { describe, expect, it } from "vitest";
-import { mergeRedactedGameSnapshot } from "../../packages/web/src/lib/gameUi";
+import { mergeAuctionClientView } from "../../packages/web/src/lib/gameUi";
 
 function auctionState(
   pendingAuction: NonNullable<GameState["pendingAuction"]>,
@@ -13,7 +13,7 @@ function auctionState(
   };
 }
 
-describe("mergeRedactedGameSnapshot", () => {
+describe("mergeAuctionClientView", () => {
   it("preserves mySubmission when broadcast snapshots omit it", () => {
     const previous = auctionState({
       tilePosition: 3,
@@ -37,7 +37,7 @@ describe("mergeRedactedGameSnapshot", () => {
       submissionCount: 2,
     });
 
-    const merged = mergeRedactedGameSnapshot(previous, incoming);
+    const merged = mergeAuctionClientView(previous, incoming);
     expect(merged.pendingAuction?.mySubmission).toBe(90);
     expect(merged.pendingAuction?.submissionCount).toBe(2);
   });
@@ -65,7 +65,7 @@ describe("mergeRedactedGameSnapshot", () => {
       submissionCount: 0,
     });
 
-    const merged = mergeRedactedGameSnapshot(previous, incoming);
+    const merged = mergeAuctionClientView(previous, incoming);
     expect(merged.pendingAuction?.mySubmission).toBeUndefined();
   });
 
@@ -92,7 +92,7 @@ describe("mergeRedactedGameSnapshot", () => {
       submissionCount: 2,
     });
 
-    expect(mergeRedactedGameSnapshot(previous, incoming)).toEqual(incoming);
+    expect(mergeAuctionClientView(previous, incoming)).toEqual(incoming);
   });
 
   it("does not preserve mySubmission for live auctions", () => {
@@ -118,68 +118,6 @@ describe("mergeRedactedGameSnapshot", () => {
       submissionCount: 2,
     });
 
-    expect(mergeRedactedGameSnapshot(previous, incoming)).toEqual(incoming);
-  });
-  it("preserves viewer-private fields when public realtime updates omit them", () => {
-    const previous: GameState = {
-      gameId: "game-1",
-      round: 1,
-      phase: "waiting_for_insider_peek",
-      myAffinityCardId: "ai_pioneer",
-      pendingInsiderPeek: {
-        cardId: "market_crash",
-        drawingPlayerId: "p1",
-        trigger: "round_start",
-      },
-      handshakeAgreements: [
-        {
-          id: "handshake-1",
-          partyA: "p1",
-          partyB: "p2",
-          summary: "private",
-          status: "pending",
-          createdRound: 1,
-        },
-      ],
-      negotiationThreads: [
-        {
-          id: "thread-1",
-          createdBy: "p1",
-          partyIds: ["p1", "p2"],
-          status: "open",
-          startedRound: 1,
-          expiresAfterRound: 4,
-          visibility: "private",
-        },
-      ],
-    };
-
-    const incoming: GameState = {
-      gameId: "game-1",
-      round: 1,
-      phase: "waiting_for_insider_peek",
-      negotiationThreads: [
-        {
-          id: "open-thread",
-          createdBy: "p2",
-          partyIds: ["p2", "p3"],
-          status: "open",
-          startedRound: 1,
-          expiresAfterRound: 4,
-          visibility: "open",
-        },
-      ],
-    };
-
-    const merged = mergeRedactedGameSnapshot(previous, incoming);
-    expect(merged.myAffinityCardId).toBe("ai_pioneer");
-    expect(merged.pendingInsiderPeek?.cardId).toBe("market_crash");
-    expect(merged.handshakeAgreements?.map((entry) => entry.id)).toEqual([
-      "handshake-1",
-    ]);
-    expect(merged.negotiationThreads?.map((entry) => entry.id)).toEqual([
-      "open-thread",
-      "thread-1",
-    ]);
+    expect(mergeAuctionClientView(previous, incoming)).toEqual(incoming);
   });
 });

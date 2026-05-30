@@ -302,14 +302,6 @@ export function LobbiesPage() {
   }, [loading, refreshMyLobbies, user]);
 
   useEffect(() => {
-    if (selectedLobby || myLobbies.length !== 1) {
-      return;
-    }
-
-    commitSelectedLobby(normalizeLobby(myLobbies[0]));
-  }, [commitSelectedLobby, myLobbies, selectedLobby]);
-
-  useEffect(() => {
     if (
       !selectedLobby?.id ||
       selectedLobby.status !== "waiting" ||

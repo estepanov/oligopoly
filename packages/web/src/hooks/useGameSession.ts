@@ -17,7 +17,7 @@ import { buildTileNameMap } from "../lib/boardDisplay";
 import {
   currentActorId,
   isMyTurn,
-  mergeRedactedGameSnapshot,
+  mergeAuctionClientView,
 } from "../lib/gameUi";
 import { type GameSessionUpdate, useGameRealtime } from "./useGameRealtime";
 
@@ -59,33 +59,13 @@ export function useGameSession(
   const [busyAction, setBusyAction] = useState(false);
   const [statusLine, setStatusLine] = useState<string | null>(null);
 
-  const applySessionUpdate = useCallback(
-    (update: GameSessionUpdate) => {
-      setStatusLine(update.source);
-
-      if (gameId && update.source.startsWith("Realtime")) {
-        void Promise.all([fetchGameState(gameId), loadGameLog(gameId)])
-          .then(([gameState, log]) => {
-            setState((current) =>
-              mergeRedactedGameSnapshot(current, gameState),
-            );
-            setLogEntries(log);
-          })
-          .catch(() => {
-            // Keep the current state visible if the authenticated refresh fails.
-          });
-        return;
-      }
-
-      setState((current) => mergeRedactedGameSnapshot(current, update.state));
-      if (update.logEntries?.length) {
-        setLogEntries((current) =>
-          appendLogEntries(current, update.logEntries),
-        );
-      }
-    },
-    [gameId],
-  );
+  const applySessionUpdate = useCallback((update: GameSessionUpdate) => {
+    setState((current) => mergeAuctionClientView(current, update.state));
+    if (update.logEntries?.length) {
+      setLogEntries((current) => appendLogEntries(current, update.logEntries));
+    }
+    setStatusLine(update.source);
+  }, []);
 
   const { wsStatus, turnDeadline, timerKind } = useGameRealtime(gameId, {
     onUpdate: applySessionUpdate,

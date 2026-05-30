@@ -181,6 +181,29 @@ const listLobbyPlayers = async (db: D1Database, lobbyId: string) => {
   return playersResult.results;
 };
 
+const listLobbyPlayersForLobbies = async (
+  db: D1Database,
+  lobbyIds: string[],
+): Promise<Map<string, LobbyPlayerRow[]>> => {
+  const grouped = new Map<string, LobbyPlayerRow[]>();
+  if (lobbyIds.length === 0) return grouped;
+
+  const placeholders = lobbyIds.map(() => "?").join(", ");
+  const result = await db
+    .prepare(
+      `SELECT * FROM lobby_players WHERE lobby_id IN (${placeholders}) ORDER BY joined_at ASC`,
+    )
+    .bind(...lobbyIds)
+    .all<LobbyPlayerRow>();
+
+  for (const player of result.results) {
+    const players = grouped.get(player.lobby_id) ?? [];
+    players.push(player);
+    grouped.set(player.lobby_id, players);
+  }
+  return grouped;
+};
+
 const listUserLobbyMemberships = async (db: D1Database, userId: string) => {
   const membershipsResult = await db
     .prepare("SELECT * FROM lobby_players WHERE user_id = ?")
@@ -488,10 +511,15 @@ lobbyRoutes.get("/", async (c) => {
   const lastItem = items[items.length - 1];
   const nextCursor = hasMore ? `${lastItem.created_at}:${lastItem.id}` : null;
 
+  const playersByLobbyId = await listLobbyPlayersForLobbies(
+    db,
+    items.map((row) => row.id),
+  );
+
   return c.json({
     lobbies: await Promise.all(
-      items.map(async (row) =>
-        buildLobbyResponse(db, row, await listLobbyPlayers(db, row.id)),
+      items.map((row) =>
+        buildLobbyResponse(db, row, playersByLobbyId.get(row.id) ?? []),
       ),
     ),
     nextCursor,

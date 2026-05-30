@@ -31,6 +31,7 @@ function jsonEvent(type: string, payload: Record<string, unknown>) {
 
 abstract class RealtimeRoom {
   protected sessions = new Set<WebSocket>();
+  protected sessionUrls = new Map<WebSocket, URL>();
 
   constructor(
     protected readonly state: DurableObjectState,
@@ -53,8 +54,15 @@ abstract class RealtimeRoom {
     const [client, server] = Object.values(pair);
     server.accept();
     this.sessions.add(server);
-    server.addEventListener("close", () => this.sessions.delete(server));
-    server.addEventListener("error", () => this.sessions.delete(server));
+    this.sessionUrls.set(server, new URL(request.url));
+    server.addEventListener("close", () => {
+      this.sessions.delete(server);
+      this.sessionUrls.delete(server);
+    });
+    server.addEventListener("error", () => {
+      this.sessions.delete(server);
+      this.sessionUrls.delete(server);
+    });
     server.send(await this.snapshotEvent(request));
 
     return new Response(null, { status: 101, webSocket: client });
@@ -70,6 +78,7 @@ abstract class RealtimeRoom {
         session.send(message);
       } catch {
         this.sessions.delete(session);
+        this.sessionUrls.delete(session);
       }
     }
   }
@@ -110,6 +119,44 @@ export class LobbyRoom extends RealtimeRoom {
 }
 
 export class GameRoom extends RealtimeRoom {
+  protected broadcast(message: string) {
+    let event: Record<string, unknown> | null = null;
+    try {
+      event = JSON.parse(message) as Record<string, unknown>;
+    } catch {
+      event = null;
+    }
+
+    if (
+      event &&
+      (event.type === "game.action_applied" ||
+        event.type === "game.schedule" ||
+        event.type === "game.snapshot") &&
+      event.state
+    ) {
+      for (const session of this.sessions) {
+        const url = this.sessionUrls.get(session);
+        const spectator = url?.searchParams.get("spectator") === "1";
+        const viewerId = url?.searchParams.get("viewerId") ?? "spectator";
+        const state = normalizeGameState(
+          event.state as Record<string, unknown>,
+        );
+        const scopedState = spectator
+          ? toClientGameState(state as never, "spectator", viewerId)
+          : toClientGameState(state as never, "player", viewerId);
+        try {
+          session.send(JSON.stringify({ ...event, state: scopedState }));
+        } catch {
+          this.sessions.delete(session);
+          this.sessionUrls.delete(session);
+        }
+      }
+      return;
+    }
+
+    super.broadcast(message);
+  }
+
   protected async handleNotify(body: string): Promise<void> {
     if (await this.state.storage.get<boolean>("aiLoopRunning")) {
       this.broadcast(body);

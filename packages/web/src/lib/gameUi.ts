@@ -103,59 +103,36 @@ export function hasSubmittedAuction(
 }
 
 /** Merge broadcast-safe realtime snapshots with viewer-only fields already loaded over authenticated HTTP. */
-export function mergeRedactedGameSnapshot(
+export function mergeAuctionClientView(
   previous: GameState | null,
   incoming: GameState,
 ): GameState {
-  let merged = incoming;
   const prevAuction = previous?.pendingAuction;
   const nextAuction = incoming.pendingAuction;
   if (
-    prevAuction?.mySubmission &&
-    nextAuction &&
-    nextAuction.auctionType !== "open_bids" &&
-    nextAuction.auctionType !== "live_bidding" &&
-    nextAuction.mySubmission === undefined &&
-    String(prevAuction.tilePosition) === String(nextAuction.tilePosition) &&
-    (prevAuction.tieBreakRound ?? 0) === (nextAuction.tieBreakRound ?? 0)
+    !prevAuction?.mySubmission ||
+    !nextAuction ||
+    nextAuction.auctionType === "open_bids" ||
+    nextAuction.auctionType === "live_bidding"
   ) {
-    merged = {
-      ...merged,
-      pendingAuction: {
-        ...nextAuction,
-        mySubmission: prevAuction.mySubmission,
-      },
-    };
+    return incoming;
+  }
+  if (nextAuction.mySubmission !== undefined) {
+    return incoming;
+  }
+  if (
+    String(prevAuction.tilePosition) !== String(nextAuction.tilePosition) ||
+    (prevAuction.tieBreakRound ?? 0) !== (nextAuction.tieBreakRound ?? 0)
+  ) {
+    return incoming;
   }
 
-  const previousPrivateThreads = previous?.negotiationThreads?.filter(
-    (thread) => thread.visibility !== "open",
-  );
-  const incomingThreadIds = new Set(
-    incoming.negotiationThreads?.map((thread) => thread.id) ?? [],
-  );
-  const preservedPrivateThreads = previousPrivateThreads?.filter(
-    (thread) => !incomingThreadIds.has(thread.id),
-  );
-  const negotiationThreads = incoming.negotiationThreads
-    ? [...incoming.negotiationThreads, ...(preservedPrivateThreads ?? [])]
-    : previous?.negotiationThreads;
-
   return {
-    ...merged,
-    ...(previous?.myAffinityCardId !== undefined &&
-    incoming.myAffinityCardId === undefined
-      ? { myAffinityCardId: previous.myAffinityCardId }
-      : {}),
-    ...(previous?.pendingInsiderPeek &&
-    incoming.pendingInsiderPeek === undefined
-      ? { pendingInsiderPeek: previous.pendingInsiderPeek }
-      : {}),
-    ...(previous?.handshakeAgreements &&
-    incoming.handshakeAgreements === undefined
-      ? { handshakeAgreements: previous.handshakeAgreements }
-      : {}),
-    ...(negotiationThreads ? { negotiationThreads } : {}),
+    ...incoming,
+    pendingAuction: {
+      ...nextAuction,
+      mySubmission: prevAuction.mySubmission,
+    },
   };
 }
 

@@ -267,6 +267,14 @@ export function createWorkerD1Stub(): WorkerD1Stub {
       return { results: row ? [row] : [], first: row };
     }
 
+    if (trimmed.startsWith("SELECT * FROM lobby_players WHERE lobby_id IN")) {
+      const ids = new Set(binds as string[]);
+      const rows = tables.lobby_players.filter((r) =>
+        ids.has(r.lobby_id as string),
+      );
+      return { results: rows };
+    }
+
     if (trimmed.startsWith("SELECT * FROM lobby_players WHERE lobby_id = ?")) {
       const rows = tables.lobby_players.filter((r) => r.lobby_id === binds[0]);
       return { results: rows };
