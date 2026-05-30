@@ -222,7 +222,6 @@ export async function persistGameActionResult(
     await processGameCompletion(db, options.kv, gameId, result.state, now);
   }
 
-  const publicState = publicStateForBroadcast(result.state, result.logEntries);
   const broadcastLogEntries = darkPoolTransferPayload(result.logEntries)
     ? []
     : logRows
@@ -234,7 +233,7 @@ export async function persistGameActionResult(
     gameId,
     actorId: options.actorId ?? options.aiMeta?.aiPlayerId ?? "system",
     logEntries: broadcastLogEntries,
-    state: publicState,
+    state: result.state,
   });
 
   return logRows.map(({ apiEntry }) => apiEntry);
