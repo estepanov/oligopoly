@@ -145,7 +145,9 @@ describe("LobbiesPage", () => {
 
     await screen.findByText(/no public lobbies available/i);
 
-    fireEvent.click(screen.getByLabelText(/private lobby/i));
+    fireEvent.change(screen.getByLabelText(/lobby visibility/i), {
+      target: { value: "private" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /create lobby/i }));
 
     await waitFor(() => {

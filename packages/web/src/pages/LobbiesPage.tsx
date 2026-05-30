@@ -738,14 +738,22 @@ export function LobbiesPage() {
           onAiCountChange={setCreateAiCount}
           onPersonalityChange={setCreateAiPersonality}
         />
-        <label className="checkboxRow">
-          <input
-            type="checkbox"
-            checked={createIsPrivate}
-            onChange={(e) => setCreateIsPrivate(e.target.checked)}
-          />
-          Private lobby
-        </label>
+        <div className="formGrid">
+          <div>
+            <label className="fieldLabel" htmlFor="create-visibility">
+              Lobby visibility
+            </label>
+            <select
+              id="create-visibility"
+              className="textInput"
+              value={createIsPrivate ? "private" : "public"}
+              onChange={(e) => setCreateIsPrivate(e.target.value === "private")}
+            >
+              <option value="public">Public - joinable by lobby ID</option>
+              <option value="private">Private - invite token required</option>
+            </select>
+          </div>
+        </div>
         <button
           type="button"
           className="button"
