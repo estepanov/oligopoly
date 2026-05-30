@@ -628,11 +628,6 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
     return c.json({ error: LobbyErrorKeys.INVALID_TOKEN }, 403);
   }
 
-  const now = Date.now();
-  if (!(await consumeInviteToken(db, kv, token, id, now))) {
-    return c.json({ error: LobbyErrorKeys.INVALID_TOKEN }, 403);
-  }
-
   const lobby = await db
     .prepare("SELECT * FROM lobbies WHERE id = ?")
     .bind(id)
@@ -670,6 +665,11 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
     lobby.max_players
   ) {
     return c.json({ error: LobbyErrorKeys.FULL }, 409);
+  }
+
+  const now = Date.now();
+  if (!(await consumeInviteToken(db, kv, token, id, now))) {
+    return c.json({ error: LobbyErrorKeys.INVALID_TOKEN }, 403);
   }
 
   await db
@@ -1343,9 +1343,9 @@ lobbyRoutes.post("/:id/start", async (c) => {
 });
 
 // GET /:id/ws — WebSocket upgrade for live lobby events.
-lobbyRoutes.get("/:id/ws", (c) => {
+lobbyRoutes.get("/:id/ws", async (c) => {
   const id = c.req.param("id") ?? "";
-  return upgradeWebSocket(c, {
+  const upgradeOptions = {
     room: c.env?.LOBBY_ROOM,
     roomId: id,
     roomParam: "lobbyId",
@@ -1355,5 +1355,35 @@ lobbyRoutes.get("/:id/ws", (c) => {
       lobbyId: id,
       payload: { lobbyId: id, connected: true },
     },
-  });
+  };
+
+  if (c.req.header("Upgrade") !== "websocket") {
+    return upgradeWebSocket(c, upgradeOptions);
+  }
+
+  const db = c.env?.DB;
+  if (!db) {
+    return c.json({ error: "Database not configured" }, 500);
+  }
+
+  const lobby = await getLobbyById(db, id);
+  if (!lobby) {
+    return c.json({ error: LobbyErrorKeys.NOT_FOUND }, 404);
+  }
+
+  if (lobby.is_private !== 1) {
+    return upgradeWebSocket(c, upgradeOptions);
+  }
+
+  const subject = getSubject(c);
+  if (!subject) {
+    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
+  }
+
+  const players = await listLobbyPlayers(db, id);
+  if (!players.some((player) => player.user_id === subject)) {
+    return c.json({ error: LobbyErrorKeys.NOT_IN_LOBBY }, 403);
+  }
+
+  return upgradeWebSocket(c, upgradeOptions);
 });

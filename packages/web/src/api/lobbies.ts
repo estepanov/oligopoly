@@ -134,5 +134,12 @@ export function clearLobbyReady(lobbyId: string) {
 }
 
 export function lobbyWebSocketUrl(lobbyId: string) {
-  return `${env.wsUrl}/api/lobbies/${encodeURIComponent(lobbyId)}/ws`;
+  const url = new URL(
+    `${env.wsUrl}/api/lobbies/${encodeURIComponent(lobbyId)}/ws`,
+  );
+  const token = getStoredToken();
+  if (token) {
+    url.searchParams.set("access_token", token);
+  }
+  return url.toString();
 }

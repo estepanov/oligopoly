@@ -697,6 +697,37 @@ describe("GET /api/lobbies/:id/ws", () => {
     const res = await requestWithEnv("/api/lobbies/some-id/ws");
     expect(res.status).toBe(426);
   });
+
+  it("requires private lobby membership for WebSocket upgrades", async () => {
+    const db = createD1Stub();
+    const createRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Private Lobby",
+        maxPlayers: 4,
+        isPrivate: true,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    const lobby = await createRes.json();
+
+    const unauthenticated = await requestWithEnv(
+      `/api/lobbies/${lobby.id}/ws`,
+      {
+        headers: { Upgrade: "websocket" },
+        db,
+      },
+    );
+    expect(unauthenticated.status).toBe(401);
+
+    const outsider = await requestWithEnv(`/api/lobbies/${lobby.id}/ws`, {
+      headers: { Upgrade: "websocket", "x-subject": "user-2" },
+      db,
+    });
+    expect(outsider.status).toBe(403);
+  });
 });
 
 // ---------------------------------------------------------------------------
