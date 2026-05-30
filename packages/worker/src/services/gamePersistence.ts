@@ -213,7 +213,7 @@ export async function persistGameActionResult(
     gameId,
     actorId: options.actorId ?? options.aiMeta?.aiPlayerId ?? "system",
     action: options.aiMeta?.action,
-    logEntries: logEntriesForBroadcast(result.logEntries),
+    logEntries: [],
     state: publicState,
   });
 }
@@ -226,14 +226,14 @@ export function toActionResponse(
   if (!subject) {
     return {
       ...publicStateForBroadcast(result.state, result.logEntries),
-      logEntries: logEntriesForBroadcast(result.logEntries),
+      logEntries: [],
       ...extra,
     };
   }
 
   return {
     ...toClientGameState(result.state as PersistedGameState, "player", subject),
-    logEntries: result.logEntries,
+    logEntries: [],
     ...extra,
   };
 }
