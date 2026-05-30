@@ -4,7 +4,6 @@ import {
   LobbiesListResponseSchema,
   LobbyInviteResponseSchema,
   LobbyResponseSchema,
-  type LobbyStatus,
   StartLobbyResponseSchema,
 } from "@oligopoly/validation";
 import type { z } from "zod";
@@ -132,4 +131,8 @@ export function clearLobbyReady(lobbyId: string) {
       headers: authHeaders(),
     },
   );
+}
+
+export function lobbyWebSocketUrl(lobbyId: string) {
+  return `${env.wsUrl}/api/lobbies/${encodeURIComponent(lobbyId)}/ws`;
 }

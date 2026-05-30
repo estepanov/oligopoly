@@ -10,6 +10,11 @@ import {
   runAiTurnLoop,
 } from "../services/gameAi.js";
 import { syncGameRoomTimer } from "../services/gameScheduler.js";
+import {
+  buildLobbyResponse,
+  type LobbyPlayerRow,
+  type LobbyRow,
+} from "../services/lobbyResponses.js";
 import { currentTurnActorId } from "../services/turnTimeout.js";
 
 type RoomEnv = {
@@ -83,58 +88,22 @@ export class LobbyRoom extends RealtimeRoom {
     }
 
     const lobby = await this.env.DB.prepare(
-      "SELECT id, name, host_id, status, max_players, is_private, optional_rule_ids_json, created_at, ai_slots_json FROM lobbies WHERE id = ?",
+      "SELECT * FROM lobbies WHERE id = ?",
     )
       .bind(lobbyId)
-      .first<{
-        id: string;
-        name: string;
-        host_id: string;
-        status: string;
-        max_players: number;
-        is_private: number;
-        optional_rule_ids_json: string | null;
-        created_at: number;
-        ai_slots_json: string | null;
-      }>();
+      .first<LobbyRow>();
 
     if (!lobby) {
       return { lobbyId, connected: true, missing: true };
     }
 
     const playersResult = await this.env.DB.prepare(
-      "SELECT user_id, is_admin, joined_at FROM lobby_players WHERE lobby_id = ? ORDER BY joined_at ASC",
+      "SELECT * FROM lobby_players WHERE lobby_id = ? ORDER BY joined_at ASC",
     )
       .bind(lobbyId)
-      .all<{ user_id: string; is_admin: number; joined_at: number }>();
+      .all<LobbyPlayerRow>();
 
-    let aiSlots: unknown[] = [];
-    if (lobby.ai_slots_json) {
-      try {
-        aiSlots = JSON.parse(lobby.ai_slots_json) as unknown[];
-      } catch {
-        aiSlots = [];
-      }
-    }
-
-    return {
-      id: lobby.id,
-      name: lobby.name,
-      hostId: lobby.host_id,
-      status: lobby.status,
-      maxPlayers: lobby.max_players,
-      isPrivate: lobby.is_private === 1,
-      optionalRuleIds: lobby.optional_rule_ids_json
-        ? JSON.parse(lobby.optional_rule_ids_json)
-        : [],
-      createdAt: lobby.created_at,
-      aiSlots,
-      players: playersResult.results.map((player) => ({
-        userId: player.user_id,
-        isAdmin: player.is_admin === 1,
-        joinedAt: player.joined_at,
-      })),
-    };
+    return buildLobbyResponse(this.env.DB, lobby, playersResult.results);
   }
 }
 

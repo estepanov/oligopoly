@@ -1,5 +1,5 @@
 import { LobbyErrorKeys, type LobbyResponse } from "@oligopoly/validation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Link,
   useLocation,
@@ -21,6 +21,7 @@ import {
 import { useAuth } from "../components/AuthContext";
 import { LobbyAiSettings } from "../components/LobbyAiSettings";
 import { LobbyReadyControls } from "../components/LobbyReadyControls";
+import { useLobbyRealtime } from "../hooks/useLobbyRealtime";
 import { canStartLobby, lobbySeatCount } from "../lib/lobbySeats";
 
 const DEFAULT_MAX_PLAYERS = 4;
@@ -137,12 +138,22 @@ export function LobbiesPage() {
   const [busyLeave, setBusyLeave] = useState(false);
   const [busyStart, setBusyStart] = useState(false);
   const [message, setMessage] = useState<Message>(null);
+  const selectedLobbyCardRef = useRef<HTMLDivElement | null>(null);
 
   const selectedLobbyId = selectedLobby?.id ?? joinLobbyId;
   const resolvedJoinInput = useMemo(
     () => resolveLobbyJoinInput(joinLobbyId, joinToken),
     [joinLobbyId, joinToken],
   );
+
+  const revealSelectedLobby = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      selectedLobbyCardRef.current?.scrollIntoView?.({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, []);
 
   const refreshPublicLobbies = useCallback(async () => {
     setLoadingPublicLobbies(true);
@@ -193,6 +204,9 @@ export function LobbiesPage() {
       const lobby = await fetchLobby(id);
       setSelectedLobby(normalizeLobby(lobby));
       setJoinLobbyId(lobby.id);
+      if (!lobby.isPrivate) {
+        setJoinToken("");
+      }
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         setSelectedLobby(null);
@@ -208,6 +222,38 @@ export function LobbiesPage() {
       });
     }
   }, []);
+
+  const applySelectedLobbyUpdate = useCallback(
+    (lobby: LobbyResponse) => {
+      const normalized = normalizeLobby(lobby);
+      setSelectedLobby(normalized);
+      setJoinLobbyId(normalized.id);
+      if (!normalized.isPrivate) {
+        setJoinToken("");
+      }
+      setMyLobbies((current) => {
+        if (!current.some((candidate) => candidate.id === normalized.id)) {
+          return current;
+        }
+        return current.map((candidate) =>
+          candidate.id === normalized.id ? normalized : candidate,
+        );
+      });
+
+      if (
+        normalized.status === "in_game" &&
+        normalized.gameId &&
+        normalized.players.some((player) => player.userId === user?.userId)
+      ) {
+        navigate(`/games/${normalized.gameId}`);
+      }
+    },
+    [navigate, user?.userId],
+  );
+
+  const { wsStatus: lobbyWsStatus } = useLobbyRealtime(selectedLobby?.id, {
+    onUpdate: ({ lobby }) => applySelectedLobbyUpdate(lobby),
+  });
 
   useEffect(() => {
     void refreshPublicLobbies();
@@ -239,6 +285,19 @@ export function LobbiesPage() {
 
     void refreshMyLobbies();
   }, [loading, refreshMyLobbies, user]);
+
+  useEffect(() => {
+    if (selectedLobby || myLobbies.length === 0) {
+      return;
+    }
+
+    const lobby = normalizeLobby(myLobbies[0]);
+    setSelectedLobby(lobby);
+    setJoinLobbyId(lobby.id);
+    if (!lobby.isPrivate) {
+      setJoinToken("");
+    }
+  }, [myLobbies, selectedLobby]);
 
   useEffect(() => {
     setCreateAiCount((count) => Math.min(count, createMaxPlayers - 1));
@@ -414,6 +473,8 @@ export function LobbiesPage() {
       });
       setSelectedLobby(normalizeLobby(lobby));
       setJoinLobbyId(lobby.id);
+      setJoinToken("");
+      revealSelectedLobby();
       if (lobby.isPrivate) {
         try {
           await createLobbyInvite(lobby.id);
@@ -456,6 +517,7 @@ export function LobbiesPage() {
     }
 
     await refreshSelectedLobby(resolved.lobbyId);
+    revealSelectedLobby();
   };
 
   const onJoinLobby = async () => {
@@ -469,11 +531,16 @@ export function LobbiesPage() {
     setMessage(null);
     setInviteShare(null);
     try {
-      const lobby = resolved.token
+      const shouldUseInviteToken =
+        Boolean(resolved.token) &&
+        (selectedLobby?.id !== resolved.lobbyId || selectedLobby.isPrivate);
+      const lobby = shouldUseInviteToken
         ? await joinLobbyWithToken(resolved.lobbyId, resolved.token)
         : await joinLobby(resolved.lobbyId);
       setSelectedLobby(normalizeLobby(lobby));
       setJoinLobbyId(lobby.id);
+      setJoinToken(lobby.isPrivate ? resolved.token : "");
+      revealSelectedLobby();
       setMessage({ kind: "ok", text: `Joined lobby ${lobby.id}` });
       await refreshMyLobbies();
       await refreshPublicLobbies();
@@ -838,7 +905,9 @@ export function LobbiesPage() {
                               className="button buttonSecondary"
                               onClick={() => {
                                 setJoinLobbyId(lobby.id);
+                                setJoinToken("");
                                 void refreshSelectedLobby(lobby.id);
+                                revealSelectedLobby();
                               }}
                             >
                               Open
@@ -897,7 +966,9 @@ export function LobbiesPage() {
                       className="button buttonSecondary"
                       onClick={() => {
                         setJoinLobbyId(lobby.id);
+                        setJoinToken("");
                         void refreshSelectedLobby(lobby.id);
+                        revealSelectedLobby();
                       }}
                     >
                       Select
@@ -910,7 +981,7 @@ export function LobbiesPage() {
         )}
       </div>
 
-      <div className="card">
+      <div className="card" ref={selectedLobbyCardRef} id="selected-lobby-room">
         <h2>Selected lobby</h2>
         {!selectedLobby && (
           <p className="emptyState">
@@ -926,6 +997,8 @@ export function LobbiesPage() {
               </dd>
               <dt className="muted">Status</dt>
               <dd>{selectedLobby.status}</dd>
+              <dt className="muted">Live updates</dt>
+              <dd>{lobbyWsStatus}</dd>
               <dt className="muted">Host</dt>
               <dd>{selectedLobby.hostId}</dd>
               <dt className="muted">Visibility</dt>
@@ -1047,6 +1120,7 @@ export function LobbiesPage() {
                     const labels = [
                       player.userId === user?.userId ? "you" : null,
                       player.isAdmin ? "admin" : null,
+                      player.isReady ? "ready" : "not ready",
                     ].filter(Boolean);
                     return labels.length > 0 ? ` (${labels.join(", ")})` : "";
                   })()}

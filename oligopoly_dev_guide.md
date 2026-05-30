@@ -101,6 +101,20 @@ Local multiplayer uses the same Worker, D1/KV, Durable Object, and Vite runtime 
 4. For solo vs AI, create one human lobby and add at least one AI slot before starting.
 5. For mixed local play, add other local users and optional AI slots, then start the game and keep each browser connected to the game WebSocket.
 
+### AI player setup
+
+AI players work locally with the default deterministic rules engine and do not require an external API key. The rules-based AI is the baseline runtime used for lobby AI seats, turn-timeout takeovers, auction participation, and kicked-player replacements.
+
+To test AI seats locally:
+
+1. Start the stack with `pnpm run dev`.
+2. Sign in, open `http://localhost:5173/lobbies`, and create a lobby.
+3. Set the AI player count in the lobby creation form and choose one personality: `loyalist`, `opportunist`, or `disruptor`.
+4. For solo vs AI, keep exactly one human player and at least one AI slot; for mixed games, keep total human plus AI seats between 2 and 6.
+5. Mark every human player ready and start the lobby. `GameRoom` runs AI turns automatically after game scheduling and game action updates; no client-side AI stepping is needed.
+
+`.env.example` includes `ANTHROPIC_API_KEY`, `ANTHROPIC_DAILY_BUDGET_ALERT`, and `ANTHROPIC_MONTHLY_BUDGET_ALERT` as the reserved contract for optional LLM-assisted AI. Leave those values empty for local deterministic AI. If a deployment adds an Anthropic-backed adapter, set the key and budget limits in that deployment environment; deterministic AI remains the fallback.
+
 ### Validate
 
 ```bash
