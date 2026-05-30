@@ -79,5 +79,12 @@ export function stepAiTurn(id: string) {
 
 export function gameWebSocketUrl(id: string, spectator = false) {
   const path = spectator ? "spectate" : "ws";
-  return `${env.wsUrl}/api/games/${encodeURIComponent(id)}/${path}`;
+  const url = new URL(
+    `${env.wsUrl}/api/games/${encodeURIComponent(id)}/${path}`,
+  );
+  const token = spectator ? null : getStoredToken();
+  if (token) {
+    url.searchParams.set("access_token", token);
+  }
+  return url.toString();
 }

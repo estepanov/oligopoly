@@ -348,6 +348,26 @@ describe("WebSocket upgrades", () => {
     const res = await app.request("/api/games/game-active/spectate");
     expect(res.status).toBe(426);
   });
+
+  it("GET /api/games/:id/ws requires an authenticated player for upgrades", async () => {
+    const res = await app.request(
+      "/api/games/game-active/ws",
+      { headers: { Upgrade: "websocket" } },
+      makeEnv(),
+    );
+
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /api/games/:id/spectate rejects upgrades when spectator mode is disabled", async () => {
+    const res = await app.request(
+      "/api/games/game-active/spectate",
+      { headers: { Upgrade: "websocket" } },
+      makeEnv(),
+    );
+
+    expect(res.status).toBe(403);
+  });
 });
 
 describe("POST /api/games/:id/ai/step", () => {

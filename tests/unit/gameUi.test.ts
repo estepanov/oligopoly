@@ -120,4 +120,54 @@ describe("mergeAuctionClientView", () => {
 
     expect(mergeAuctionClientView(previous, incoming)).toEqual(incoming);
   });
+  it("preserves viewer-private fields when public realtime updates omit them", () => {
+    const previous: GameState = {
+      gameId: "game-1",
+      round: 1,
+      phase: "waiting_for_insider_peek",
+      myAffinityCardId: "ai_pioneer",
+      pendingInsiderPeek: {
+        cardId: "market_crash",
+        drawingPlayerId: "p1",
+        trigger: "round_start",
+      },
+      handshakeAgreements: [
+        {
+          id: "handshake-1",
+          partyA: "p1",
+          partyB: "p2",
+          summary: "private",
+          status: "pending",
+          createdRound: 1,
+        },
+      ],
+      negotiationThreads: [
+        {
+          id: "thread-1",
+          createdBy: "p1",
+          partyIds: ["p1", "p2"],
+          status: "open",
+          startedRound: 1,
+          expiresAfterRound: 4,
+          visibility: "private",
+        },
+      ],
+    };
+
+    const incoming: GameState = {
+      gameId: "game-1",
+      round: 1,
+      phase: "waiting_for_insider_peek",
+    };
+
+    const merged = mergeAuctionClientView(previous, incoming);
+    expect(merged.myAffinityCardId).toBe("ai_pioneer");
+    expect(merged.pendingInsiderPeek?.cardId).toBe("market_crash");
+    expect(merged.handshakeAgreements?.map((entry) => entry.id)).toEqual([
+      "handshake-1",
+    ]);
+    expect(merged.negotiationThreads?.map((entry) => entry.id)).toEqual([
+      "thread-1",
+    ]);
+  });
 });

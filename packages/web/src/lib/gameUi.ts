@@ -110,32 +110,45 @@ export function mergeAuctionClientView(
   previous: GameState | null,
   incoming: GameState,
 ): GameState {
+  let merged = incoming;
   const prevAuction = previous?.pendingAuction;
   const nextAuction = incoming.pendingAuction;
   if (
-    !prevAuction?.mySubmission ||
-    !nextAuction ||
-    nextAuction.auctionType === "open_bids" ||
-    nextAuction.auctionType === "live_bidding"
+    prevAuction?.mySubmission &&
+    nextAuction &&
+    nextAuction.auctionType !== "open_bids" &&
+    nextAuction.auctionType !== "live_bidding" &&
+    nextAuction.mySubmission === undefined &&
+    String(prevAuction.tilePosition) === String(nextAuction.tilePosition) &&
+    (prevAuction.tieBreakRound ?? 0) === (nextAuction.tieBreakRound ?? 0)
   ) {
-    return incoming;
-  }
-  if (nextAuction.mySubmission !== undefined) {
-    return incoming;
-  }
-  if (
-    String(prevAuction.tilePosition) !== String(nextAuction.tilePosition) ||
-    (prevAuction.tieBreakRound ?? 0) !== (nextAuction.tieBreakRound ?? 0)
-  ) {
-    return incoming;
+    merged = {
+      ...merged,
+      pendingAuction: {
+        ...nextAuction,
+        mySubmission: prevAuction.mySubmission,
+      },
+    };
   }
 
   return {
-    ...incoming,
-    pendingAuction: {
-      ...nextAuction,
-      mySubmission: prevAuction.mySubmission,
-    },
+    ...merged,
+    ...(previous?.myAffinityCardId !== undefined &&
+    incoming.myAffinityCardId === undefined
+      ? { myAffinityCardId: previous.myAffinityCardId }
+      : {}),
+    ...(previous?.pendingInsiderPeek &&
+    incoming.pendingInsiderPeek === undefined
+      ? { pendingInsiderPeek: previous.pendingInsiderPeek }
+      : {}),
+    ...(previous?.handshakeAgreements &&
+    incoming.handshakeAgreements === undefined
+      ? { handshakeAgreements: previous.handshakeAgreements }
+      : {}),
+    ...(previous?.negotiationThreads &&
+    incoming.negotiationThreads === undefined
+      ? { negotiationThreads: previous.negotiationThreads }
+      : {}),
   };
 }
 
