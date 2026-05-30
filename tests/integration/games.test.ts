@@ -105,6 +105,17 @@ function applyWhere(rows: Row[], query: string, params: unknown[]): Row[] {
     return rows.filter((r) => r.status === params[0]);
   }
 
+  const tokenMatch = query.match(/WHERE\s+(?:s\.)?token\s*=\s*\?/i);
+  if (tokenMatch && params.length > 0) {
+    return rows.filter(
+      (r) =>
+        r.token === params[0] &&
+        (typeof r.expires_at !== "number" ||
+          typeof params[1] !== "number" ||
+          r.expires_at > params[1]),
+    );
+  }
+
   const gameIdMatch = query.match(/WHERE\s+game_id\s*=\s*\?/i);
   if (gameIdMatch && params.length > 0) {
     return rows.filter((r) => r.game_id === params[0]);
@@ -185,6 +196,7 @@ function makeEnv(extraTables: Record<string, Row[]> = {}) {
   return {
     DB: makeDb({
       users: [cloneRow(userA), cloneRow(userB), cloneRow(outsiderUser)],
+      auth_sessions: [],
       games: [cloneRow(activeGame), cloneRow(completedGame)],
       game_log: [cloneRow(logEntry), cloneRow(logEntryCompleted)],
       ...extraTables,
@@ -357,6 +369,25 @@ describe("WebSocket upgrades", () => {
     );
 
     expect(res.status).toBe(401);
+  });
+
+  it("GET /api/games/:id/ws rejects an outsider access_token for upgrades", async () => {
+    const res = await app.request(
+      "/api/games/game-active/ws?access_token=outsider-token",
+      { headers: { Upgrade: "websocket" } },
+      makeEnv({
+        auth_sessions: [
+          {
+            token: "outsider-token",
+            user_id: "outsider",
+            role: "user",
+            expires_at: Date.now() + 60_000,
+          },
+        ],
+      }),
+    );
+
+    expect(res.status).toBe(403);
   });
 
   it("GET /api/games/:id/spectate rejects upgrades when spectator mode is disabled", async () => {
