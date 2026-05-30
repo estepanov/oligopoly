@@ -1,5 +1,9 @@
 import type { ApplyActionResult } from "@oligopoly/shared";
-import type { AiPersonality, GameAction } from "@oligopoly/validation";
+import type {
+  AiPersonality,
+  GameAction,
+  GameLogEntry,
+} from "@oligopoly/validation";
 import {
   type PersistedGameState,
   redactPendingAuctionForBroadcast,
@@ -11,6 +15,7 @@ import { processGameCompletion } from "./gameCompletion.js";
 type PersistOptions = {
   gameRoom?: DurableObjectNamespace;
   actorId?: string;
+  action?: GameAction;
   kv?: KVNamespace;
   aiMeta?: {
     aiPlayerId: string;
@@ -150,9 +155,21 @@ export async function persistGameActionResult(
   gameId: string,
   result: ApplyActionResult,
   options: PersistOptions = {},
-): Promise<void> {
+): Promise<GameLogEntry[]> {
   const now = Date.now();
   const stateJson = JSON.stringify(result.state);
+  const logRows = result.logEntries.map((entry) => ({
+    entry,
+    apiEntry: {
+      id: crypto.randomUUID(),
+      gameId,
+      round: result.state.round,
+      playerId: entry.playerId ?? null,
+      actionType: entry.actionType,
+      payload: entry.payload ?? null,
+      createdAt: now,
+    } satisfies GameLogEntry,
+  }));
 
   const statements = [
     db
@@ -182,20 +199,20 @@ export async function persistGameActionResult(
     }
   }
 
-  for (const entry of result.logEntries) {
+  for (const { apiEntry } of logRows) {
     statements.push(
       db
         .prepare(
           "INSERT INTO game_log (id, game_id, round, player_id, action_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(
-          crypto.randomUUID(),
-          gameId,
-          result.state.round,
-          entry.playerId,
-          entry.actionType,
-          entry.payload ? JSON.stringify(entry.payload) : null,
-          now,
+          apiEntry.id,
+          apiEntry.gameId,
+          apiEntry.round,
+          apiEntry.playerId,
+          apiEntry.actionType,
+          apiEntry.payload ? JSON.stringify(apiEntry.payload) : null,
+          apiEntry.createdAt,
         ),
     );
   }
@@ -207,15 +224,22 @@ export async function persistGameActionResult(
   }
 
   const publicState = publicStateForBroadcast(result.state, result.logEntries);
+  const broadcastLogEntries = darkPoolTransferPayload(result.logEntries)
+    ? []
+    : logRows
+        .filter(({ entry }) => entry.broadcast !== false)
+        .map(({ apiEntry }) => apiEntry);
   await broadcastGameEvent(options.gameRoom, gameId, {
     type: "game.action_applied",
     sentAt: now,
     gameId,
     actorId: options.actorId ?? options.aiMeta?.aiPlayerId ?? "system",
-    action: options.aiMeta?.action,
-    logEntries: [],
+    action: options.action ?? options.aiMeta?.action,
+    logEntries: broadcastLogEntries,
     state: publicState,
   });
+
+  return logRows.map(({ apiEntry }) => apiEntry);
 }
 
 export function toActionResponse(

@@ -158,6 +158,17 @@ describe("mergeAuctionClientView", () => {
       gameId: "game-1",
       round: 1,
       phase: "waiting_for_insider_peek",
+      negotiationThreads: [
+        {
+          id: "open-thread",
+          createdBy: "p2",
+          partyIds: ["p2", "p3"],
+          status: "open",
+          startedRound: 1,
+          expiresAfterRound: 4,
+          visibility: "open",
+        },
+      ],
     };
 
     const merged = mergeAuctionClientView(previous, incoming);
@@ -167,6 +178,7 @@ describe("mergeAuctionClientView", () => {
       "handshake-1",
     ]);
     expect(merged.negotiationThreads?.map((entry) => entry.id)).toEqual([
+      "open-thread",
       "thread-1",
     ]);
   });

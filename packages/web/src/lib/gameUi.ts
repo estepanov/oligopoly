@@ -131,6 +131,19 @@ export function mergeAuctionClientView(
     };
   }
 
+  const previousPrivateThreads = previous?.negotiationThreads?.filter(
+    (thread) => thread.visibility !== "open",
+  );
+  const incomingThreadIds = new Set(
+    incoming.negotiationThreads?.map((thread) => thread.id) ?? [],
+  );
+  const preservedPrivateThreads = previousPrivateThreads?.filter(
+    (thread) => !incomingThreadIds.has(thread.id),
+  );
+  const negotiationThreads = incoming.negotiationThreads
+    ? [...incoming.negotiationThreads, ...(preservedPrivateThreads ?? [])]
+    : previous?.negotiationThreads;
+
   return {
     ...merged,
     ...(previous?.myAffinityCardId !== undefined &&
@@ -145,10 +158,7 @@ export function mergeAuctionClientView(
     incoming.handshakeAgreements === undefined
       ? { handshakeAgreements: previous.handshakeAgreements }
       : {}),
-    ...(previous?.negotiationThreads &&
-    incoming.negotiationThreads === undefined
-      ? { negotiationThreads: previous.negotiationThreads }
-      : {}),
+    ...(negotiationThreads ? { negotiationThreads } : {}),
   };
 }
 

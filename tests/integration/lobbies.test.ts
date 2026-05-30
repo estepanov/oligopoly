@@ -17,6 +17,9 @@ const createKvStub = () => {
     put: async (key: string, value: string) => {
       store.set(key, value);
     },
+    delete: async (key: string) => {
+      store.delete(key);
+    },
     _store: store,
   } as unknown as KVNamespace;
 };
@@ -660,6 +663,7 @@ describe("POST /api/lobbies/:id/invite + join/:token", () => {
     expect(inviteRes.status).toBe(200);
     const inviteBody = await inviteRes.json();
     expect(inviteBody.token).toBeDefined();
+    expect(inviteBody.expiresInSeconds).toBe(24 * 60 * 60);
 
     // Join via token
     const joinRes = await requestWithEnv(
@@ -674,6 +678,17 @@ describe("POST /api/lobbies/:id/invite + join/:token", () => {
     expect(joinRes.status).toBe(200);
     const joinBody = await joinRes.json();
     expect(joinBody.players).toHaveLength(2);
+
+    const replayJoinRes = await requestWithEnv(
+      `/api/lobbies/${lobby.id}/join/${inviteBody.token}`,
+      {
+        method: "POST",
+        headers: { "x-subject": "user-3" },
+        db,
+        kv,
+      },
+    );
+    expect(replayJoinRes.status).toBe(403);
   });
 });
 

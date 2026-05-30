@@ -410,13 +410,14 @@ gameRoutes.post("/:id/action", async (c) => {
   try {
     const result = applyAction(gameState, subject, engineInput);
 
-    await persistGameActionResult(db, id, result, {
+    const logEntries = await persistGameActionResult(db, id, result, {
       gameRoom: c.env?.GAME_ROOM,
       actorId: subject,
+      action: actionBody,
       kv: c.env?.KV,
     });
 
-    return c.json(toActionResponse(result, subject));
+    return c.json(toActionResponse(result, subject, { logEntries }));
   } catch (err) {
     if (typeof err === "string") {
       return c.json({ error: err }, 400);

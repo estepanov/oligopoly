@@ -634,6 +634,7 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
   ];
 
   const tokenJoinResponse = await buildLobbyResponse(db, lobby, updatedPlayers);
+  await kv.delete(`lobby:invite:${token}`);
   await publishLobbyUpdate(c.env, id, tokenJoinResponse);
   return c.json(tokenJoinResponse);
 });
@@ -672,7 +673,7 @@ lobbyRoutes.post("/:id/invite", async (c) => {
   }
 
   const token = generateId();
-  const ttlSeconds = 3600;
+  const ttlSeconds = 24 * 60 * 60;
   await kv.put(`lobby:invite:${token}`, id, { expirationTtl: ttlSeconds });
 
   return c.json({ token, expiresInSeconds: ttlSeconds });
