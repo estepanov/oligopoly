@@ -448,7 +448,11 @@ lobbyRoutes.get("/", async (c) => {
   const nextCursor = hasMore ? `${lastItem.created_at}:${lastItem.id}` : null;
 
   return c.json({
-    lobbies: await Promise.all(items.map((row) => buildLobbyResponse(db, row))),
+    lobbies: await Promise.all(
+      items.map(async (row) =>
+        buildLobbyResponse(db, row, await listLobbyPlayers(db, row.id)),
+      ),
+    ),
     nextCursor,
   });
 });

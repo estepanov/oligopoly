@@ -21,9 +21,14 @@ type PersistOptions = {
 
 type BroadcastGameState = Omit<
   ApplyActionResult["state"],
-  "affinityAssignments" | "pendingAuction"
+  | "affinityAssignments"
+  | "pendingAuction"
+  | "pendingInsiderPeek"
+  | "handshakeAgreements"
+  | "negotiationThreads"
 > & {
   pendingAuction?: ReturnType<typeof redactPendingAuctionForBroadcast>;
+  negotiationThreads?: ApplyActionResult["state"]["negotiationThreads"];
 };
 
 export function logEntriesForBroadcast(
@@ -66,13 +71,26 @@ export function publicStateForBroadcast(
   state: ApplyActionResult["state"],
   logEntries: ApplyActionResult["logEntries"] = [],
 ): BroadcastGameState {
-  const { affinityAssignments: _affinity, pendingAuction, ...rest } = state;
-  const publicState = pendingAuction
-    ? {
-        ...rest,
-        pendingAuction: redactPendingAuctionForBroadcast(pendingAuction),
-      }
-    : rest;
+  const {
+    affinityAssignments: _affinity,
+    pendingAuction,
+    pendingInsiderPeek: _peek,
+    handshakeAgreements: _handshakes,
+    negotiationThreads,
+    ...rest
+  } = state;
+  const openNegotiationThreads = negotiationThreads?.filter(
+    (thread) => thread.visibility === "open",
+  );
+  const publicState = {
+    ...rest,
+    ...(pendingAuction
+      ? { pendingAuction: redactPendingAuctionForBroadcast(pendingAuction) }
+      : {}),
+    ...(openNegotiationThreads?.length
+      ? { negotiationThreads: openNegotiationThreads }
+      : {}),
+  };
 
   const hiddenTransfer = darkPoolTransferPayload(logEntries);
   if (!hiddenTransfer) {
@@ -195,7 +213,7 @@ export async function persistGameActionResult(
     gameId,
     actorId: options.actorId ?? options.aiMeta?.aiPlayerId ?? "system",
     action: options.aiMeta?.action,
-    logEntries: [],
+    logEntries: logEntriesForBroadcast(result.logEntries),
     state: publicState,
   });
 }
@@ -208,14 +226,14 @@ export function toActionResponse(
   if (!subject) {
     return {
       ...publicStateForBroadcast(result.state, result.logEntries),
-      logEntries: [],
+      logEntries: logEntriesForBroadcast(result.logEntries),
       ...extra,
     };
   }
 
   return {
     ...toClientGameState(result.state as PersistedGameState, "player", subject),
-    logEntries: [],
+    logEntries: result.logEntries,
     ...extra,
   };
 }

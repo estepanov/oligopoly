@@ -163,6 +163,8 @@ export async function createSoloAiGame(db: D1Database) {
   }
   const lobby = (await createRes.json()) as Record<string, unknown>;
 
+  await markLobbyPlayersReady(db, lobby.id as string, ["user-1"]);
+
   const startRes = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {
     method: "POST",
     headers: { "x-subject": "user-1" },

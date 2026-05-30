@@ -37,6 +37,11 @@ type AppEnv = { Bindings: Bindings; Variables: Variables };
 
 export const gameRoutes = new Hono<AppEnv>();
 
+const isLocalDevRequest = (url: string) => {
+  const hostname = new URL(url).hostname;
+  return hostname === "localhost" || hostname === "127.0.0.1";
+};
+
 // ---------------------------------------------------------------------------
 // GET /api/games
 // Returns a paginated list of games. Supports ?status=active|completed.
@@ -388,6 +393,10 @@ gameRoutes.post("/:id/action", async (c) => {
 // ---------------------------------------------------------------------------
 gameRoutes.post("/:id/ai/step", async (c) => {
   const id = c.req.param("id");
+  if (!isLocalDevRequest(c.req.url)) {
+    return c.json({ error: GameErrorKeys.FORBIDDEN }, 403);
+  }
+
   const db = c.env?.DB;
   if (!db) {
     return c.json({ error: GameErrorKeys.DB_NOT_CONFIGURED }, 500);

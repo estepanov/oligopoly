@@ -15,6 +15,7 @@ import {
   type LobbyPlayerRow,
   type LobbyRow,
 } from "../services/lobbyResponses.js";
+import { publicStateForBroadcast } from "../services/gamePersistence.js";
 import { currentTurnActorId } from "../services/turnTimeout.js";
 
 type RoomEnv = {
@@ -203,8 +204,8 @@ export class GameRoom extends RealtimeRoom {
 
     const raw = JSON.parse(row.state_json) as Record<string, unknown>;
     const gameState = normalizeGameState(raw);
-    const { affinityAssignments: _hidden, ...publicState } = gameState;
-    return { ...publicState, gameId, spectator };
+    const publicState = publicStateForBroadcast(gameState, []);
+    return { ...publicState, gameId };
   }
 
   private async resyncFromDatabase(gameId: string) {

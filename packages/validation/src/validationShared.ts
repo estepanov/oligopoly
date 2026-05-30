@@ -272,6 +272,7 @@ export const CallsErrorKeys = {
 
 export const GameErrorKeys = {
   AUTH_REQUIRED: "game.auth_required",
+  FORBIDDEN: "game.forbidden",
   NOT_FOUND: "game.not_found",
   NOT_PLAYER: "game.not_player",
   GAME_COMPLETED: "game.completed",
@@ -385,6 +386,24 @@ export const LobbyAiSlotSchema = z.object({
 });
 export type LobbyAiSlot = z.infer<typeof LobbyAiSlotSchema>;
 
+const LobbyAiSlotsSchema = z
+  .array(LobbyAiSlotSchema)
+  .max(5)
+  .superRefine((slots, ctx) => {
+    const seen = new Set<string>();
+    slots.forEach((slot, index) => {
+      if (seen.has(slot.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "AI slot IDs must be unique",
+          path: [index, "id"],
+        });
+        return;
+      }
+      seen.add(slot.id);
+    });
+  });
+
 export const GamePlayerKindSchema = z.enum(["human", "ai"]);
 export type GamePlayerKind = z.infer<typeof GamePlayerKindSchema>;
 
@@ -415,7 +434,7 @@ export const CreateLobbyInputSchema = z.object({
   maxPlayers: z.number().int().min(2).max(6),
   isPrivate: z.boolean(),
   optionalRuleIds: z.array(z.string()).default([]),
-  aiSlots: z.array(LobbyAiSlotSchema).max(5).default([]),
+  aiSlots: LobbyAiSlotsSchema.default([]),
   turnTimeout: TurnTimeoutSchema.default("5min"),
   auctionBidWindow: z
     .enum(["30s", "1min", "5min", "10min", "30min"])
@@ -438,7 +457,7 @@ export const UpdateLobbySettingsInputSchema = z.object({
   maxPlayers: z.number().int().min(2).max(6).optional(),
   isPrivate: z.boolean().optional(),
   optionalRuleIds: z.array(z.string()).optional(),
-  aiSlots: z.array(LobbyAiSlotSchema).max(5).optional(),
+  aiSlots: LobbyAiSlotsSchema.optional(),
   turnTimeout: TurnTimeoutSchema.optional(),
   auctionBidWindow: z
     .enum(["30s", "1min", "5min", "10min", "30min"])

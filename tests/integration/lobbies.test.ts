@@ -206,6 +206,9 @@ describe("GET /api/lobbies", () => {
     expect(body.lobbies).toBeInstanceOf(Array);
     expect(body.lobbies.length).toBe(1);
     expect(body.lobbies[0].name).toBe("Public Lobby");
+    expect(body.lobbies[0].players).toEqual([
+      expect.objectContaining({ userId: "user-1", isAdmin: true }),
+    ]);
   });
 });
 
