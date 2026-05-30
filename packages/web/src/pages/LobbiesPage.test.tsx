@@ -266,6 +266,42 @@ describe("LobbiesPage", () => {
     expect(mockedJoinLobbyWithToken).not.toHaveBeenCalled();
   });
 
+  it("clears a stale invite token when a raw lobby ID is typed manually", async () => {
+    mockedJoinLobby.mockResolvedValue({
+      ...baseLobby,
+      id: "manual-public-lobby",
+      players: [
+        ...baseLobby.players,
+        { userId: "user-2", isAdmin: false, joinedAt: 2 },
+      ],
+    });
+
+    render(
+      <MemoryRouter>
+        <LobbiesPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/no public lobbies available/i);
+
+    fireEvent.change(screen.getByLabelText(/invite token/i), {
+      target: { value: "stale-token" },
+    });
+    expect(screen.getByLabelText(/invite token/i)).toHaveValue("stale-token");
+
+    fireEvent.change(screen.getByLabelText(/lobby id or invite link/i), {
+      target: { value: "manual-public-lobby" },
+    });
+    expect(screen.getByLabelText(/invite token/i)).toHaveValue("");
+
+    fireEvent.click(screen.getByRole("button", { name: /join lobby/i }));
+
+    await waitFor(() => {
+      expect(mockedJoinLobby).toHaveBeenCalledWith("manual-public-lobby");
+    });
+    expect(mockedJoinLobbyWithToken).not.toHaveBeenCalled();
+  });
+
   it("shows the signed-in user's waiting lobbies and enforces the 2-lobby limit in the UI", async () => {
     mockedListMyLobbies.mockResolvedValue({
       lobbies: [

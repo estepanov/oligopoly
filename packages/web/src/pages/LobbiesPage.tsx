@@ -824,7 +824,12 @@ export function LobbiesPage() {
               id="join-id"
               className="textInput"
               value={joinLobbyId}
-              onChange={(e) => setJoinLobbyId(e.target.value)}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                const parsed = resolveLobbyJoinInput(nextValue, "");
+                setJoinLobbyId(nextValue);
+                setJoinToken(parsed.token);
+              }}
               placeholder="Paste lobby id or invite link"
             />
           </div>
