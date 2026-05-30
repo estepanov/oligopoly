@@ -9,9 +9,10 @@ const createRequestWithEnv = (
     method?: string;
     headers?: HeadersInit;
     kvGet?: KvGet;
+    db?: D1Database;
   } = {},
 ) => {
-  const { method, headers, kvGet } = options;
+  const { method, headers, kvGet, db } = options;
   return app.request(
     path,
     {
@@ -20,6 +21,7 @@ const createRequestWithEnv = (
     },
     {
       ALLOWED_ORIGINS: "http://localhost:5173",
+      DB: db,
       KV: kvGet ? ({ get: kvGet } as KVNamespace) : undefined,
     },
   );
@@ -66,6 +68,28 @@ describe("rateLimitMiddleware", () => {
 });
 
 describe("banCacheMiddleware", () => {
+  it("resolves websocket access_token before ban checks", async () => {
+    const db = {
+      prepare: () => ({
+        bind: () => ({
+          first: async () => ({ user_id: "user-banned", role: "user" }),
+        }),
+      }),
+    } as unknown as D1Database;
+
+    const res = await createRequestWithEnv(
+      "/api/game-config?access_token=ws-token",
+      {
+        headers: { Upgrade: "websocket" },
+        db,
+        kvGet: async (key) => (key === "ban:user-banned" ? "1" : null),
+      },
+    );
+
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toEqual({ error: "account_banned" });
+  });
+
   it("returns 403 when ban key is flagged", async () => {
     const res = await createRequestWithEnv("/api/game-config", {
       method: "GET",

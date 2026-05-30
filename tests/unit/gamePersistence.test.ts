@@ -59,6 +59,63 @@ describe("logEntriesForBroadcast", () => {
 });
 
 describe("publicStateForBroadcast", () => {
+  it("strips private game state from broadcast snapshots", () => {
+    const broadcastState = publicStateForBroadcast({
+      players: [],
+      tiles: [],
+      pendingInsiderPeek: {
+        drawingPlayerId: "p1",
+        cardId: "market_crash",
+        trigger: "round_start",
+      },
+      handshakeAgreements: [
+        {
+          id: "handshake-1",
+          gameId: "game-1",
+          partyA: "p1",
+          partyB: "p2",
+          summary: "private",
+          status: "proposed",
+          proposedBy: "p1",
+          createdAt: 1,
+          signedAt: null,
+          brokenAt: null,
+          brokenBy: null,
+        },
+      ],
+      negotiationThreads: [
+        {
+          id: "private-thread",
+          gameId: "game-1",
+          createdBy: "p1",
+          partyIds: ["p1", "p2"],
+          status: "open",
+          startedRound: 1,
+          expiresAfterRound: 4,
+          visibility: "private",
+          messages: [],
+        },
+        {
+          id: "open-thread",
+          gameId: "game-1",
+          createdBy: "p1",
+          partyIds: ["p1", "p2"],
+          status: "open",
+          startedRound: 1,
+          expiresAfterRound: 4,
+          visibility: "open",
+          messages: [],
+        },
+      ],
+    } as never);
+
+    expect("pendingInsiderPeek" in broadcastState).toBe(false);
+    expect("handshakeAgreements" in broadcastState).toBe(false);
+    expect(
+      broadcastState.negotiationThreads?.map((thread) => thread.id),
+    ).toEqual(["open-thread"]);
+  });
+
   it("redacts dark-pool ownership changes from the broadcast state", () => {
     const state = {
       players: [

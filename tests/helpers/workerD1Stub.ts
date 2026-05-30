@@ -14,6 +14,7 @@ export function createWorkerD1Stub(): WorkerD1Stub {
     ],
     lobbies: [],
     lobby_players: [],
+    lobby_invites: [],
     games: [],
     game_log: [],
     user_ranks: [],
@@ -125,6 +126,31 @@ export function createWorkerD1Stub(): WorkerD1Stub {
         });
       }
       return { results: [], success: true };
+    }
+
+    if (trimmed.startsWith("INSERT INTO lobby_invites")) {
+      const [token, lobby_id, expires_at, created_at] = binds as [
+        string,
+        string,
+        number,
+        number,
+      ];
+      tables.lobby_invites.push({ token, lobby_id, expires_at, created_at });
+      return { results: [], success: true };
+    }
+
+    if (trimmed.startsWith("DELETE FROM lobby_invites")) {
+      const [token, lobby_id, now] = binds as [string, string, number];
+      const invite = tables.lobby_invites.find(
+        (row) =>
+          row.token === token &&
+          row.lobby_id === lobby_id &&
+          row.expires_at > now,
+      );
+      tables.lobby_invites = tables.lobby_invites.filter(
+        (row) => row !== invite,
+      );
+      return { results: invite ? [invite] : [], first: invite ?? null };
     }
 
     if (trimmed.startsWith("INSERT INTO games")) {
@@ -239,6 +265,14 @@ export function createWorkerD1Stub(): WorkerD1Stub {
           (r) => r.lobby_id === binds[0] && r.user_id === binds[1],
         ) ?? null;
       return { results: row ? [row] : [], first: row };
+    }
+
+    if (trimmed.startsWith("SELECT * FROM lobby_players WHERE lobby_id IN")) {
+      const ids = new Set(binds as string[]);
+      const rows = tables.lobby_players.filter((r) =>
+        ids.has(r.lobby_id as string),
+      );
+      return { results: rows };
     }
 
     if (trimmed.startsWith("SELECT * FROM lobby_players WHERE lobby_id = ?")) {

@@ -119,6 +119,47 @@ const publishLobbyUpdate = async (
   });
 };
 
+const INVITE_TTL_SECONDS = 24 * 60 * 60;
+
+async function storeInviteToken(
+  db: D1Database,
+  kv: KVNamespace,
+  token: string,
+  lobbyId: string,
+  now: number,
+) {
+  await db
+    .prepare(
+      "INSERT INTO lobby_invites (token, lobby_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(token, lobbyId, now + INVITE_TTL_SECONDS * 1000, now)
+    .run();
+
+  await kv.put(`lobby:invite:${token}`, lobbyId, {
+    expirationTtl: INVITE_TTL_SECONDS,
+  });
+}
+
+async function consumeInviteToken(
+  db: D1Database,
+  kv: KVNamespace,
+  token: string,
+  lobbyId: string,
+  now: number,
+): Promise<boolean> {
+  const claimed = await db
+    .prepare(
+      "DELETE FROM lobby_invites WHERE token = ? AND lobby_id = ? AND expires_at > ? RETURNING lobby_id",
+    )
+    .bind(token, lobbyId, now)
+    .first<{ lobby_id: string }>();
+  if (claimed?.lobby_id !== lobbyId) {
+    return false;
+  }
+  await kv.delete(`lobby:invite:${token}`).catch(() => {});
+  return true;
+}
+
 const isWaitingLobbyStatus = (status: string) => status === "waiting";
 
 const compareLobbyPlayers = (a: LobbyPlayerRow, b: LobbyPlayerRow) =>
@@ -138,6 +179,29 @@ const listLobbyPlayers = async (db: D1Database, lobbyId: string) => {
     .all<LobbyPlayerRow>();
 
   return playersResult.results;
+};
+
+const listLobbyPlayersForLobbies = async (
+  db: D1Database,
+  lobbyIds: string[],
+): Promise<Map<string, LobbyPlayerRow[]>> => {
+  const grouped = new Map<string, LobbyPlayerRow[]>();
+  if (lobbyIds.length === 0) return grouped;
+
+  const placeholders = lobbyIds.map(() => "?").join(", ");
+  const result = await db
+    .prepare(
+      `SELECT * FROM lobby_players WHERE lobby_id IN (${placeholders}) ORDER BY joined_at ASC`,
+    )
+    .bind(...lobbyIds)
+    .all<LobbyPlayerRow>();
+
+  for (const player of result.results) {
+    const players = grouped.get(player.lobby_id) ?? [];
+    players.push(player);
+    grouped.set(player.lobby_id, players);
+  }
+  return grouped;
 };
 
 const listUserLobbyMemberships = async (db: D1Database, userId: string) => {
@@ -447,8 +511,17 @@ lobbyRoutes.get("/", async (c) => {
   const lastItem = items[items.length - 1];
   const nextCursor = hasMore ? `${lastItem.created_at}:${lastItem.id}` : null;
 
+  const playersByLobbyId = await listLobbyPlayersForLobbies(
+    db,
+    items.map((row) => row.id),
+  );
+
   return c.json({
-    lobbies: await Promise.all(items.map((row) => buildLobbyResponse(db, row))),
+    lobbies: await Promise.all(
+      items.map((row) =>
+        buildLobbyResponse(db, row, playersByLobbyId.get(row.id) ?? []),
+      ),
+    ),
     nextCursor,
   });
 });
@@ -572,11 +645,6 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
     return c.json({ error: LobbyErrorKeys.INVALID_TOKEN }, 403);
   }
 
-  const tokenLobbyId = await kv.get(`lobby:invite:${token}`);
-  if (tokenLobbyId !== id) {
-    return c.json({ error: LobbyErrorKeys.INVALID_TOKEN }, 403);
-  }
-
   const lobby = await db
     .prepare("SELECT * FROM lobbies WHERE id = ?")
     .bind(id)
@@ -617,6 +685,10 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
   }
 
   const now = Date.now();
+  if (!(await consumeInviteToken(db, kv, token, id, now))) {
+    return c.json({ error: LobbyErrorKeys.INVALID_TOKEN }, 403);
+  }
+
   await db
     .prepare(
       "INSERT INTO lobby_players (lobby_id, user_id, is_admin, joined_at) VALUES (?, ?, 0, ?)",
@@ -668,10 +740,9 @@ lobbyRoutes.post("/:id/invite", async (c) => {
   }
 
   const token = generateId();
-  const ttlSeconds = 3600;
-  await kv.put(`lobby:invite:${token}`, id, { expirationTtl: ttlSeconds });
+  await storeInviteToken(db, kv, token, id, Date.now());
 
-  return c.json({ token, expiresInSeconds: ttlSeconds });
+  return c.json({ token, expiresInSeconds: INVITE_TTL_SECONDS });
 });
 
 // DELETE /:id/leave — Leave a waiting lobby, deleting it if it becomes empty
@@ -1289,9 +1360,9 @@ lobbyRoutes.post("/:id/start", async (c) => {
 });
 
 // GET /:id/ws — WebSocket upgrade for live lobby events.
-lobbyRoutes.get("/:id/ws", (c) => {
+lobbyRoutes.get("/:id/ws", async (c) => {
   const id = c.req.param("id") ?? "";
-  return upgradeWebSocket(c, {
+  const upgradeOptions = {
     room: c.env?.LOBBY_ROOM,
     roomId: id,
     roomParam: "lobbyId",
@@ -1301,5 +1372,35 @@ lobbyRoutes.get("/:id/ws", (c) => {
       lobbyId: id,
       payload: { lobbyId: id, connected: true },
     },
-  });
+  };
+
+  if (c.req.header("Upgrade") !== "websocket") {
+    return upgradeWebSocket(c, upgradeOptions);
+  }
+
+  const db = c.env?.DB;
+  if (!db) {
+    return c.json({ error: "Database not configured" }, 500);
+  }
+
+  const lobby = await getLobbyById(db, id);
+  if (!lobby) {
+    return c.json({ error: LobbyErrorKeys.NOT_FOUND }, 404);
+  }
+
+  if (lobby.is_private !== 1) {
+    return upgradeWebSocket(c, upgradeOptions);
+  }
+
+  const subject = getSubject(c);
+  if (!subject) {
+    return c.json({ error: LobbyErrorKeys.AUTH_REQUIRED }, 401);
+  }
+
+  const players = await listLobbyPlayers(db, id);
+  if (!players.some((player) => player.user_id === subject)) {
+    return c.json({ error: LobbyErrorKeys.NOT_IN_LOBBY }, 403);
+  }
+
+  return upgradeWebSocket(c, upgradeOptions);
 });

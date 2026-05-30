@@ -9,6 +9,10 @@ vi.mock("../components/AuthContext", () => ({
   useAuth: vi.fn(),
 }));
 
+vi.mock("../hooks/useLobbyRealtime", () => ({
+  useLobbyRealtime: () => ({ wsStatus: "disconnected" }),
+}));
+
 vi.mock("../api/lobbies", async () => {
   const actual =
     await vi.importActual<typeof import("../api/lobbies")>("../api/lobbies");
@@ -43,6 +47,7 @@ const mockedUseAuth = vi.mocked(useAuth);
 const mockedCreateLobby = vi.mocked(lobbyApi.createLobby);
 const mockedCreateInviteToken = vi.mocked(lobbyApi.createInviteToken);
 const mockedFetchLobby = vi.mocked(lobbyApi.fetchLobby);
+const mockedJoinLobby = vi.mocked(lobbyApi.joinLobby);
 const mockedJoinLobbyWithToken = vi.mocked(lobbyApi.joinLobbyWithToken);
 const mockedLeaveLobby = vi.mocked(lobbyApi.leaveLobby);
 const mockedListMyLobbies = vi.mocked(lobbyApi.listMyLobbies);
@@ -140,7 +145,9 @@ describe("LobbiesPage", () => {
 
     await screen.findByText(/no public lobbies available/i);
 
-    fireEvent.click(screen.getByLabelText(/private lobby/i));
+    fireEvent.change(screen.getByLabelText(/lobby visibility/i), {
+      target: { value: "private" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /create lobby/i }));
 
     await waitFor(() => {
@@ -153,8 +160,8 @@ describe("LobbiesPage", () => {
     expect(
       screen.getAllByText(/you are in this lobby as an admin/i),
     ).toHaveLength(2);
-    expect(screen.getByRole("listitem")).toHaveTextContent(
-      "user-1 (you, admin)",
+    expect(screen.getAllByRole("listitem")[0]).toHaveTextContent(
+      "user-1 (you, admin, not ready)",
     );
 
     fireEvent.click(screen.getByRole("button", { name: /copy link/i }));
@@ -201,6 +208,98 @@ describe("LobbiesPage", () => {
       "shared-lobby",
     );
     expect(screen.getByLabelText(/invite token/i)).toHaveValue("invite-join");
+  });
+
+  it("joins a selected public lobby directly when the invite token field is stale", async () => {
+    mockedUseAuth.mockReturnValue({
+      user: {
+        userId: "viewer-1",
+        username: "viewer",
+        expiresAt: Date.now() + 60_000,
+      },
+      loading: false,
+      login: vi.fn(),
+      logout: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn().mockResolvedValue(undefined),
+    });
+    const publicLobby = {
+      ...baseLobby,
+      id: "public-lobby",
+      name: "Public Lobby",
+      isPrivate: false,
+    };
+    mockedListPublicLobbies.mockResolvedValue({
+      lobbies: [publicLobby],
+      nextCursor: null,
+    });
+    mockedFetchLobby.mockResolvedValue(publicLobby);
+    mockedJoinLobby.mockResolvedValue({
+      ...publicLobby,
+      players: [
+        ...publicLobby.players,
+        { userId: "viewer-1", isAdmin: false, joinedAt: 2 },
+      ],
+    });
+
+    render(
+      <MemoryRouter>
+        <LobbiesPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Public Lobby")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/invite token/i), {
+      target: { value: "stale-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /select/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/invite token/i)).toHaveValue("");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /join lobby/i }));
+
+    await waitFor(() => {
+      expect(mockedJoinLobby).toHaveBeenCalledWith("public-lobby");
+    });
+    expect(mockedJoinLobbyWithToken).not.toHaveBeenCalled();
+  });
+
+  it("clears a stale invite token when a raw lobby ID is typed manually", async () => {
+    mockedJoinLobby.mockResolvedValue({
+      ...baseLobby,
+      id: "manual-public-lobby",
+      players: [
+        ...baseLobby.players,
+        { userId: "user-2", isAdmin: false, joinedAt: 2 },
+      ],
+    });
+
+    render(
+      <MemoryRouter>
+        <LobbiesPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/no public lobbies available/i);
+
+    fireEvent.change(screen.getByLabelText(/invite token/i), {
+      target: { value: "stale-token" },
+    });
+    expect(screen.getByLabelText(/invite token/i)).toHaveValue("stale-token");
+
+    fireEvent.change(screen.getByLabelText(/lobby id or invite link/i), {
+      target: { value: "manual-public-lobby" },
+    });
+    expect(screen.getByLabelText(/invite token/i)).toHaveValue("");
+
+    fireEvent.click(screen.getByRole("button", { name: /join lobby/i }));
+
+    await waitFor(() => {
+      expect(mockedJoinLobby).toHaveBeenCalledWith("manual-public-lobby");
+    });
+    expect(mockedJoinLobbyWithToken).not.toHaveBeenCalled();
   });
 
   it("shows the signed-in user's waiting lobbies and enforces the 2-lobby limit in the UI", async () => {

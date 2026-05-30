@@ -109,6 +109,7 @@ async function createAndStartGame(db: D1Database) {
   const updatedState = JSON.parse(updatedRow.state_json as string) as {
     turnOrder: string[];
     players: Array<{ playerId: string; capital: number }>;
+    freeMarketPool?: number;
   };
 
   return {
@@ -120,6 +121,7 @@ async function createAndStartGame(db: D1Database) {
     capitals: Object.fromEntries(
       updatedState.players.map((player) => [player.playerId, player.capital]),
     ) as Record<string, number>,
+    freeMarketPool: updatedState.freeMarketPool ?? 0,
   };
 }
 
@@ -163,6 +165,8 @@ export async function createSoloAiGame(db: D1Database) {
   }
   const lobby = (await createRes.json()) as Record<string, unknown>;
 
+  await markLobbyPlayersReady(db, lobby.id as string, ["user-1"]);
+
   const startRes = await requestWithEnv(`/api/lobbies/${lobby.id}/start`, {
     method: "POST",
     headers: { "x-subject": "user-1" },
@@ -193,11 +197,13 @@ export async function stepAiUntil(
   gameId: string,
   predicate: (body: Record<string, unknown>) => boolean,
   maxSteps = 16,
+  subject = "user-1",
 ): Promise<Record<string, unknown>> {
   let lastBody: Record<string, unknown> = {};
   for (let i = 0; i < maxSteps; i++) {
     const res = await requestWithEnv(`/api/games/${gameId}/ai/step`, {
       method: "POST",
+      headers: { "x-subject": subject },
       db,
     });
     if (res.status === 409) {
@@ -268,6 +274,7 @@ export async function ensureActorTurn(
 
     const res = await requestWithEnv(`/api/games/${gameId}/ai/step`, {
       method: "POST",
+      headers: { "x-subject": actorId },
       db,
     });
     if (res.status === 409) {

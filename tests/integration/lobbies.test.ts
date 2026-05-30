@@ -17,6 +17,9 @@ const createKvStub = () => {
     put: async (key: string, value: string) => {
       store.set(key, value);
     },
+    delete: async (key: string) => {
+      store.delete(key);
+    },
     _store: store,
   } as unknown as KVNamespace;
 };
@@ -206,6 +209,9 @@ describe("GET /api/lobbies", () => {
     expect(body.lobbies).toBeInstanceOf(Array);
     expect(body.lobbies.length).toBe(1);
     expect(body.lobbies[0].name).toBe("Public Lobby");
+    expect(body.lobbies[0].players).toEqual([
+      expect.objectContaining({ userId: "user-1", isAdmin: true }),
+    ]);
   });
 });
 
@@ -657,6 +663,7 @@ describe("POST /api/lobbies/:id/invite + join/:token", () => {
     expect(inviteRes.status).toBe(200);
     const inviteBody = await inviteRes.json();
     expect(inviteBody.token).toBeDefined();
+    expect(inviteBody.expiresInSeconds).toBe(24 * 60 * 60);
 
     // Join via token
     const joinRes = await requestWithEnv(
@@ -671,6 +678,17 @@ describe("POST /api/lobbies/:id/invite + join/:token", () => {
     expect(joinRes.status).toBe(200);
     const joinBody = await joinRes.json();
     expect(joinBody.players).toHaveLength(2);
+
+    const replayJoinRes = await requestWithEnv(
+      `/api/lobbies/${lobby.id}/join/${inviteBody.token}`,
+      {
+        method: "POST",
+        headers: { "x-subject": "user-3" },
+        db,
+        kv,
+      },
+    );
+    expect(replayJoinRes.status).toBe(403);
   });
 });
 
@@ -678,6 +696,37 @@ describe("GET /api/lobbies/:id/ws", () => {
   it("requires a WebSocket upgrade", async () => {
     const res = await requestWithEnv("/api/lobbies/some-id/ws");
     expect(res.status).toBe(426);
+  });
+
+  it("requires private lobby membership for WebSocket upgrades", async () => {
+    const db = createD1Stub();
+    const createRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Private Lobby",
+        maxPlayers: 4,
+        isPrivate: true,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    const lobby = await createRes.json();
+
+    const unauthenticated = await requestWithEnv(
+      `/api/lobbies/${lobby.id}/ws`,
+      {
+        headers: { Upgrade: "websocket" },
+        db,
+      },
+    );
+    expect(unauthenticated.status).toBe(401);
+
+    const outsider = await requestWithEnv(`/api/lobbies/${lobby.id}/ws`, {
+      headers: { Upgrade: "websocket", "x-subject": "user-2" },
+      db,
+    });
+    expect(outsider.status).toBe(403);
   });
 });
 

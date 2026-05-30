@@ -190,7 +190,7 @@ export const GameRealtimeEventSchema = z.discriminatedUnion("type", [
     sentAt: z.number(),
     gameId: z.string(),
     actorId: z.string(),
-    action: GameActionSchema,
+    action: GameActionSchema.optional(),
     logEntries: z.array(GameLogEntrySchema).optional(),
     state: GameStateSchema,
   }),

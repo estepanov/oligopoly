@@ -37,6 +37,33 @@ type AppEnv = { Bindings: Bindings; Variables: Variables };
 
 export const gameRoutes = new Hono<AppEnv>();
 
+const isLocalDevRequest = (url: string) => {
+  const hostname = new URL(url).hostname;
+  return hostname === "localhost" || hostname === "127.0.0.1";
+};
+
+type GameAccessRow = {
+  id: string;
+  player_ids_json: string;
+  state_json: string | null;
+};
+
+async function loadGameAccessRow(
+  db: D1Database,
+  gameId: string,
+): Promise<GameAccessRow | null> {
+  return db
+    .prepare("SELECT id, player_ids_json, state_json FROM games WHERE id = ?")
+    .bind(gameId)
+    .first<GameAccessRow>();
+}
+
+function gameSpectatorModeEnabled(row: GameAccessRow): boolean {
+  if (!row.state_json) return false;
+  const state = JSON.parse(row.state_json) as PersistedGameState;
+  return state.settings?.spectatorMode === "enabled";
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/games
 // Returns a paginated list of games. Supports ?status=active|completed.
@@ -364,13 +391,13 @@ gameRoutes.post("/:id/action", async (c) => {
   try {
     const result = applyAction(gameState, subject, engineInput);
 
-    await persistGameActionResult(db, id, result, {
+    const logEntries = await persistGameActionResult(db, id, result, {
       gameRoom: c.env?.GAME_ROOM,
       actorId: subject,
       kv: c.env?.KV,
     });
 
-    return c.json(toActionResponse(result, subject));
+    return c.json(toActionResponse(result, subject, { logEntries }));
   } catch (err) {
     if (typeof err === "string") {
       return c.json({ error: err }, 400);
@@ -388,6 +415,13 @@ gameRoutes.post("/:id/action", async (c) => {
 // ---------------------------------------------------------------------------
 gameRoutes.post("/:id/ai/step", async (c) => {
   const id = c.req.param("id");
+  if (!isLocalDevRequest(c.req.url)) {
+    return c.json({ error: GameErrorKeys.FORBIDDEN }, 403);
+  }
+  if (!c.get("userId")) {
+    return c.json({ error: GameErrorKeys.AUTH_REQUIRED }, 401);
+  }
+
   const db = c.env?.DB;
   if (!db) {
     return c.json({ error: GameErrorKeys.DB_NOT_CONFIGURED }, 500);
@@ -413,9 +447,9 @@ gameRoutes.post("/:id/ai/step", async (c) => {
   );
 });
 
-gameRoutes.get("/:id/ws", (c) => {
+gameRoutes.get("/:id/ws", async (c) => {
   const id = c.req.param("id") ?? "";
-  return upgradeWebSocket(c, {
+  const upgradeOptions: Parameters<typeof upgradeWebSocket>[1] = {
     room: c.env?.GAME_ROOM,
     roomId: id,
     roomParam: "gameId",
@@ -425,12 +459,40 @@ gameRoutes.get("/:id/ws", (c) => {
       gameId: id,
       payload: { gameId: id, spectator: false, connected: true },
     },
-  });
+  };
+
+  if (c.req.header("Upgrade") !== "websocket") {
+    return upgradeWebSocket(c, upgradeOptions);
+  }
+
+  const db = c.env?.DB;
+  if (!db) {
+    return c.json({ error: GameErrorKeys.DB_NOT_CONFIGURED }, 500);
+  }
+
+  const subject = c.get("userId");
+  if (!subject) {
+    return c.json({ error: GameErrorKeys.AUTH_REQUIRED }, 401);
+  }
+
+  upgradeOptions.extraSearchParams = { viewerId: subject };
+
+  const row = await loadGameAccessRow(db, id);
+  if (!row) {
+    return c.json({ error: GameErrorKeys.NOT_FOUND }, 404);
+  }
+
+  const playerIds = JSON.parse(row.player_ids_json) as string[];
+  if (!playerIds.includes(subject)) {
+    return c.json({ error: GameErrorKeys.NOT_PLAYER }, 403);
+  }
+
+  return upgradeWebSocket(c, upgradeOptions);
 });
 
-gameRoutes.get("/:id/spectate", (c) => {
+gameRoutes.get("/:id/spectate", async (c) => {
   const id = c.req.param("id") ?? "";
-  return upgradeWebSocket(c, {
+  const upgradeOptions = {
     room: c.env?.GAME_ROOM,
     roomId: id,
     roomParam: "gameId",
@@ -441,5 +503,25 @@ gameRoutes.get("/:id/spectate", (c) => {
       gameId: id,
       payload: { gameId: id, spectator: true, connected: true },
     },
-  });
+  };
+
+  if (c.req.header("Upgrade") !== "websocket") {
+    return upgradeWebSocket(c, upgradeOptions);
+  }
+
+  const db = c.env?.DB;
+  if (!db) {
+    return c.json({ error: GameErrorKeys.DB_NOT_CONFIGURED }, 500);
+  }
+
+  const row = await loadGameAccessRow(db, id);
+  if (!row) {
+    return c.json({ error: GameErrorKeys.NOT_FOUND }, 404);
+  }
+
+  if (!gameSpectatorModeEnabled(row)) {
+    return c.json({ error: GameErrorKeys.FORBIDDEN }, 403);
+  }
+
+  return upgradeWebSocket(c, upgradeOptions);
 });

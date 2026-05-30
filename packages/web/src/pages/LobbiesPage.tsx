@@ -1,5 +1,5 @@
 import { LobbyErrorKeys, type LobbyResponse } from "@oligopoly/validation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Link,
   useLocation,
@@ -21,6 +21,7 @@ import {
 import { useAuth } from "../components/AuthContext";
 import { LobbyAiSettings } from "../components/LobbyAiSettings";
 import { LobbyReadyControls } from "../components/LobbyReadyControls";
+import { useLobbyRealtime } from "../hooks/useLobbyRealtime";
 import { canStartLobby, lobbySeatCount } from "../lib/lobbySeats";
 
 const DEFAULT_MAX_PLAYERS = 4;
@@ -69,6 +70,34 @@ const resolveLobbyJoinInput = (rawLobbyId: string, rawToken: string) => {
 
   return { lobbyId, token };
 };
+
+type JoinStrategy =
+  | { kind: "public"; lobbyId: string }
+  | { kind: "private"; lobbyId: string; token: string };
+
+const resolveJoinStrategy = (
+  resolved: ReturnType<typeof resolveLobbyJoinInput>,
+  selectedLobby: LobbyResponse | null,
+): JoinStrategy => {
+  const useInviteToken =
+    Boolean(resolved.token) &&
+    (selectedLobby?.id !== resolved.lobbyId || selectedLobby.isPrivate);
+  return useInviteToken
+    ? { kind: "private", lobbyId: resolved.lobbyId, token: resolved.token }
+    : { kind: "public", lobbyId: resolved.lobbyId };
+};
+
+const formatLobbyPlayerLabels = (
+  player: LobbyResponse["players"][number],
+  viewerId: string | undefined,
+) =>
+  [
+    player.userId === viewerId ? "you" : null,
+    player.isAdmin ? "admin" : null,
+    player.isReady ? "ready" : "not ready",
+  ]
+    .filter(Boolean)
+    .join(", ");
 
 const buildInviteUrl = (lobbyId: string, token: string) => {
   const origin =
@@ -137,12 +166,22 @@ export function LobbiesPage() {
   const [busyLeave, setBusyLeave] = useState(false);
   const [busyStart, setBusyStart] = useState(false);
   const [message, setMessage] = useState<Message>(null);
+  const selectedLobbyCardRef = useRef<HTMLDivElement | null>(null);
 
   const selectedLobbyId = selectedLobby?.id ?? joinLobbyId;
   const resolvedJoinInput = useMemo(
     () => resolveLobbyJoinInput(joinLobbyId, joinToken),
     [joinLobbyId, joinToken],
   );
+
+  const revealSelectedLobby = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      selectedLobbyCardRef.current?.scrollIntoView?.({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, []);
 
   const refreshPublicLobbies = useCallback(async () => {
     setLoadingPublicLobbies(true);
@@ -184,30 +223,52 @@ export function LobbiesPage() {
     }
   }, [user]);
 
-  const refreshSelectedLobby = useCallback(async (id: string) => {
-    if (!id) {
-      setSelectedLobby(null);
-      return;
+  const commitSelectedLobby = useCallback((lobby: LobbyResponse) => {
+    const normalized = normalizeLobby(lobby);
+    setSelectedLobby(normalized);
+    setJoinLobbyId(normalized.id);
+    if (!normalized.isPrivate) {
+      setJoinToken("");
     }
-    try {
-      const lobby = await fetchLobby(id);
-      setSelectedLobby(normalizeLobby(lobby));
-      setJoinLobbyId(lobby.id);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 404) {
+    setMyLobbies((current) => {
+      if (!current.some((candidate) => candidate.id === normalized.id)) {
+        return current;
+      }
+      return current.map((candidate) =>
+        candidate.id === normalized.id ? normalized : candidate,
+      );
+    });
+  }, []);
+
+  const refreshSelectedLobby = useCallback(
+    async (id: string) => {
+      if (!id) {
         setSelectedLobby(null);
-        setMessage({ kind: "error", text: "Lobby not found." });
         return;
       }
-      setMessage({
-        kind: "error",
-        text:
-          error instanceof ApiError
-            ? `Failed to load lobby: ${error.message}`
-            : "Failed to load lobby",
-      });
-    }
-  }, []);
+      try {
+        commitSelectedLobby(normalizeLobby(await fetchLobby(id)));
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) {
+          setSelectedLobby(null);
+          setMessage({ kind: "error", text: "Lobby not found." });
+          return;
+        }
+        setMessage({
+          kind: "error",
+          text:
+            error instanceof ApiError
+              ? `Failed to load lobby: ${error.message}`
+              : "Failed to load lobby",
+        });
+      }
+    },
+    [commitSelectedLobby],
+  );
+
+  const { wsStatus: lobbyWsStatus } = useLobbyRealtime(selectedLobby?.id, {
+    onUpdate: ({ lobby }) => commitSelectedLobby(lobby),
+  });
 
   useEffect(() => {
     void refreshPublicLobbies();
@@ -241,6 +302,31 @@ export function LobbiesPage() {
   }, [loading, refreshMyLobbies, user]);
 
   useEffect(() => {
+    if (
+      !selectedLobby?.id ||
+      selectedLobby.status !== "waiting" ||
+      lobbyWsStatus === "connected"
+    ) {
+      return;
+    }
+
+    const intervalId = window.setInterval(async () => {
+      try {
+        commitSelectedLobby(normalizeLobby(await fetchLobby(selectedLobby.id)));
+      } catch {
+        // Keep the current lobby visible if a transient refresh fails.
+      }
+    }, 2_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    commitSelectedLobby,
+    lobbyWsStatus,
+    selectedLobby?.id,
+    selectedLobby?.status,
+  ]);
+
+  useEffect(() => {
     setCreateAiCount((count) => Math.min(count, createMaxPlayers - 1));
   }, [createMaxPlayers]);
 
@@ -253,6 +339,16 @@ export function LobbiesPage() {
   }, [selectedLobby, user]);
   const isCurrentSubjectAdmin = Boolean(selectedLobbyMembership?.isAdmin);
   const isAtLobbyLimit = myLobbies.length >= MAX_ACTIVE_LOBBIES_PER_USER;
+
+  useEffect(() => {
+    if (
+      selectedLobby?.status === "in_game" &&
+      selectedLobby.gameId &&
+      selectedLobbyMembership
+    ) {
+      navigate(`/games/${selectedLobby.gameId}`);
+    }
+  }, [navigate, selectedLobby, selectedLobbyMembership]);
 
   const signInHref = useMemo(() => {
     const returnTo = `${location.pathname}${location.search}`;
@@ -412,8 +508,8 @@ export function LobbiesPage() {
           personality: createAiPersonality,
         })),
       });
-      setSelectedLobby(normalizeLobby(lobby));
-      setJoinLobbyId(lobby.id);
+      commitSelectedLobby(normalizeLobby(lobby));
+      revealSelectedLobby();
       if (lobby.isPrivate) {
         try {
           await createLobbyInvite(lobby.id);
@@ -456,6 +552,7 @@ export function LobbiesPage() {
     }
 
     await refreshSelectedLobby(resolved.lobbyId);
+    revealSelectedLobby();
   };
 
   const onJoinLobby = async () => {
@@ -469,11 +566,16 @@ export function LobbiesPage() {
     setMessage(null);
     setInviteShare(null);
     try {
-      const lobby = resolved.token
-        ? await joinLobbyWithToken(resolved.lobbyId, resolved.token)
-        : await joinLobby(resolved.lobbyId);
-      setSelectedLobby(normalizeLobby(lobby));
-      setJoinLobbyId(lobby.id);
+      const strategy = resolveJoinStrategy(resolved, selectedLobby);
+      const lobby =
+        strategy.kind === "private"
+          ? await joinLobbyWithToken(strategy.lobbyId, strategy.token)
+          : await joinLobby(strategy.lobbyId);
+      commitSelectedLobby(normalizeLobby(lobby));
+      if (lobby.isPrivate) {
+        setJoinToken(resolved.token);
+      }
+      revealSelectedLobby();
       setMessage({ kind: "ok", text: `Joined lobby ${lobby.id}` });
       await refreshMyLobbies();
       await refreshPublicLobbies();
@@ -671,14 +773,22 @@ export function LobbiesPage() {
           onAiCountChange={setCreateAiCount}
           onPersonalityChange={setCreateAiPersonality}
         />
-        <label className="checkboxRow">
-          <input
-            type="checkbox"
-            checked={createIsPrivate}
-            onChange={(e) => setCreateIsPrivate(e.target.checked)}
-          />
-          Private lobby
-        </label>
+        <div className="formGrid">
+          <div>
+            <label className="fieldLabel" htmlFor="create-visibility">
+              Lobby visibility
+            </label>
+            <select
+              id="create-visibility"
+              className="textInput"
+              value={createIsPrivate ? "private" : "public"}
+              onChange={(e) => setCreateIsPrivate(e.target.value === "private")}
+            >
+              <option value="public">Public - joinable by lobby ID</option>
+              <option value="private">Private - invite token required</option>
+            </select>
+          </div>
+        </div>
         <button
           type="button"
           className="button"
@@ -731,7 +841,12 @@ export function LobbiesPage() {
               id="join-id"
               className="textInput"
               value={joinLobbyId}
-              onChange={(e) => setJoinLobbyId(e.target.value)}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                const parsed = resolveLobbyJoinInput(nextValue, "");
+                setJoinLobbyId(nextValue);
+                setJoinToken(parsed.token);
+              }}
               placeholder="Paste lobby id or invite link"
             />
           </div>
@@ -838,7 +953,9 @@ export function LobbiesPage() {
                               className="button buttonSecondary"
                               onClick={() => {
                                 setJoinLobbyId(lobby.id);
+                                setJoinToken("");
                                 void refreshSelectedLobby(lobby.id);
+                                revealSelectedLobby();
                               }}
                             >
                               Open
@@ -897,7 +1014,9 @@ export function LobbiesPage() {
                       className="button buttonSecondary"
                       onClick={() => {
                         setJoinLobbyId(lobby.id);
+                        setJoinToken("");
                         void refreshSelectedLobby(lobby.id);
+                        revealSelectedLobby();
                       }}
                     >
                       Select
@@ -910,7 +1029,7 @@ export function LobbiesPage() {
         )}
       </div>
 
-      <div className="card">
+      <div className="card" ref={selectedLobbyCardRef} id="selected-lobby-room">
         <h2>Selected lobby</h2>
         {!selectedLobby && (
           <p className="emptyState">
@@ -926,6 +1045,8 @@ export function LobbiesPage() {
               </dd>
               <dt className="muted">Status</dt>
               <dd>{selectedLobby.status}</dd>
+              <dt className="muted">Live updates</dt>
+              <dd>{lobbyWsStatus}</dd>
               <dt className="muted">Host</dt>
               <dd>{selectedLobby.hostId}</dd>
               <dt className="muted">Visibility</dt>
@@ -1044,11 +1165,11 @@ export function LobbiesPage() {
                 <li key={player.userId}>
                   <code className="inline">{player.userId}</code>
                   {(() => {
-                    const labels = [
-                      player.userId === user?.userId ? "you" : null,
-                      player.isAdmin ? "admin" : null,
-                    ].filter(Boolean);
-                    return labels.length > 0 ? ` (${labels.join(", ")})` : "";
+                    const labels = formatLobbyPlayerLabels(
+                      player,
+                      user?.userId,
+                    );
+                    return labels ? ` (${labels})` : "";
                   })()}
                 </li>
               ))}

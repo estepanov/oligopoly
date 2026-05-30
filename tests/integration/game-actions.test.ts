@@ -210,7 +210,8 @@ describe("POST /api/games/:id/action — roll_dice", () => {
 describe("POST /api/games/:id/action — buy_tile / decline_tile", () => {
   it("can buy a tile from position 1 (Digital Content Co., cost 60)", async () => {
     const db = createD1Stub();
-    const { gameId, currentPlayer, capitals } = await createAndStartGame(db);
+    const { gameId, currentPlayer, capitals, freeMarketPool } =
+      await createAndStartGame(db);
 
     // Roll [1, 2] = 3 -> position 3 = Mobile Gaming Inc. (cost 80)
     const rollRes = await requestWithEnv(`/api/games/${gameId}/action`, {
@@ -510,7 +511,8 @@ describe("POST /api/games/:id/action — doubles", () => {
 describe("POST /api/games/:id/action — special tiles", () => {
   it("pays Corporate Tax I when landing on position 4", async () => {
     const db = createD1Stub();
-    const { gameId, currentPlayer, capitals } = await createAndStartGame(db);
+    const { gameId, currentPlayer, capitals, freeMarketPool } =
+      await createAndStartGame(db);
 
     // [1, 3] = 4 -> CORPORATE TAX I (pays 75 to free market pool)
     const res = await requestWithEnv(`/api/games/${gameId}/action`, {
@@ -528,7 +530,7 @@ describe("POST /api/games/:id/action — special tiles", () => {
     }>;
     const player = players.find((p) => p.playerId === currentPlayer)!;
     expect(player.capital).toBe(capitals[currentPlayer] - 75);
-    expect(body.freeMarketPool).toBe(75);
+    expect(body.freeMarketPool).toBe(freeMarketPool + 75);
   });
 });
 

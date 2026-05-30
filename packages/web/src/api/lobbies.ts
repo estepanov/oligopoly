@@ -4,7 +4,6 @@ import {
   LobbiesListResponseSchema,
   LobbyInviteResponseSchema,
   LobbyResponseSchema,
-  type LobbyStatus,
   StartLobbyResponseSchema,
 } from "@oligopoly/validation";
 import type { z } from "zod";
@@ -132,4 +131,15 @@ export function clearLobbyReady(lobbyId: string) {
       headers: authHeaders(),
     },
   );
+}
+
+export function lobbyWebSocketUrl(lobbyId: string) {
+  const url = new URL(
+    `${env.wsUrl}/api/lobbies/${encodeURIComponent(lobbyId)}/ws`,
+  );
+  const token = getStoredToken();
+  if (token) {
+    url.searchParams.set("access_token", token);
+  }
+  return url.toString();
 }

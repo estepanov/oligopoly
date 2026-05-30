@@ -3,13 +3,20 @@ import {
   isAiControlledActor,
   normalizeGameState,
 } from "@oligopoly/shared";
+import { toClientGameState } from "../gameStateView.js";
 import {
   applyAuctionBidWindowExpiry,
   applyAuctionSettleExpiry,
   applyTimeoutTakeoverAndStep,
   runAiTurnLoop,
 } from "../services/gameAi.js";
+import { publicStateForBroadcast } from "../services/gamePersistence.js";
 import { syncGameRoomTimer } from "../services/gameScheduler.js";
+import {
+  buildLobbyResponse,
+  type LobbyPlayerRow,
+  type LobbyRow,
+} from "../services/lobbyResponses.js";
 import { currentTurnActorId } from "../services/turnTimeout.js";
 
 type RoomEnv = {
@@ -24,6 +31,7 @@ function jsonEvent(type: string, payload: Record<string, unknown>) {
 
 abstract class RealtimeRoom {
   protected sessions = new Set<WebSocket>();
+  protected sessionUrls = new Map<WebSocket, URL>();
 
   constructor(
     protected readonly state: DurableObjectState,
@@ -46,8 +54,15 @@ abstract class RealtimeRoom {
     const [client, server] = Object.values(pair);
     server.accept();
     this.sessions.add(server);
-    server.addEventListener("close", () => this.sessions.delete(server));
-    server.addEventListener("error", () => this.sessions.delete(server));
+    this.sessionUrls.set(server, new URL(request.url));
+    server.addEventListener("close", () => {
+      this.sessions.delete(server);
+      this.sessionUrls.delete(server);
+    });
+    server.addEventListener("error", () => {
+      this.sessions.delete(server);
+      this.sessionUrls.delete(server);
+    });
     server.send(await this.snapshotEvent(request));
 
     return new Response(null, { status: 101, webSocket: client });
@@ -63,6 +78,7 @@ abstract class RealtimeRoom {
         session.send(message);
       } catch {
         this.sessions.delete(session);
+        this.sessionUrls.delete(session);
       }
     }
   }
@@ -83,62 +99,64 @@ export class LobbyRoom extends RealtimeRoom {
     }
 
     const lobby = await this.env.DB.prepare(
-      "SELECT id, name, host_id, status, max_players, is_private, optional_rule_ids_json, created_at, ai_slots_json FROM lobbies WHERE id = ?",
+      "SELECT * FROM lobbies WHERE id = ?",
     )
       .bind(lobbyId)
-      .first<{
-        id: string;
-        name: string;
-        host_id: string;
-        status: string;
-        max_players: number;
-        is_private: number;
-        optional_rule_ids_json: string | null;
-        created_at: number;
-        ai_slots_json: string | null;
-      }>();
+      .first<LobbyRow>();
 
     if (!lobby) {
       return { lobbyId, connected: true, missing: true };
     }
 
     const playersResult = await this.env.DB.prepare(
-      "SELECT user_id, is_admin, joined_at FROM lobby_players WHERE lobby_id = ? ORDER BY joined_at ASC",
+      "SELECT * FROM lobby_players WHERE lobby_id = ? ORDER BY joined_at ASC",
     )
       .bind(lobbyId)
-      .all<{ user_id: string; is_admin: number; joined_at: number }>();
+      .all<LobbyPlayerRow>();
 
-    let aiSlots: unknown[] = [];
-    if (lobby.ai_slots_json) {
-      try {
-        aiSlots = JSON.parse(lobby.ai_slots_json) as unknown[];
-      } catch {
-        aiSlots = [];
-      }
-    }
-
-    return {
-      id: lobby.id,
-      name: lobby.name,
-      hostId: lobby.host_id,
-      status: lobby.status,
-      maxPlayers: lobby.max_players,
-      isPrivate: lobby.is_private === 1,
-      optionalRuleIds: lobby.optional_rule_ids_json
-        ? JSON.parse(lobby.optional_rule_ids_json)
-        : [],
-      createdAt: lobby.created_at,
-      aiSlots,
-      players: playersResult.results.map((player) => ({
-        userId: player.user_id,
-        isAdmin: player.is_admin === 1,
-        joinedAt: player.joined_at,
-      })),
-    };
+    return buildLobbyResponse(this.env.DB, lobby, playersResult.results);
   }
 }
 
 export class GameRoom extends RealtimeRoom {
+  protected broadcast(message: string) {
+    let event: Record<string, unknown> | null = null;
+    try {
+      event = JSON.parse(message) as Record<string, unknown>;
+    } catch {
+      event = null;
+    }
+
+    if (
+      event &&
+      (event.type === "game.action_applied" ||
+        event.type === "game.schedule" ||
+        event.type === "game.snapshot") &&
+      event.state
+    ) {
+      for (const session of this.sessions) {
+        const url = this.sessionUrls.get(session);
+        const spectator = url?.searchParams.get("spectator") === "1";
+        const viewerId = url?.searchParams.get("viewerId") ?? "spectator";
+        const state = normalizeGameState(
+          event.state as Record<string, unknown>,
+        );
+        const scopedState = spectator
+          ? toClientGameState(state as never, "spectator", viewerId)
+          : toClientGameState(state as never, "player", viewerId);
+        try {
+          session.send(JSON.stringify({ ...event, state: scopedState }));
+        } catch {
+          this.sessions.delete(session);
+          this.sessionUrls.delete(session);
+        }
+      }
+      return;
+    }
+
+    super.broadcast(message);
+  }
+
   protected async handleNotify(body: string): Promise<void> {
     if (await this.state.storage.get<boolean>("aiLoopRunning")) {
       this.broadcast(body);
@@ -210,14 +228,19 @@ export class GameRoom extends RealtimeRoom {
     const url = new URL(request.url);
     const gameId = url.searchParams.get("gameId") ?? "";
     const spectator = url.searchParams.get("spectator") === "1";
+    const viewerId = url.searchParams.get("viewerId") ?? "spectator";
     if (gameId) {
       await this.state.storage.put("gameId", gameId);
     }
-    const payload = await this.loadGamePayload(gameId, spectator);
+    const payload = await this.loadGamePayload(gameId, spectator, viewerId);
     return jsonEvent("game.snapshot", { gameId, payload });
   }
 
-  private async loadGamePayload(gameId: string, spectator: boolean) {
+  private async loadGamePayload(
+    gameId: string,
+    spectator: boolean,
+    viewerId: string,
+  ) {
     if (!this.env.DB || !gameId) {
       return { gameId, spectator, connected: true };
     }
@@ -234,8 +257,9 @@ export class GameRoom extends RealtimeRoom {
 
     const raw = JSON.parse(row.state_json) as Record<string, unknown>;
     const gameState = normalizeGameState(raw);
-    const { affinityAssignments: _hidden, ...publicState } = gameState;
-    return { ...publicState, gameId, spectator };
+    return spectator
+      ? toClientGameState(gameState as never, "spectator", viewerId)
+      : toClientGameState(gameState as never, "player", viewerId);
   }
 
   private async resyncFromDatabase(gameId: string) {

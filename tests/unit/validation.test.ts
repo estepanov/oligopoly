@@ -88,6 +88,21 @@ describe("AI and realtime schemas", () => {
     expect(result.success).toBe(true);
   });
 
+  it("rejects duplicate lobby AI slot IDs", () => {
+    const result = CreateLobbyInputSchema.safeParse({
+      name: "Duplicate AI",
+      maxPlayers: 3,
+      isPrivate: false,
+      optionalRuleIds: [],
+      aiSlots: [
+        { id: "ai-1", name: "Bot 1", personality: "opportunist" },
+        { id: "ai-1", name: "Bot 2", personality: "loyalist" },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("validates AI personalities", () => {
     expect(AiPersonalitySchema.safeParse("loyalist").success).toBe(true);
     expect(AiPersonalitySchema.safeParse("chaotic").success).toBe(false);
