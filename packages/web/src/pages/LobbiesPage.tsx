@@ -71,6 +71,34 @@ const resolveLobbyJoinInput = (rawLobbyId: string, rawToken: string) => {
   return { lobbyId, token };
 };
 
+type JoinStrategy =
+  | { kind: "public"; lobbyId: string }
+  | { kind: "private"; lobbyId: string; token: string };
+
+const resolveJoinStrategy = (
+  resolved: ReturnType<typeof resolveLobbyJoinInput>,
+  selectedLobby: LobbyResponse | null,
+): JoinStrategy => {
+  const useInviteToken =
+    Boolean(resolved.token) &&
+    (selectedLobby?.id !== resolved.lobbyId || selectedLobby.isPrivate);
+  return useInviteToken
+    ? { kind: "private", lobbyId: resolved.lobbyId, token: resolved.token }
+    : { kind: "public", lobbyId: resolved.lobbyId };
+};
+
+const formatLobbyPlayerLabels = (
+  player: LobbyResponse["players"][number],
+  viewerId: string | undefined,
+) =>
+  [
+    player.userId === viewerId ? "you" : null,
+    player.isAdmin ? "admin" : null,
+    player.isReady ? "ready" : "not ready",
+  ]
+    .filter(Boolean)
+    .join(", ");
+
 const buildInviteUrl = (lobbyId: string, token: string) => {
   const origin =
     typeof window === "undefined" ? "http://localhost" : window.location.origin;
@@ -195,64 +223,51 @@ export function LobbiesPage() {
     }
   }, [user]);
 
-  const refreshSelectedLobby = useCallback(async (id: string) => {
-    if (!id) {
-      setSelectedLobby(null);
-      return;
+  const commitSelectedLobby = useCallback((lobby: LobbyResponse) => {
+    const normalized = normalizeLobby(lobby);
+    setSelectedLobby(normalized);
+    setJoinLobbyId(normalized.id);
+    if (!normalized.isPrivate) {
+      setJoinToken("");
     }
-    try {
-      const lobby = await fetchLobby(id);
-      setSelectedLobby(normalizeLobby(lobby));
-      setJoinLobbyId(lobby.id);
-      if (!lobby.isPrivate) {
-        setJoinToken("");
+    setMyLobbies((current) => {
+      if (!current.some((candidate) => candidate.id === normalized.id)) {
+        return current;
       }
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 404) {
-        setSelectedLobby(null);
-        setMessage({ kind: "error", text: "Lobby not found." });
-        return;
-      }
-      setMessage({
-        kind: "error",
-        text:
-          error instanceof ApiError
-            ? `Failed to load lobby: ${error.message}`
-            : "Failed to load lobby",
-      });
-    }
+      return current.map((candidate) =>
+        candidate.id === normalized.id ? normalized : candidate,
+      );
+    });
   }, []);
 
-  const applySelectedLobbyUpdate = useCallback(
-    (lobby: LobbyResponse) => {
-      const normalized = normalizeLobby(lobby);
-      setSelectedLobby(normalized);
-      setJoinLobbyId(normalized.id);
-      if (!normalized.isPrivate) {
-        setJoinToken("");
+  const refreshSelectedLobby = useCallback(
+    async (id: string) => {
+      if (!id) {
+        setSelectedLobby(null);
+        return;
       }
-      setMyLobbies((current) => {
-        if (!current.some((candidate) => candidate.id === normalized.id)) {
-          return current;
+      try {
+        commitSelectedLobby(normalizeLobby(await fetchLobby(id)));
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) {
+          setSelectedLobby(null);
+          setMessage({ kind: "error", text: "Lobby not found." });
+          return;
         }
-        return current.map((candidate) =>
-          candidate.id === normalized.id ? normalized : candidate,
-        );
-      });
-
-      if (
-        normalized.status === "in_game" &&
-        normalized.gameId &&
-        normalized.players.some((player) => player.userId === user?.userId)
-      ) {
-        navigate(`/games/${normalized.gameId}`);
+        setMessage({
+          kind: "error",
+          text:
+            error instanceof ApiError
+              ? `Failed to load lobby: ${error.message}`
+              : "Failed to load lobby",
+        });
       }
     },
-    [navigate, user?.userId],
+    [commitSelectedLobby],
   );
 
   const { wsStatus: lobbyWsStatus } = useLobbyRealtime(selectedLobby?.id, {
-    onUpdate: ({ lobby }) => applySelectedLobbyUpdate(lobby),
+    onUpdate: ({ lobby }) => commitSelectedLobby(lobby),
   });
 
   useEffect(() => {
@@ -287,35 +302,37 @@ export function LobbiesPage() {
   }, [loading, refreshMyLobbies, user]);
 
   useEffect(() => {
-    if (selectedLobby || myLobbies.length === 0) {
+    if (selectedLobby || myLobbies.length !== 1) {
       return;
     }
 
-    const lobby = normalizeLobby(myLobbies[0]);
-    setSelectedLobby(lobby);
-    setJoinLobbyId(lobby.id);
-    if (!lobby.isPrivate) {
-      setJoinToken("");
-    }
-  }, [myLobbies, selectedLobby]);
+    commitSelectedLobby(normalizeLobby(myLobbies[0]));
+  }, [commitSelectedLobby, myLobbies, selectedLobby]);
 
   useEffect(() => {
-    if (!selectedLobby?.id || selectedLobby.status !== "waiting") {
+    if (
+      !selectedLobby?.id ||
+      selectedLobby.status !== "waiting" ||
+      lobbyWsStatus === "connected"
+    ) {
       return;
     }
 
     const intervalId = window.setInterval(async () => {
       try {
-        applySelectedLobbyUpdate(
-          normalizeLobby(await fetchLobby(selectedLobby.id)),
-        );
+        commitSelectedLobby(normalizeLobby(await fetchLobby(selectedLobby.id)));
       } catch {
         // Keep the current lobby visible if a transient refresh fails.
       }
     }, 2_000);
 
     return () => window.clearInterval(intervalId);
-  }, [applySelectedLobbyUpdate, selectedLobby?.id, selectedLobby?.status]);
+  }, [
+    commitSelectedLobby,
+    lobbyWsStatus,
+    selectedLobby?.id,
+    selectedLobby?.status,
+  ]);
 
   useEffect(() => {
     setCreateAiCount((count) => Math.min(count, createMaxPlayers - 1));
@@ -330,6 +347,16 @@ export function LobbiesPage() {
   }, [selectedLobby, user]);
   const isCurrentSubjectAdmin = Boolean(selectedLobbyMembership?.isAdmin);
   const isAtLobbyLimit = myLobbies.length >= MAX_ACTIVE_LOBBIES_PER_USER;
+
+  useEffect(() => {
+    if (
+      selectedLobby?.status === "in_game" &&
+      selectedLobby.gameId &&
+      selectedLobbyMembership
+    ) {
+      navigate(`/games/${selectedLobby.gameId}`);
+    }
+  }, [navigate, selectedLobby, selectedLobbyMembership]);
 
   const signInHref = useMemo(() => {
     const returnTo = `${location.pathname}${location.search}`;
@@ -489,9 +516,7 @@ export function LobbiesPage() {
           personality: createAiPersonality,
         })),
       });
-      setSelectedLobby(normalizeLobby(lobby));
-      setJoinLobbyId(lobby.id);
-      setJoinToken("");
+      commitSelectedLobby(normalizeLobby(lobby));
       revealSelectedLobby();
       if (lobby.isPrivate) {
         try {
@@ -549,15 +574,15 @@ export function LobbiesPage() {
     setMessage(null);
     setInviteShare(null);
     try {
-      const shouldUseInviteToken =
-        Boolean(resolved.token) &&
-        (selectedLobby?.id !== resolved.lobbyId || selectedLobby.isPrivate);
-      const lobby = shouldUseInviteToken
-        ? await joinLobbyWithToken(resolved.lobbyId, resolved.token)
-        : await joinLobby(resolved.lobbyId);
-      setSelectedLobby(normalizeLobby(lobby));
-      setJoinLobbyId(lobby.id);
-      setJoinToken(lobby.isPrivate ? resolved.token : "");
+      const strategy = resolveJoinStrategy(resolved, selectedLobby);
+      const lobby =
+        strategy.kind === "private"
+          ? await joinLobbyWithToken(strategy.lobbyId, strategy.token)
+          : await joinLobby(strategy.lobbyId);
+      commitSelectedLobby(normalizeLobby(lobby));
+      if (lobby.isPrivate) {
+        setJoinToken(resolved.token);
+      }
       revealSelectedLobby();
       setMessage({ kind: "ok", text: `Joined lobby ${lobby.id}` });
       await refreshMyLobbies();
@@ -1148,12 +1173,11 @@ export function LobbiesPage() {
                 <li key={player.userId}>
                   <code className="inline">{player.userId}</code>
                   {(() => {
-                    const labels = [
-                      player.userId === user?.userId ? "you" : null,
-                      player.isAdmin ? "admin" : null,
-                      player.isReady ? "ready" : "not ready",
-                    ].filter(Boolean);
-                    return labels.length > 0 ? ` (${labels.join(", ")})` : "";
+                    const labels = formatLobbyPlayerLabels(
+                      player,
+                      user?.userId,
+                    );
+                    return labels ? ` (${labels})` : "";
                   })()}
                 </li>
               ))}

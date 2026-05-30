@@ -1,6 +1,6 @@
 import type { GameState } from "@oligopoly/validation";
 import { describe, expect, it } from "vitest";
-import { mergeAuctionClientView } from "../../packages/web/src/lib/gameUi";
+import { mergeRedactedGameSnapshot } from "../../packages/web/src/lib/gameUi";
 
 function auctionState(
   pendingAuction: NonNullable<GameState["pendingAuction"]>,
@@ -13,7 +13,7 @@ function auctionState(
   };
 }
 
-describe("mergeAuctionClientView", () => {
+describe("mergeRedactedGameSnapshot", () => {
   it("preserves mySubmission when broadcast snapshots omit it", () => {
     const previous = auctionState({
       tilePosition: 3,
@@ -37,7 +37,7 @@ describe("mergeAuctionClientView", () => {
       submissionCount: 2,
     });
 
-    const merged = mergeAuctionClientView(previous, incoming);
+    const merged = mergeRedactedGameSnapshot(previous, incoming);
     expect(merged.pendingAuction?.mySubmission).toBe(90);
     expect(merged.pendingAuction?.submissionCount).toBe(2);
   });
@@ -65,7 +65,7 @@ describe("mergeAuctionClientView", () => {
       submissionCount: 0,
     });
 
-    const merged = mergeAuctionClientView(previous, incoming);
+    const merged = mergeRedactedGameSnapshot(previous, incoming);
     expect(merged.pendingAuction?.mySubmission).toBeUndefined();
   });
 
@@ -92,7 +92,7 @@ describe("mergeAuctionClientView", () => {
       submissionCount: 2,
     });
 
-    expect(mergeAuctionClientView(previous, incoming)).toEqual(incoming);
+    expect(mergeRedactedGameSnapshot(previous, incoming)).toEqual(incoming);
   });
 
   it("does not preserve mySubmission for live auctions", () => {
@@ -118,7 +118,7 @@ describe("mergeAuctionClientView", () => {
       submissionCount: 2,
     });
 
-    expect(mergeAuctionClientView(previous, incoming)).toEqual(incoming);
+    expect(mergeRedactedGameSnapshot(previous, incoming)).toEqual(incoming);
   });
   it("preserves viewer-private fields when public realtime updates omit them", () => {
     const previous: GameState = {
@@ -171,7 +171,7 @@ describe("mergeAuctionClientView", () => {
       ],
     };
 
-    const merged = mergeAuctionClientView(previous, incoming);
+    const merged = mergeRedactedGameSnapshot(previous, incoming);
     expect(merged.myAffinityCardId).toBe("ai_pioneer");
     expect(merged.pendingInsiderPeek?.cardId).toBe("market_crash");
     expect(merged.handshakeAgreements?.map((entry) => entry.id)).toEqual([

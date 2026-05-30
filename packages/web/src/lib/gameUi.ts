@@ -102,11 +102,8 @@ export function hasSubmittedAuction(
   return state.pendingAuction.mySubmission !== undefined;
 }
 
-/**
- * Broadcast WS snapshots omit viewer-specific auction fields. Preserve the
- * local player's sealed submission until settlement or a tie-break reset.
- */
-export function mergeAuctionClientView(
+/** Merge broadcast-safe realtime snapshots with viewer-only fields already loaded over authenticated HTTP. */
+export function mergeRedactedGameSnapshot(
   previous: GameState | null,
   incoming: GameState,
 ): GameState {

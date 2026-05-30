@@ -17,7 +17,7 @@ import { buildTileNameMap } from "../lib/boardDisplay";
 import {
   currentActorId,
   isMyTurn,
-  mergeAuctionClientView,
+  mergeRedactedGameSnapshot,
 } from "../lib/gameUi";
 import { type GameSessionUpdate, useGameRealtime } from "./useGameRealtime";
 
@@ -61,7 +61,7 @@ export function useGameSession(
 
   const applySessionUpdate = useCallback(
     (update: GameSessionUpdate) => {
-      setState((current) => mergeAuctionClientView(current, update.state));
+      setState((current) => mergeRedactedGameSnapshot(current, update.state));
       if (update.logEntries?.length) {
         setLogEntries((current) =>
           appendLogEntries(current, update.logEntries),
@@ -72,7 +72,9 @@ export function useGameSession(
       if (gameId && update.source.startsWith("Realtime")) {
         void Promise.all([fetchGameState(gameId), loadGameLog(gameId)])
           .then(([gameState, log]) => {
-            setState((current) => mergeAuctionClientView(current, gameState));
+            setState((current) =>
+              mergeRedactedGameSnapshot(current, gameState),
+            );
             setLogEntries(log);
           })
           .catch(() => {
