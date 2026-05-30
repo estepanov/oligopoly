@@ -43,6 +43,7 @@ export function upgradeWebSocket(
   const stub = room.get(objectId);
   const url = new URL(c.req.url);
   url.searchParams.set(roomParam, roomParamValue);
+  url.searchParams.delete("access_token");
   if (extraSearchParams) {
     for (const [key, value] of Object.entries(extraSearchParams)) {
       url.searchParams.set(key, value);

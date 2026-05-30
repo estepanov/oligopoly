@@ -15,7 +15,6 @@ import { processGameCompletion } from "./gameCompletion.js";
 type PersistOptions = {
   gameRoom?: DurableObjectNamespace;
   actorId?: string;
-  action?: GameAction;
   kv?: KVNamespace;
   aiMeta?: {
     aiPlayerId: string;
@@ -234,7 +233,6 @@ export async function persistGameActionResult(
     sentAt: now,
     gameId,
     actorId: options.actorId ?? options.aiMeta?.aiPlayerId ?? "system",
-    action: options.action ?? options.aiMeta?.action,
     logEntries: broadcastLogEntries,
     state: publicState,
   });
