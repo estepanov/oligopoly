@@ -449,7 +449,7 @@ gameRoutes.post("/:id/ai/step", async (c) => {
 
 gameRoutes.get("/:id/ws", async (c) => {
   const id = c.req.param("id") ?? "";
-  const upgradeOptions = {
+  const upgradeOptions: Parameters<typeof upgradeWebSocket>[1] = {
     room: c.env?.GAME_ROOM,
     roomId: id,
     roomParam: "gameId",
@@ -474,6 +474,8 @@ gameRoutes.get("/:id/ws", async (c) => {
   if (!subject) {
     return c.json({ error: GameErrorKeys.AUTH_REQUIRED }, 401);
   }
+
+  upgradeOptions.extraSearchParams = { viewerId: subject };
 
   const row = await loadGameAccessRow(db, id);
   if (!row) {
