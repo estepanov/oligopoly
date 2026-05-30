@@ -119,6 +119,58 @@ const publishLobbyUpdate = async (
   });
 };
 
+const INVITE_TTL_SECONDS = 24 * 60 * 60;
+
+async function storeInviteToken(
+  db: D1Database,
+  kv: KVNamespace,
+  token: string,
+  lobbyId: string,
+  now: number,
+) {
+  await kv.put(`lobby:invite:${token}`, lobbyId, {
+    expirationTtl: INVITE_TTL_SECONDS,
+  });
+
+  try {
+    await db
+      .prepare(
+        "INSERT INTO lobby_invites (token, lobby_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+      )
+      .bind(token, lobbyId, now + INVITE_TTL_SECONDS * 1000, now)
+      .run();
+  } catch {
+    // Local databases created before this migration can keep using KV invites.
+  }
+}
+
+async function consumeInviteToken(
+  db: D1Database,
+  kv: KVNamespace,
+  token: string,
+  lobbyId: string,
+  now: number,
+): Promise<boolean> {
+  try {
+    const claimed = await db
+      .prepare(
+        "DELETE FROM lobby_invites WHERE token = ? AND lobby_id = ? AND expires_at > ? RETURNING lobby_id",
+      )
+      .bind(token, lobbyId, now)
+      .first<{ lobby_id: string }>();
+    if (claimed?.lobby_id === lobbyId) {
+      await kv.delete(`lobby:invite:${token}`).catch(() => {});
+      return true;
+    }
+    return false;
+  } catch {
+    const tokenLobbyId = await kv.get(`lobby:invite:${token}`);
+    if (tokenLobbyId !== lobbyId) return false;
+    await kv.delete(`lobby:invite:${token}`).catch(() => {});
+    return true;
+  }
+}
+
 const isWaitingLobbyStatus = (status: string) => status === "waiting";
 
 const compareLobbyPlayers = (a: LobbyPlayerRow, b: LobbyPlayerRow) =>
@@ -576,8 +628,8 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
     return c.json({ error: LobbyErrorKeys.INVALID_TOKEN }, 403);
   }
 
-  const tokenLobbyId = await kv.get(`lobby:invite:${token}`);
-  if (tokenLobbyId !== id) {
+  const now = Date.now();
+  if (!(await consumeInviteToken(db, kv, token, id, now))) {
     return c.json({ error: LobbyErrorKeys.INVALID_TOKEN }, 403);
   }
 
@@ -620,7 +672,6 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
     return c.json({ error: LobbyErrorKeys.FULL }, 409);
   }
 
-  const now = Date.now();
   await db
     .prepare(
       "INSERT INTO lobby_players (lobby_id, user_id, is_admin, joined_at) VALUES (?, ?, 0, ?)",
@@ -634,7 +685,6 @@ lobbyRoutes.post("/:id/join/:token", async (c) => {
   ];
 
   const tokenJoinResponse = await buildLobbyResponse(db, lobby, updatedPlayers);
-  await kv.delete(`lobby:invite:${token}`);
   await publishLobbyUpdate(c.env, id, tokenJoinResponse);
   return c.json(tokenJoinResponse);
 });
@@ -673,10 +723,9 @@ lobbyRoutes.post("/:id/invite", async (c) => {
   }
 
   const token = generateId();
-  const ttlSeconds = 24 * 60 * 60;
-  await kv.put(`lobby:invite:${token}`, id, { expirationTtl: ttlSeconds });
+  await storeInviteToken(db, kv, token, id, Date.now());
 
-  return c.json({ token, expiresInSeconds: ttlSeconds });
+  return c.json({ token, expiresInSeconds: INVITE_TTL_SECONDS });
 });
 
 // DELETE /:id/leave — Leave a waiting lobby, deleting it if it becomes empty

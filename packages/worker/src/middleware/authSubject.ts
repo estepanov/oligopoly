@@ -61,7 +61,27 @@ export const authSubjectMiddleware: MiddlewareHandler<{
     }
   }
 
-  // 2. Fall back to legacy x-subject header
+  // 2. Browser WebSocket clients cannot send Authorization headers, so
+  // accept the same bearer token via query string for upgrade requests only.
+  if (c.req.header("Upgrade") === "websocket") {
+    const token = toValue(new URL(c.req.url).searchParams.get("access_token"));
+    if (token) {
+      const session = await db
+        .prepare(
+          "SELECT s.user_id, u.role FROM auth_sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ? AND s.expires_at > ?",
+        )
+        .bind(token, Date.now())
+        .first<{ user_id: string; role: string }>();
+      if (session) {
+        c.set("userId", session.user_id);
+        c.set("userRole", session.role);
+        await next();
+        return;
+      }
+    }
+  }
+
+  // 3. Fall back to legacy x-subject header
   const subject = toValue(c.req.header("x-subject"));
   if (subject) {
     const row = await db

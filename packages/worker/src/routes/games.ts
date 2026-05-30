@@ -58,25 +58,6 @@ async function loadGameAccessRow(
     .first<GameAccessRow>();
 }
 
-async function resolveWebSocketSubject(
-  db: D1Database,
-  requestUrl: string,
-  headerSubject: string | undefined,
-): Promise<string | null> {
-  if (headerSubject) return headerSubject;
-
-  const token = new URL(requestUrl).searchParams.get("access_token")?.trim();
-  if (!token) return null;
-
-  const session = await db
-    .prepare(
-      "SELECT user_id FROM auth_sessions WHERE token = ? AND expires_at > ?",
-    )
-    .bind(token, Date.now())
-    .first<{ user_id: string }>();
-  return session?.user_id ?? null;
-}
-
 function gameSpectatorModeEnabled(row: GameAccessRow): boolean {
   if (!row.state_json) return false;
   const state = JSON.parse(row.state_json) as PersistedGameState;
@@ -490,7 +471,7 @@ gameRoutes.get("/:id/ws", async (c) => {
     return c.json({ error: GameErrorKeys.DB_NOT_CONFIGURED }, 500);
   }
 
-  const subject = await resolveWebSocketSubject(db, c.req.url, c.get("userId"));
+  const subject = c.get("userId");
   if (!subject) {
     return c.json({ error: GameErrorKeys.AUTH_REQUIRED }, 401);
   }
