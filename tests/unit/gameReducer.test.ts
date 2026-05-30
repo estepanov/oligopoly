@@ -1,6 +1,8 @@
 import { applyGameAction, type EngineGameState } from "@oligopoly/shared";
 import { GameEngineErrorKeys, GameErrorKeys } from "@oligopoly/validation";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as gameReducerModule from "../../packages/shared/src/engine/gameReducer.js";
+import * as gameStateMachineModule from "../../packages/shared/src/engine/gameStateMachine.js";
 
 function minimalTwoPlayerState(
   phase: "waiting_for_roll" | "action",
@@ -228,5 +230,26 @@ describe("applyGameAction", () => {
     if (!result.ok) {
       expect(result.errorKey).toBe(GameErrorKeys.INSUFFICIENT_AP);
     }
+  });
+
+  it("returns UNKNOWN_ENGINE_ERROR for unexpected string throws", () => {
+    const spy = vi
+      .spyOn(gameStateMachineModule, "applyAction")
+      .mockImplementation(() => {
+        throw "game.totally_unknown";
+      });
+
+    const result = gameReducerModule.applyGameAction(
+      minimalTwoPlayerState("action"),
+      { type: "end_turn" },
+      { actorId: "alice" },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errorKey).toBe(GameEngineErrorKeys.UNKNOWN_ENGINE_ERROR);
+    }
+
+    spy.mockRestore();
   });
 });

@@ -204,6 +204,7 @@ describe("drawAndResolveMarketEvent", () => {
     expect(result.state.pendingAuction).toBeDefined();
     expect(result.state.pendingAuction?.tilePosition).toBe(6);
     expect(result.state.pendingAuction?.sellerId).toBe("player-2");
+    expect(result.state.pendingAuction?.trigger).toBe("forced_sale");
     expect(result.state.pendingAuction?.resumePhase).toBe("waiting_for_roll");
   });
 
@@ -253,6 +254,61 @@ describe("drawAndResolveMarketEvent", () => {
       settled.state.players.find((player) => player.playerId === "player-1")
         ?.actionPointsRemaining,
     ).toBe(2);
+  });
+
+  it("pays the seller and removes ownership when leveraged-buyout auctions settle", () => {
+    const state = makeMarketEventState({
+      settings: { auctionType: "open_bids" },
+      marketEventDeckRemaining: ["optional_leveraged_buyout", "market_crash"],
+      players: [
+        {
+          playerId: "player-1",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [1, 3],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 0,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+        {
+          playerId: "player-2",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [6],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 0,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+      ],
+    });
+    state.tiles.find((tile) => tile.position === 1)!.ownerId = "player-1";
+    state.tiles.find((tile) => tile.position === 3)!.ownerId = "player-1";
+    state.tiles.find((tile) => tile.position === 6)!.ownerId = "player-2";
+
+    const drawn = drawAndResolveMarketEvent(state, "player-1", "round_start");
+    const settled = recordAuctionSubmission(drawn.state, "player-1", 1);
+
+    const buyer = settled.state.players.find(
+      (player) => player.playerId === "player-1",
+    );
+    const seller = settled.state.players.find(
+      (player) => player.playerId === "player-2",
+    );
+    const tile = settled.state.tiles.find((entry) => entry.position === 6);
+
+    expect(buyer?.capital).toBe(1499);
+    expect(buyer?.ownedTilePositions).toContain(6);
+    expect(seller?.capital).toBe(1501);
+    expect(seller?.ownedTilePositions).not.toContain(6);
+    expect(tile?.ownerId).toBe("player-1");
   });
 
   it("does not let a pending syndicate vote block round-start roll readiness", () => {
@@ -322,7 +378,6 @@ describe("drawAndResolveMarketEvent", () => {
       )?.ownerId,
     ).toBe("player-2");
   });
-
   it("optional_supply_chain_crisis doubles utility rent for the configured rounds", () => {
     const state = makeMarketEventState({
       marketEventDeckRemaining: ["optional_supply_chain_crisis"],

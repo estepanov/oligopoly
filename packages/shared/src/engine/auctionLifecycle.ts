@@ -49,7 +49,11 @@ export function startDeclineAuction(
   overrides: Partial<
     Pick<
       PendingAuctionState,
-      "sellerId" | "reservePrice" | "tieBreakMinBid" | "eligiblePlayerIds"
+      | "eligiblePlayerIds"
+      | "reservePrice"
+      | "sellerId"
+      | "tieBreakMinBid"
+      | "trigger"
     >
   > = {},
 ): InternalGameState {

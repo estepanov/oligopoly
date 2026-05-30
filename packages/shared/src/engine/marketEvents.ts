@@ -279,18 +279,27 @@ const MARKET_EVENT_BLOCKING_PHASES = new Set([
   "waiting_for_auction_bids",
   "waiting_for_auction_settle",
 ]);
+const MARKET_EVENT_BLOCKING_PENDING_FIELDS: Array<
+  keyof Pick<
+    InternalGameState,
+    | "pendingAuction"
+    | "pendingForeclosure"
+    | "pendingInsiderPeek"
+    | "pendingDisruptionNullify"
+  >
+> = [
+  "pendingAuction",
+  "pendingForeclosure",
+  "pendingInsiderPeek",
+  "pendingDisruptionNullify",
+];
 
 function hasBlockingWorkAfterMarketEventDraw(
   state: InternalGameState,
 ): boolean {
   return (
     MARKET_EVENT_BLOCKING_PHASES.has(state.phase) ||
-    Boolean(
-      state.pendingAuction ||
-        state.pendingForeclosure ||
-        state.pendingInsiderPeek ||
-        state.pendingDisruptionNullify,
-    )
+    MARKET_EVENT_BLOCKING_PENDING_FIELDS.some((field) => Boolean(state[field]))
   );
 }
 
@@ -368,7 +377,7 @@ export function drawAndResolveMarketEvent(
     logs.push({
       playerId: drawingPlayerId,
       actionType: "insider_peek",
-      payload: { cardId: deck[0], trigger, tilePosition },
+      payload: { trigger, tilePosition },
     });
     return { state: newState, logEntries: logs };
   }

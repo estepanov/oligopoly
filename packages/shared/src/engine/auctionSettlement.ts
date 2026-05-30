@@ -219,6 +219,7 @@ export function finishAuctionWithoutSale(
       return settleForeclosureAuctionWithoutSale(state, logs);
     case "decline":
       return settleDeclineAuctionWithoutSale(state, auction, logs);
+    case "forced_sale":
     case "player_initiated":
       return settleDeclineAuctionWithoutSale(state, auction, logs);
   }
@@ -249,6 +250,7 @@ export function awardTileToWinner(
         amount,
         logs,
       );
+    case "forced_sale":
     case "player_initiated":
       return settlePlayerInitiatedAuctionWinner(
         state,

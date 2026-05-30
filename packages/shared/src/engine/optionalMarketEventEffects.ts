@@ -113,6 +113,7 @@ function startLeveragedBuyoutAuction(
     auctionResumePhaseForTrigger(trigger),
     Date.now(),
     {
+      trigger: "forced_sale",
       reservePrice: 1,
       tieBreakMinBid: 1,
       sellerId: targetPlayerId,

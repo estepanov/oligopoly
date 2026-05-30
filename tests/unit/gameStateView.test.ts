@@ -72,3 +72,43 @@ describe("toClientGameState negotiation visibility", () => {
     ]);
   });
 });
+
+describe("toClientGameState handshake visibility", () => {
+  it("hides private handshakes from spectators", () => {
+    const state = baseState();
+    state.handshakeAgreements = [
+      {
+        id: "handshake-1",
+        partyA: "p1",
+        partyB: "p2",
+        summary: "No trades",
+        status: "pending",
+        partySignatures: { p1: true },
+        createdRound: 3,
+      },
+    ];
+
+    const client = toClientGameState(state, "spectator", "spectator-1");
+    expect(client.handshakeAgreements).toEqual([]);
+  });
+
+  it("keeps handshakes visible to participating players", () => {
+    const state = baseState();
+    state.handshakeAgreements = [
+      {
+        id: "handshake-1",
+        partyA: "p1",
+        partyB: "p2",
+        summary: "No trades",
+        status: "pending",
+        partySignatures: { p1: true },
+        createdRound: 3,
+      },
+    ];
+
+    const client = toClientGameState(state, "player", "p2");
+    expect(client.handshakeAgreements?.map((entry) => entry.id)).toEqual([
+      "handshake-1",
+    ]);
+  });
+});
