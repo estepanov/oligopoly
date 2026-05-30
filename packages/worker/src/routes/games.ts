@@ -396,6 +396,9 @@ gameRoutes.post("/:id/ai/step", async (c) => {
   if (!isLocalDevRequest(c.req.url)) {
     return c.json({ error: GameErrorKeys.FORBIDDEN }, 403);
   }
+  if (!c.get("userId")) {
+    return c.json({ error: GameErrorKeys.AUTH_REQUIRED }, 401);
+  }
 
   const db = c.env?.DB;
   if (!db) {

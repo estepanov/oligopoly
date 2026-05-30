@@ -195,11 +195,13 @@ export async function stepAiUntil(
   gameId: string,
   predicate: (body: Record<string, unknown>) => boolean,
   maxSteps = 16,
+  subject = "user-1",
 ): Promise<Record<string, unknown>> {
   let lastBody: Record<string, unknown> = {};
   for (let i = 0; i < maxSteps; i++) {
     const res = await requestWithEnv(`/api/games/${gameId}/ai/step`, {
       method: "POST",
+      headers: { "x-subject": subject },
       db,
     });
     if (res.status === 409) {
@@ -270,6 +272,7 @@ export async function ensureActorTurn(
 
     const res = await requestWithEnv(`/api/games/${gameId}/ai/step`, {
       method: "POST",
+      headers: { "x-subject": actorId },
       db,
     });
     if (res.status === 409) {

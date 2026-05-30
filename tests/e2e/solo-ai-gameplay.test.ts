@@ -95,6 +95,7 @@ describe("e2e solo vs AI gameplay", () => {
       "waiting_for_roll",
       "rolling_doubles",
       "waiting_for_market_event",
+      "syndicate_coordination",
     ]).toContain(afterAi.phase);
   });
 });

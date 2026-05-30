@@ -71,6 +71,35 @@ describe("toClientGameState negotiation visibility", () => {
       "thread-private",
     ]);
   });
+
+  it("hides private threads from spectators", () => {
+    const state = baseState();
+    state.negotiationThreads = [
+      {
+        id: "thread-open",
+        createdBy: "p1",
+        partyIds: ["p1", "p2"],
+        status: "open",
+        startedRound: 1,
+        expiresAfterRound: 4,
+        visibility: "open",
+      },
+      {
+        id: "thread-private",
+        createdBy: "p1",
+        partyIds: ["p1", "p2"],
+        status: "open",
+        startedRound: 1,
+        expiresAfterRound: 4,
+        visibility: "private",
+      },
+    ];
+
+    const client = toClientGameState(state, "spectator", "spectator-1");
+    expect(client.negotiationThreads?.map((entry) => entry.id)).toEqual([
+      "thread-open",
+    ]);
+  });
 });
 
 describe("toClientGameState handshake visibility", () => {

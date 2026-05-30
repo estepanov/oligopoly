@@ -154,7 +154,9 @@ function filterNegotiationThreadsForViewer(
   mode: "spectator" | "player",
 ) {
   if (!threads?.length) return threads;
-  if (mode === "spectator") return threads;
+  if (mode === "spectator") {
+    return threads.filter((thread) => thread.visibility === "open");
+  }
   return threads.filter(
     (thread) =>
       thread.visibility === "open" || thread.partyIds.includes(viewerId),
