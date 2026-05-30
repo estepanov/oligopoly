@@ -394,7 +394,6 @@ gameRoutes.post("/:id/action", async (c) => {
     const logEntries = await persistGameActionResult(db, id, result, {
       gameRoom: c.env?.GAME_ROOM,
       actorId: subject,
-      action: actionBody,
       kv: c.env?.KV,
     });
 

@@ -109,6 +109,7 @@ async function createAndStartGame(db: D1Database) {
   const updatedState = JSON.parse(updatedRow.state_json as string) as {
     turnOrder: string[];
     players: Array<{ playerId: string; capital: number }>;
+    freeMarketPool?: number;
   };
 
   return {
@@ -120,6 +121,7 @@ async function createAndStartGame(db: D1Database) {
     capitals: Object.fromEntries(
       updatedState.players.map((player) => [player.playerId, player.capital]),
     ) as Record<string, number>,
+    freeMarketPool: updatedState.freeMarketPool ?? 0,
   };
 }
 
