@@ -3,6 +3,7 @@ import {
   isAiControlledActor,
   normalizeGameState,
 } from "@oligopoly/shared";
+import { toClientGameState } from "../gameStateView.js";
 import {
   applyAuctionBidWindowExpiry,
   applyAuctionSettleExpiry,
@@ -180,14 +181,19 @@ export class GameRoom extends RealtimeRoom {
     const url = new URL(request.url);
     const gameId = url.searchParams.get("gameId") ?? "";
     const spectator = url.searchParams.get("spectator") === "1";
+    const viewerId = url.searchParams.get("viewerId") ?? "spectator";
     if (gameId) {
       await this.state.storage.put("gameId", gameId);
     }
-    const payload = await this.loadGamePayload(gameId, spectator);
+    const payload = await this.loadGamePayload(gameId, spectator, viewerId);
     return jsonEvent("game.snapshot", { gameId, payload });
   }
 
-  private async loadGamePayload(gameId: string, spectator: boolean) {
+  private async loadGamePayload(
+    gameId: string,
+    spectator: boolean,
+    viewerId: string,
+  ) {
     if (!this.env.DB || !gameId) {
       return { gameId, spectator, connected: true };
     }
@@ -204,8 +210,9 @@ export class GameRoom extends RealtimeRoom {
 
     const raw = JSON.parse(row.state_json) as Record<string, unknown>;
     const gameState = normalizeGameState(raw);
-    const publicState = publicStateForBroadcast(gameState, []);
-    return { ...publicState, gameId };
+    return spectator
+      ? toClientGameState(gameState as never, "spectator", viewerId)
+      : toClientGameState(gameState as never, "player", viewerId);
   }
 
   private async resyncFromDatabase(gameId: string) {

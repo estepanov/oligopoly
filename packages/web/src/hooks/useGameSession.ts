@@ -61,12 +61,6 @@ export function useGameSession(
 
   const applySessionUpdate = useCallback(
     (update: GameSessionUpdate) => {
-      setState((current) => mergeRedactedGameSnapshot(current, update.state));
-      if (update.logEntries?.length) {
-        setLogEntries((current) =>
-          appendLogEntries(current, update.logEntries),
-        );
-      }
       setStatusLine(update.source);
 
       if (gameId && update.source.startsWith("Realtime")) {
@@ -78,8 +72,16 @@ export function useGameSession(
             setLogEntries(log);
           })
           .catch(() => {
-            // Keep the realtime snapshot visible if the authenticated refresh fails.
+            // Keep the current state visible if the authenticated refresh fails.
           });
+        return;
+      }
+
+      setState((current) => mergeRedactedGameSnapshot(current, update.state));
+      if (update.logEntries?.length) {
+        setLogEntries((current) =>
+          appendLogEntries(current, update.logEntries),
+        );
       }
     },
     [gameId],
