@@ -1,3 +1,4 @@
+import { isLoopbackHostname } from "@oligopoly/shared";
 import type { AuthSessionResponse } from "@oligopoly/validation";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { useCallback, useState } from "react";
@@ -13,13 +14,12 @@ import { env } from "../env";
 const getSafeReturnTo = (value: string | null) =>
   value?.startsWith("/") && !value.startsWith("//") ? value : "/";
 
-/** True when the configured API is a local origin (mirrors the worker's
- * authoritative `isLocalDevRequest` gate so the dev-login button only shows
- * when the worker would actually accept it). */
+/** True when the configured API is a loopback origin. Uses the same shared
+ * `isLoopbackHostname` rule the worker enforces, so the dev-login button only
+ * shows when the worker would actually accept the request. */
 const isLocalApi = (() => {
   try {
-    const host = new URL(env.apiUrl).hostname.replace(/^\[|\]$/g, "");
-    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+    return isLoopbackHostname(new URL(env.apiUrl).hostname);
   } catch {
     return false;
   }

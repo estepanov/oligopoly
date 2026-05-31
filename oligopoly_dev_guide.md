@@ -105,8 +105,11 @@ Local multiplayer uses the same Worker, D1/KV, Durable Object, and Vite runtime 
 ### Local two-player testing without passkeys
 
 Registering a WebAuthn passkey for every local seat is impractical, so a
-**local-development-only** quick login is available (gated to `localhost`/
-`127.0.0.1` on the worker and shown only when `VITE_APP_ENV=development`):
+**local-development-only** quick login is available. The worker authoritatively
+gates it to loopback origins (`localhost` / `127.0.0.1` / `::1`), and the web
+button is shown only when the configured `VITE_API_URL` is itself a loopback
+origin — both sides use the same shared `isLoopbackHostname` rule, so UI
+visibility and the worker's 403 stay aligned:
 
 1. Start the stack with `pnpm run dev`.
 2. Open `http://localhost:5173/login` and use **"Dev login (no passkey)"** with a
