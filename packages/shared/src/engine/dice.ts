@@ -51,9 +51,12 @@ export function isDoubles(roll: [number, number]): boolean {
 /**
  * Roll a single six-sided die for path choice at corner 0.
  * Odd = perimeter, Even = diagonal.
+ *
+ * Uses the crypto-backed `rollFairD6` so all server-authoritative dice share
+ * one RNG tier (the dice authority boundary in the worker relies on this).
  */
 export function rollPathChoiceDie(): number {
-  return Math.floor(Math.random() * 6) + 1;
+  return rollFairD6();
 }
 
 /**
