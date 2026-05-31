@@ -687,6 +687,8 @@ After the winning Syndicate is confirmed, it may **absorb tiles** from eliminate
 
 AI players are server-controlled participants. They obey the same turn order, action legality, auction rules, win conditions, and syndicate commitments as human players.
 
+AI decisions are always applied by the server's authoritative rules engine. An AI may use deterministic rules or an optional OpenRouter-assisted decision pass, but provider output can only choose among server-provided candidate actions and is discarded if it is invalid or illegal.
+
 Available AI personalities:
 
 - **Loyalist:** favors cooperation, honors handshake agreements, and prefers syndicate outcomes.
@@ -694,8 +696,6 @@ Available AI personalities:
 - **Disruptor:** pursues solo-win pressure, blocks rivals in auctions, and avoids permanent commitments unless strongly beneficial.
 
 If a human times out, an AI may take the required legal actions for that turn. If a human is kicked mid-game, an AI replacement controls that seat for the remainder of the game and the kicked player's history shows `kicked`.
-
-Three personalities: **Loyalist** (honors all agreements), **Opportunist** (cooperative until the math favours defection), **Disruptor** (solo win path, destabilises dominant Syndicates, bids aggressively at auction).
 
 
 

@@ -24,10 +24,11 @@ import { gameRoutes } from "./routes/games";
 import { leaderboardRoutes } from "./routes/leaderboard";
 import { lobbyRoutes } from "./routes/lobbies";
 import { userRoutes } from "./routes/users";
+import type { OpenRouterAiEnv } from "./services/openRouterAi";
 
 export { GameRoom, LobbyRoom } from "./durable/rooms";
 
-type Bindings = {
+type Bindings = OpenRouterAiEnv & {
   ALLOWED_ORIGINS?: string;
   DB?: D1Database;
   KV?: KVNamespace;

@@ -96,9 +96,13 @@ CF_ANALYTICS_DATASET=oligopoly_events
 CF_CALLS_APP_ID=
 CF_CALLS_APP_SECRET=
 
-ANTHROPIC_API_KEY=
-ANTHROPIC_DAILY_BUDGET_ALERT=10.00
-ANTHROPIC_MONTHLY_BUDGET_ALERT=200.00
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=
+OPENROUTER_DAILY_BUDGET_ALERT=10.00
+OPENROUTER_MONTHLY_BUDGET_ALERT=200.00
+OPENROUTER_APP_REFERER=http://localhost:5173
+OPENROUTER_APP_TITLE="Oligopoly Online"
+OPENROUTER_TIMEOUT_MS=8000
 
 ALLOWED_ORIGINS=http://localhost:5173
 CSP_REPORT_URI=
@@ -228,7 +232,7 @@ AI player protocol:
 
 - AI seats are represented by server-owned player IDs prefixed with `ai:` and are stored in lobby settings, game state, and `games.player_ids_json`.
 - Supported personalities are `loyalist`, `opportunist`, and `disruptor`.
-- Deterministic rules-based AI is the baseline and must always return a legal action. LLM-assisted decisions are optional, gated by `ANTHROPIC_API_KEY`, daily/monthly budget checks, and deterministic fallback.
+- Deterministic rules-based AI is the baseline and must always return a legal action. LLM-assisted decisions are optional, routed through OpenRouter when `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` are configured, gated by daily/monthly budget checks, strict Zero Data Retention provider routing, schema validation, engine legality checks, and deterministic fallback.
 - Timeout takeover temporarily maps a human player to an AI runtime entry; kick replacement permanently replaces the human actor for the rest of the game.
 - `GameRoom` is the sole AI orchestration owner: it schedules turn-timeout alarms from `settings.turnTimeout`, emits `game.timer`, applies timeout takeover on alarm, and auto-runs AI turns via `runAiTurnLoop` after canonical state writes (`game.schedule` or `game.action_applied`).
 - Lobby start and kick replacement persist canonical state and emit `game.schedule` / `game.action_applied`; they do not call `runAiTurnLoop` directly.
@@ -238,7 +242,7 @@ AI player protocol:
 - `GameDetailPage` uses `useGameSession` (HTTP load + `useGameRealtime` for state, log entries, and timers) and renders a perimeter board grid plus player table.
 - All lobby JSON responses route through `buildLobbyResponse`, which attaches optional `gameId` when status is `in_game`.
 - Lobby start navigates directly to `/games/:id` when a game is created.
-- AI cost tracking uses KV keys shaped as `ai_cost:daily:{date}` and feeds admin analytics.
+- AI cost tracking uses KV keys shaped as `ai_cost:daily:{date}` for admin analytics and `ai_cost:monthly:{YYYY-MM}` for monthly budget enforcement.
 
 Auth consistency rule:
 
@@ -587,6 +591,7 @@ ratelimit:auth:{ip}
 ratelimit:write:{subject}
 ratelimit:read:{subject}
 ai_cost:daily:{date}
+ai_cost:monthly:{YYYY-MM}
 webauthn:challenge:register:{challenge}
 webauthn:challenge:login:{challenge}
 ```

@@ -21,8 +21,9 @@ import {
   persistGameActionResult,
   toActionResponse,
 } from "../services/gamePersistence.js";
+import type { OpenRouterAiEnv } from "../services/openRouterAi.js";
 
-type Bindings = {
+type Bindings = OpenRouterAiEnv & {
   ALLOWED_ORIGINS?: string;
   KV?: KVNamespace;
   DB?: D1Database;
@@ -427,7 +428,7 @@ gameRoutes.post("/:id/ai/step", async (c) => {
     return c.json({ error: GameErrorKeys.DB_NOT_CONFIGURED }, 500);
   }
 
-  const step = await stepGameAiTurn(db, id, c.env?.GAME_ROOM);
+  const step = await stepGameAiTurn(db, id, c.env?.GAME_ROOM, c.env?.KV, c.env);
   if (!step.applied) {
     if (step.reason === "not_found") {
       return c.json({ error: GameErrorKeys.NOT_FOUND }, 404);

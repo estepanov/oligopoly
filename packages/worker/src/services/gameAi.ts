@@ -1,4 +1,5 @@
 import {
+  type AiDecision,
   type ApplyActionResult,
   applyAction,
   applyTimeoutTakeover,
@@ -14,6 +15,10 @@ import {
 import type { AiPersonality, GameAction } from "@oligopoly/validation";
 import { broadcastGameEvent } from "../realtime/notify.js";
 import { persistGameActionResult } from "./gamePersistence.js";
+import {
+  chooseOpenRouterAiDecision,
+  type OpenRouterAiEnv,
+} from "./openRouterAi.js";
 
 type ActiveGameRow = {
   id: string;
@@ -26,7 +31,7 @@ export type StepAiTurnFailureReason = "not_found" | "completed" | "not_ai_turn";
 export type StepAiTurnResult =
   | {
       applied: true;
-      decision: NonNullable<ReturnType<typeof chooseAiAction>>;
+      decision: AiDecision;
       result: ApplyActionResult;
     }
   | {
@@ -62,11 +67,53 @@ function buildEngineInput(action: GameAction) {
   };
 }
 
+function applyAiDecision(
+  gameState: InternalGameState,
+  decision: AiDecision,
+): ApplyActionResult {
+  return applyAction(
+    gameState,
+    decision.actorId,
+    buildEngineInput(decision.action),
+  );
+}
+
+async function chooseAndApplyAiDecision(
+  gameState: InternalGameState,
+  fallbackDecision: AiDecision,
+  kv?: KVNamespace,
+  aiEnv?: OpenRouterAiEnv,
+): Promise<{ decision: AiDecision; result: ApplyActionResult }> {
+  const openRouterDecision = await chooseOpenRouterAiDecision(
+    gameState,
+    fallbackDecision,
+    { env: aiEnv, kv },
+  );
+
+  if (openRouterDecision) {
+    try {
+      return {
+        decision: openRouterDecision,
+        result: applyAiDecision(gameState, openRouterDecision),
+      };
+    } catch {
+      // The engine remains authoritative; any invalid provider proposal falls
+      // back to the deterministic baseline for this exact state.
+    }
+  }
+
+  return {
+    decision: fallbackDecision,
+    result: applyAiDecision(gameState, fallbackDecision),
+  };
+}
+
 export async function stepGameAiTurn(
   db: D1Database,
   gameId: string,
   gameRoom?: DurableObjectNamespace,
   kv?: KVNamespace,
+  aiEnv?: OpenRouterAiEnv,
 ): Promise<StepAiTurnResult> {
   const row = await loadGameRow(db, gameId);
   if (!row) return { applied: false, reason: "not_found" };
@@ -80,13 +127,14 @@ export async function stepGameAiTurn(
   const gameState = normalizeGameState(
     JSON.parse(row.state_json) as Record<string, unknown>,
   );
-  const decision = chooseAiAction(gameState);
-  if (!decision) return { applied: false, reason: "not_ai_turn" };
+  const fallbackDecision = chooseAiAction(gameState);
+  if (!fallbackDecision) return { applied: false, reason: "not_ai_turn" };
 
-  const result = applyAction(
+  const { decision, result } = await chooseAndApplyAiDecision(
     gameState,
-    decision.actorId,
-    buildEngineInput(decision.action),
+    fallbackDecision,
+    kv,
+    aiEnv,
   );
 
   await persistGameActionResult(db, gameId, result, {
@@ -108,10 +156,11 @@ export async function runAiTurnLoop(
   gameRoom?: DurableObjectNamespace,
   maxSteps = 16,
   kv?: KVNamespace,
+  aiEnv?: OpenRouterAiEnv,
 ): Promise<number> {
   let steps = 0;
   for (let i = 0; i < maxSteps; i++) {
-    const step = await stepGameAiTurn(db, gameId, gameRoom, kv);
+    const step = await stepGameAiTurn(db, gameId, gameRoom, kv, aiEnv);
     if (!step.applied) break;
     steps += 1;
     if (step.result.state.phase === "game_over") break;
@@ -138,13 +187,16 @@ async function applyAuctionPhaseTransition(
   db: D1Database,
   gameId: string,
   gameRoom: DurableObjectNamespace | undefined,
+  kv: KVNamespace | undefined,
+  aiEnv: OpenRouterAiEnv | undefined,
   transition: (state: InternalGameState) => ApplyActionResult | null,
 ): Promise<boolean> {
   const row = await loadActiveGame(db, gameId);
   if (!row) return false;
+  if (!row.state_json) return false;
 
   const gameState = normalizeGameState(
-    JSON.parse(row.state_json!) as Record<string, unknown>,
+    JSON.parse(row.state_json) as Record<string, unknown>,
   );
   const result = transition(gameState);
   if (!result) return false;
@@ -158,7 +210,7 @@ async function applyAuctionPhaseTransition(
     result.state.phase === "waiting_for_auction_bids" &&
     chooseAiAction(result.state)
   ) {
-    await runAiTurnLoop(db, gameId, gameRoom);
+    await runAiTurnLoop(db, gameId, gameRoom, 16, kv, aiEnv);
   }
 
   return true;
@@ -168,8 +220,10 @@ export async function applyAuctionBidWindowExpiry(
   db: D1Database,
   gameId: string,
   gameRoom?: DurableObjectNamespace,
+  kv?: KVNamespace,
+  aiEnv?: OpenRouterAiEnv,
 ): Promise<boolean> {
-  return applyAuctionPhaseTransition(db, gameId, gameRoom, (state) =>
+  return applyAuctionPhaseTransition(db, gameId, gameRoom, kv, aiEnv, (state) =>
     closeAuctionBidWindowIfReady(state, Date.now()),
   );
 }
@@ -178,8 +232,10 @@ export async function applyAuctionSettleExpiry(
   db: D1Database,
   gameId: string,
   gameRoom?: DurableObjectNamespace,
+  kv?: KVNamespace,
+  aiEnv?: OpenRouterAiEnv,
 ): Promise<boolean> {
-  return applyAuctionPhaseTransition(db, gameId, gameRoom, (state) =>
+  return applyAuctionPhaseTransition(db, gameId, gameRoom, kv, aiEnv, (state) =>
     finalizeAuctionSettleIfReady(state, Date.now()),
   );
 }
@@ -189,12 +245,15 @@ export async function applyTimeoutTakeoverAndStep(
   gameId: string,
   humanId: string,
   gameRoom?: DurableObjectNamespace,
+  kv?: KVNamespace,
+  aiEnv?: OpenRouterAiEnv,
 ): Promise<StepAiTurnResult> {
   const row = await loadActiveGame(db, gameId);
   if (!row) return { applied: false, reason: "not_found" };
+  if (!row.state_json) return { applied: false, reason: "not_found" };
 
   let gameState = normalizeGameState(
-    JSON.parse(row.state_json!) as Record<string, unknown>,
+    JSON.parse(row.state_json) as Record<string, unknown>,
   );
   const logEntries: ApplyActionResult["logEntries"] = [];
 
@@ -207,18 +266,19 @@ export async function applyTimeoutTakeoverAndStep(
     });
   }
 
-  const decision = chooseAiAction(gameState);
-  if (!decision) {
+  const fallbackDecision = chooseAiAction(gameState);
+  if (!fallbackDecision) {
     if (logEntries.length > 0) {
       await persistStateMutation(db, gameId, gameState, logEntries, gameRoom);
     }
     return { applied: false, reason: "not_ai_turn" };
   }
 
-  const result = applyAction(
+  const { decision, result } = await chooseAndApplyAiDecision(
     gameState,
-    decision.actorId,
-    buildEngineInput(decision.action),
+    fallbackDecision,
+    kv,
+    aiEnv,
   );
 
   await persistGameActionResult(
@@ -247,9 +307,10 @@ export async function kickPlayerToAiReplacement(
 ): Promise<InternalGameState | null> {
   const row = await loadActiveGame(db, gameId);
   if (!row) return null;
+  if (!row.state_json) return null;
 
   const gameState = normalizeGameState(
-    JSON.parse(row.state_json!) as Record<string, unknown>,
+    JSON.parse(row.state_json) as Record<string, unknown>,
   );
   const nextState = replaceKickedPlayerWithAi(gameState, humanId, {
     displayName: "AI replacement",

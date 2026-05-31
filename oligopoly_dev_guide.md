@@ -114,7 +114,7 @@ To test AI seats locally:
 4. For solo vs AI, keep exactly one human player and at least one AI slot; for mixed games, keep total human plus AI seats between 2 and 6.
 5. Mark every human player ready and start the lobby. `GameRoom` runs AI turns automatically after game scheduling and game action updates; no client-side AI stepping is needed.
 
-`.env.example` includes `ANTHROPIC_API_KEY`, `ANTHROPIC_DAILY_BUDGET_ALERT`, and `ANTHROPIC_MONTHLY_BUDGET_ALERT` as the reserved contract for optional LLM-assisted AI. Leave those values empty for local deterministic AI. If a deployment adds an Anthropic-backed adapter, set the key and budget limits in that deployment environment; deterministic AI remains the fallback.
+`.env.example` includes `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, budget limits, app attribution headers, and timeout settings as the reserved contract for optional LLM-assisted AI. Leave `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` empty for local deterministic AI. In deployed environments, OpenRouter requests must use strict Zero Data Retention routing, deny provider data collection, validate structured JSON responses, and fall back to deterministic AI whenever the provider is unavailable, over budget, invalid, or illegal for the current game state.
 
 ### Validate
 

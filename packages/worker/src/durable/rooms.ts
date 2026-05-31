@@ -10,16 +10,16 @@ import {
   applyTimeoutTakeoverAndStep,
   runAiTurnLoop,
 } from "../services/gameAi.js";
-import { publicStateForBroadcast } from "../services/gamePersistence.js";
 import { syncGameRoomTimer } from "../services/gameScheduler.js";
 import {
   buildLobbyResponse,
   type LobbyPlayerRow,
   type LobbyRow,
 } from "../services/lobbyResponses.js";
+import type { OpenRouterAiEnv } from "../services/openRouterAi.js";
 import { currentTurnActorId } from "../services/turnTimeout.js";
 
-type RoomEnv = {
+type RoomEnv = OpenRouterAiEnv & {
   DB?: D1Database;
   GAME_ROOM?: DurableObjectNamespace;
   KV?: KVNamespace;
@@ -205,9 +205,17 @@ export class GameRoom extends RealtimeRoom {
           this.env.DB,
           gameId,
           this.env.GAME_ROOM,
+          this.env.KV,
+          this.env,
         );
       } else if (timerKind === "auction_settle") {
-        await applyAuctionSettleExpiry(this.env.DB, gameId, this.env.GAME_ROOM);
+        await applyAuctionSettleExpiry(
+          this.env.DB,
+          gameId,
+          this.env.GAME_ROOM,
+          this.env.KV,
+          this.env,
+        );
       } else {
         const actorId = await this.state.storage.get<string>("turnActorId");
         if (!actorId) return;
@@ -216,6 +224,8 @@ export class GameRoom extends RealtimeRoom {
           gameId,
           actorId,
           this.env.GAME_ROOM,
+          this.env.KV,
+          this.env,
         );
       }
     } finally {
@@ -338,6 +348,7 @@ export class GameRoom extends RealtimeRoom {
         this.env.GAME_ROOM,
         16,
         this.env.KV,
+        this.env,
       );
       const row = await this.env.DB.prepare(
         "SELECT state_json FROM games WHERE id = ?",
