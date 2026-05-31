@@ -24,6 +24,19 @@ export function authoritativeRollDice(
 }
 
 /**
+ * Inject the server-generated path-choice die for rolls that may pass through
+ * START. Shared by the HTTP route enrichment and the AI runtime — the AI
+ * supplies its own dice `result` and must NOT go through `authoritativeRollDice`,
+ * so path-choice injection is factored out here to avoid drift.
+ */
+export function withPathChoiceDie(action: GameAction) {
+  if (action.type !== "roll_dice") {
+    return action;
+  }
+  return { ...action, pathChoiceDie: rollPathChoiceDie() };
+}
+
+/**
  * Enrich a parsed client action with the server-authoritative fields the engine
  * needs before `applyAction`. Keeps the route handler a clean
  * parse → enrich → apply → persist pipeline and keeps the dice-authority logic
@@ -34,8 +47,7 @@ export function buildEngineActionInput(action: GameAction, requestUrl: string) {
     return action;
   }
   return {
-    ...action,
+    ...withPathChoiceDie(action),
     result: authoritativeRollDice(requestUrl, action.result),
-    pathChoiceDie: rollPathChoiceDie(),
   };
 }

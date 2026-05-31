@@ -10,9 +10,9 @@ import {
   isAiControlledActor,
   normalizeGameState,
   replaceKickedPlayerWithAi,
-  rollPathChoiceDie,
 } from "@oligopoly/shared";
 import type { AiPersonality, GameAction } from "@oligopoly/validation";
+import { withPathChoiceDie } from "../lib/dice.js";
 import { broadcastGameEvent } from "../realtime/notify.js";
 import { persistGameActionResult } from "./gamePersistence.js";
 import {
@@ -59,12 +59,8 @@ async function loadActiveGame(
 }
 
 function buildEngineInput(action: GameAction) {
-  return {
-    ...action,
-    ...(action.type === "roll_dice"
-      ? { pathChoiceDie: rollPathChoiceDie() }
-      : {}),
-  };
+  // AI supplies its own dice result; only the path-choice die is server-injected.
+  return withPathChoiceDie(action);
 }
 
 function applyAiDecision(

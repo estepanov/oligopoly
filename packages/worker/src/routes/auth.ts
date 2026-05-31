@@ -427,9 +427,9 @@ authRoutes.post(
 // Auth in this product is WebAuthn passkeys with no guest login. Passkeys are
 // impractical to register for every local seat when testing multiplayer, so
 // this endpoint issues a session for a username WITHOUT a credential. It is
-// strictly gated to localhost (mirroring the local-only AI step endpoint via
-// the shared `isLocalDevRequest` helper) and is never reachable from deployed
-// origins.
+// strictly gated to loopback origins via the shared `isLoopbackUrl` helper
+// (same gate as the local-only AI step endpoint) and is never reachable from
+// deployed origins.
 // ---------------------------------------------------------------------------
 authRoutes.post(
   "/dev-login",
