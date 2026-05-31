@@ -1,3 +1,4 @@
+import type { AuthSessionResponse } from "@oligopoly/validation";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { useCallback, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -12,6 +13,18 @@ import { env } from "../env";
 const getSafeReturnTo = (value: string | null) =>
   value?.startsWith("/") && !value.startsWith("//") ? value : "/";
 
+/** True when the configured API is a local origin (mirrors the worker's
+ * authoritative `isLocalDevRequest` gate so the dev-login button only shows
+ * when the worker would actually accept it). */
+const isLocalApi = (() => {
+  try {
+    const host = new URL(env.apiUrl).hostname.replace(/^\[|\]$/g, "");
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  } catch {
+    return false;
+  }
+})();
+
 export function LoginPage() {
   const [username, setUsername] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -21,16 +34,16 @@ export function LoginPage() {
   const [searchParams] = useSearchParams();
   const returnTo = getSafeReturnTo(searchParams.get("returnTo"));
 
-  const handleLogin = useCallback(
-    async (withUsername: boolean) => {
+  // Shared sign-in shell: run the session fetch, store the session, navigate.
+  const signInWith = useCallback(
+    async (
+      getSession: () => Promise<AuthSessionResponse>,
+      errorLabel: string,
+    ) => {
       setError(null);
       setLoading(true);
       try {
-        const options = await fetchLoginOptions(
-          withUsername && username ? username : undefined,
-        );
-        const credential = await startAuthentication({ optionsJSON: options });
-        const session = await fetchLoginVerify(credential);
+        const session = await getSession();
         login(
           session.token,
           session.userId,
@@ -39,29 +52,35 @@ export function LoginPage() {
         );
         navigate(returnTo);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Login failed");
+        setError(e instanceof Error ? e.message : errorLabel);
       } finally {
         setLoading(false);
       }
     },
-    [username, login, navigate, returnTo],
+    [login, navigate, returnTo],
   );
 
-  const handleDevLogin = useCallback(async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      const session = await fetchDevLogin(username.trim());
-      login(session.token, session.userId, session.username, session.expiresAt);
-      navigate(returnTo);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Dev login failed");
-    } finally {
-      setLoading(false);
-    }
-  }, [username, login, navigate, returnTo]);
+  const handleLogin = useCallback(
+    (withUsername: boolean) =>
+      signInWith(async () => {
+        const options = await fetchLoginOptions(
+          withUsername && username ? username : undefined,
+        );
+        const credential = await startAuthentication({ optionsJSON: options });
+        return fetchLoginVerify(credential);
+      }, "Login failed"),
+    [signInWith, username],
+  );
 
-  const devLoginEnabled = env.appEnv === "development";
+  const handleDevLogin = useCallback(
+    () => signInWith(() => fetchDevLogin(username.trim()), "Dev login failed"),
+    [signInWith, username],
+  );
+
+  // The worker authoritatively gates dev-login to local API origins (403
+  // otherwise); show the button only when the API is local so the UI matches
+  // that same contract rather than a separate build-mode flag.
+  const devLoginEnabled = isLocalApi;
 
   return (
     <div>

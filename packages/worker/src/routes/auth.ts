@@ -1,6 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import {
   AuthErrorKeys,
+  type AuthSessionResponse,
   DevLoginInputSchema,
   LoginOptionsInputSchema,
   LoginVerifyInputSchema,
@@ -107,6 +108,37 @@ function provisionNewUserStatements(
       )
       .bind(userId, now),
   ];
+}
+
+/**
+ * Mint a session for a user: the `auth_sessions` INSERT plus expired-session
+ * cleanup, returned as prepared statements so callers batch them atomically
+ * alongside any path-specific rows, together with the standard session response
+ * payload. Single source of truth so register / login / dev-login can't drift.
+ */
+function issueAuthSession(
+  db: D1Database,
+  userId: string,
+  username: string,
+  now: number,
+): { statements: D1PreparedStatement[]; response: AuthSessionResponse } {
+  const token = generateToken();
+  const expiresAt = now + SESSION_TTL_MS;
+  return {
+    statements: [
+      db
+        .prepare(
+          "INSERT INTO auth_sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(generateId(), userId, token, expiresAt, now),
+      db
+        .prepare(
+          "DELETE FROM auth_sessions WHERE user_id = ? AND expires_at < ?",
+        )
+        .bind(userId, now),
+    ],
+    response: { token, userId, username, expiresAt },
+  };
 }
 
 interface CredentialRow {
@@ -255,9 +287,7 @@ authRoutes.post(
       ? JSON.stringify(regCredential.transports)
       : null;
 
-    const token = generateToken();
-    const sessionId = generateId();
-    const expiresAt = now + SESSION_TTL_MS;
+    const session = issueAuthSession(db, userId, username, now);
 
     // Batch all inserts so they succeed or fail atomically
     await db.batch([
@@ -277,11 +307,7 @@ authRoutes.post(
           transportsJson,
           now,
         ),
-      db
-        .prepare(
-          "INSERT INTO auth_sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(sessionId, userId, token, expiresAt, now),
+      ...session.statements,
     ]);
 
     // Clean up used challenge (single-use per WebAuthn protocol)
@@ -291,12 +317,7 @@ authRoutes.post(
         .catch(() => {});
     }
 
-    return c.json({
-      token,
-      userId,
-      username,
-      expiresAt,
-    });
+    return c.json(session.response);
   },
 );
 
@@ -464,22 +485,8 @@ authRoutes.post(
 
     // Create session
     const now = Date.now();
-    const token = generateToken();
-    const sessionId = generateId();
-    const expiresAt = now + SESSION_TTL_MS;
-
-    await db.batch([
-      db
-        .prepare(
-          "INSERT INTO auth_sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(sessionId, user.id, token, expiresAt, now),
-      db
-        .prepare(
-          "DELETE FROM auth_sessions WHERE user_id = ? AND expires_at < ?",
-        )
-        .bind(user.id, now),
-    ]);
+    const session = issueAuthSession(db, user.id, user.username, now);
+    await db.batch(session.statements);
 
     // Clean up used challenge (single-use per WebAuthn protocol)
     if (matchedLoginChallenge) {
@@ -488,12 +495,7 @@ authRoutes.post(
         .catch(() => {});
     }
 
-    return c.json({
-      token,
-      userId: user.id,
-      username: user.username,
-      expiresAt,
-    });
+    return c.json(session.response);
   },
 );
 
@@ -536,8 +538,7 @@ authRoutes.post(
       .first<{ id: string }>();
 
     const userId = existing?.id ?? generateId();
-    const token = generateToken();
-    const expiresAt = now + SESSION_TTL_MS;
+    const session = issueAuthSession(db, userId, username, now);
 
     // Provision the user (companion rows match the WebAuthn registration flow)
     // only when new, and issue the session — in a single atomic batch.
@@ -545,14 +546,10 @@ authRoutes.post(
       ...(existing
         ? []
         : provisionNewUserStatements(db, userId, username, now)),
-      db
-        .prepare(
-          "INSERT INTO auth_sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(generateId(), userId, token, expiresAt, now),
+      ...session.statements,
     ]);
 
-    return c.json({ token, userId, username, expiresAt });
+    return c.json(session.response);
   },
 );
 
