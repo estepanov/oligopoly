@@ -1,4 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
+import { isLoopbackUrl } from "@oligopoly/shared";
 import {
   AuthErrorKeys,
   DevLoginInputSchema,
@@ -26,7 +27,6 @@ import {
   issueAuthSession,
   provisionNewUserStatements,
 } from "../lib/authProvisioning.js";
-import { isLocalDevRequest } from "../lib/localDev.js";
 
 type Bindings = {
   DB?: D1Database;
@@ -442,7 +442,7 @@ authRoutes.post(
     }
   }),
   async (c) => {
-    if (!isLocalDevRequest(c.req.url)) {
+    if (!isLoopbackUrl(c.req.url)) {
       return c.json({ error: AuthErrorKeys.FORBIDDEN }, 403);
     }
 

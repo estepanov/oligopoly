@@ -1,4 +1,4 @@
-import { isLoopbackHostname } from "@oligopoly/shared";
+import { isLoopbackUrl } from "@oligopoly/shared";
 import type { AuthSessionResponse } from "@oligopoly/validation";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { useCallback, useState } from "react";
@@ -15,15 +15,9 @@ const getSafeReturnTo = (value: string | null) =>
   value?.startsWith("/") && !value.startsWith("//") ? value : "/";
 
 /** True when the configured API is a loopback origin. Uses the same shared
- * `isLoopbackHostname` rule the worker enforces, so the dev-login button only
- * shows when the worker would actually accept the request. */
-const isLocalApi = (() => {
-  try {
-    return isLoopbackHostname(new URL(env.apiUrl).hostname);
-  } catch {
-    return false;
-  }
-})();
+ * `isLoopbackUrl` rule the worker enforces, so the dev-login button only shows
+ * when the worker would actually accept the request. */
+const isLocalApi = isLoopbackUrl(env.apiUrl);
 
 export function LoginPage() {
   const [username, setUsername] = useState("");

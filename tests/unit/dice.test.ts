@@ -1,24 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { authoritativeRollDice } from "../../packages/worker/src/lib/dice";
-import { isLocalDevRequest } from "../../packages/worker/src/lib/localDev";
+import {
+  authoritativeRollDice,
+  buildEngineActionInput,
+} from "../../packages/worker/src/lib/dice";
 
-describe("isLocalDevRequest", () => {
-  it("recognizes loopback hosts", () => {
-    expect(isLocalDevRequest("http://localhost:8787/api/x")).toBe(true);
-    expect(isLocalDevRequest("http://127.0.0.1/api/x")).toBe(true);
-    expect(isLocalDevRequest("http://[::1]:8787/api/x")).toBe(true);
-  });
-
-  it("rejects deployed hosts", () => {
-    expect(isLocalDevRequest("https://oligopoly.online/api/x")).toBe(false);
-    expect(isLocalDevRequest("https://evil.example/api/x")).toBe(false);
-  });
-});
+const inRange = (d: number) => Number.isInteger(d) && d >= 1 && d <= 6;
 
 describe("authoritativeRollDice", () => {
-  const inRange = (d: number) => Number.isInteger(d) && d >= 1 && d <= 6;
-
-  it("honors a client-supplied result only on local/test origins", () => {
+  it("honors a client-supplied result only on loopback origins", () => {
     expect(authoritativeRollDice("http://localhost/api/x", [3, 4])).toEqual([
       3, 4,
     ]);
@@ -38,11 +27,10 @@ describe("authoritativeRollDice", () => {
       expect(inRange(d2)).toBe(true);
       if (d1 !== 6 || d2 !== 6) everDiffered = true;
     }
-    // Astronomically unlikely (~ (1/36)^200) to be all 6,6 if RNG is used.
     expect(everDiffered).toBe(true);
   });
 
-  it("uses server RNG when no client result is provided (even locally)", () => {
+  it("uses server RNG when no client result is provided", () => {
     for (let i = 0; i < 50; i++) {
       const [d1, d2] = authoritativeRollDice(
         "http://localhost/api/x",
@@ -51,5 +39,24 @@ describe("authoritativeRollDice", () => {
       expect(inRange(d1)).toBe(true);
       expect(inRange(d2)).toBe(true);
     }
+  });
+});
+
+describe("buildEngineActionInput", () => {
+  it("enriches roll_dice with dice + path-choice die", () => {
+    const out = buildEngineActionInput(
+      { type: "roll_dice" },
+      "http://localhost/api/x",
+    ) as { result: [number, number]; pathChoiceDie: number };
+    expect(inRange(out.result[0])).toBe(true);
+    expect(inRange(out.result[1])).toBe(true);
+    expect(inRange(out.pathChoiceDie)).toBe(true);
+  });
+
+  it("passes non-roll actions through unchanged", () => {
+    const action = { type: "end_turn" } as const;
+    expect(buildEngineActionInput(action, "http://localhost/api/x")).toEqual(
+      action,
+    );
   });
 });

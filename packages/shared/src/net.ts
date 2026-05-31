@@ -10,3 +10,17 @@ export function isLoopbackHostname(hostname: string): boolean {
   const host = hostname.replace(/^\[|\]$/g, "");
   return host === "localhost" || host === "127.0.0.1" || host === "::1";
 }
+
+/**
+ * True when a URL string points at a loopback origin. The single contract used
+ * by the worker's local-only request gate and the web's dev-login affordance,
+ * so UI visibility and the worker's 403 can't drift. Returns false for malformed
+ * URLs.
+ */
+export function isLoopbackUrl(url: string): boolean {
+  try {
+    return isLoopbackHostname(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
