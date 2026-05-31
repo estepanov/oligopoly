@@ -34,6 +34,7 @@ export function GamePlayControls({
   const currency = state.settings?.currencySymbol ?? "¤";
   const gameOver = state.phase === "game_over";
   const insiderPeek = state.pendingInsiderPeek ?? undefined;
+  const guidance = turnGuidance(state, myPlayerId);
 
   if (state.phase === "waiting_for_insider_peek") {
     return (
@@ -76,8 +77,8 @@ export function GamePlayControls({
           <p className="muted">Waiting for the current player to act…</p>
         )}
 
-      {myTurn && !auctionActive && turnGuidance(state, myPlayerId) && (
-        <p className="turnGuidance ok">{turnGuidance(state, myPlayerId)}</p>
+      {myTurn && !auctionActive && guidance && (
+        <p className="turnGuidance ok">{guidance}</p>
       )}
 
       <CoordinationControls

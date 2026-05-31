@@ -10,7 +10,7 @@ import {
  * deployed origin.
  */
 describe("POST /api/auth/dev-login — localhost gating", () => {
-  it("rejects requests from non-local hosts with 403", async () => {
+  it("rejects requests from non-local hosts with 403 (auth.forbidden)", async () => {
     const db = createD1Stub();
     const res = await requestWithEnv(
       "https://oligopoly.online/api/auth/dev-login",
@@ -21,6 +21,8 @@ describe("POST /api/auth/dev-login — localhost gating", () => {
       },
     );
     expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("auth.forbidden");
   });
 
   it("rejects an invalid body with 400", async () => {

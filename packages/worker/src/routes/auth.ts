@@ -1,6 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import {
   AuthErrorKeys,
+  DevLoginInputSchema,
   LoginOptionsInputSchema,
   LoginVerifyInputSchema,
   RegisterOptionsInputSchema,
@@ -20,6 +21,7 @@ import {
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
 import { Hono } from "hono";
+import { isLocalDevRequest } from "../lib/localDev.js";
 
 type Bindings = {
   DB?: D1Database;
@@ -72,6 +74,40 @@ function generateToken(): string {
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const CHALLENGE_TTL_SECONDS = 300; // 5 minutes
+
+/**
+ * Prepared statements that bootstrap a new user plus its companion rows
+ * (visibility / rank / trustworthiness). Returned (not executed) so callers can
+ * include them in their own atomic `db.batch(...)` alongside path-specific rows
+ * (e.g. a passkey credential for registration, or just a session for
+ * dev-login). Single source of truth for the "new user" shape so register and
+ * dev-login stay consistent when the schema changes.
+ */
+function provisionNewUserStatements(
+  db: D1Database,
+  userId: string,
+  username: string,
+  now: number,
+): D1PreparedStatement[] {
+  return [
+    db
+      .prepare(
+        "INSERT INTO users (id, username, locale, theme_preference, created_at, updated_at, role) VALUES (?, ?, 'en', 'system', ?, ?, 'user')",
+      )
+      .bind(userId, username, now, now),
+    db.prepare("INSERT INTO user_visibility (user_id) VALUES (?)").bind(userId),
+    db
+      .prepare(
+        "INSERT INTO user_ranks (user_id, tier, rank_points) VALUES (?, 0, 0)",
+      )
+      .bind(userId),
+    db
+      .prepare(
+        "INSERT INTO trustworthiness (user_id, score, last_updated_at) VALUES (?, 7, ?)",
+      )
+      .bind(userId, now),
+  ];
+}
 
 interface CredentialRow {
   id: string;
@@ -225,24 +261,7 @@ authRoutes.post(
 
     // Batch all inserts so they succeed or fail atomically
     await db.batch([
-      db
-        .prepare(
-          "INSERT INTO users (id, username, locale, theme_preference, created_at, updated_at, role) VALUES (?, ?, 'en', 'system', ?, ?, 'user')",
-        )
-        .bind(userId, username, now, now),
-      db
-        .prepare("INSERT INTO user_visibility (user_id) VALUES (?)")
-        .bind(userId),
-      db
-        .prepare(
-          "INSERT INTO user_ranks (user_id, tier, rank_points) VALUES (?, 0, 0)",
-        )
-        .bind(userId),
-      db
-        .prepare(
-          "INSERT INTO trustworthiness (user_id, score, last_updated_at) VALUES (?, 7, ?)",
-        )
-        .bind(userId, now),
+      ...provisionNewUserStatements(db, userId, username, now),
       db
         .prepare(
           "INSERT INTO passkey_credentials (id, user_id, credential_id, public_key, counter, device_type, backed_up, transports, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -484,17 +503,13 @@ authRoutes.post(
 // Auth in this product is WebAuthn passkeys with no guest login. Passkeys are
 // impractical to register for every local seat when testing multiplayer, so
 // this endpoint issues a session for a username WITHOUT a credential. It is
-// strictly gated to localhost/127.0.0.1 (mirroring the local-only AI step
-// endpoint) and is never reachable from deployed origins.
+// strictly gated to localhost (mirroring the local-only AI step endpoint via
+// the shared `isLocalDevRequest` helper) and is never reachable from deployed
+// origins.
 // ---------------------------------------------------------------------------
-function isLocalDevHost(url: string): boolean {
-  const hostname = new URL(url).hostname;
-  return hostname === "localhost" || hostname === "127.0.0.1";
-}
-
 authRoutes.post(
   "/dev-login",
-  zValidator("json", RegisterOptionsInputSchema, (result, c) => {
+  zValidator("json", DevLoginInputSchema, (result, c) => {
     if (!result.success) {
       return c.json(
         { error: "Invalid request body", details: result.error.flatten() },
@@ -503,8 +518,8 @@ authRoutes.post(
     }
   }),
   async (c) => {
-    if (!isLocalDevHost(c.req.url)) {
-      return c.json({ error: AuthErrorKeys.VERIFICATION_FAILED }, 403);
+    if (!isLocalDevRequest(c.req.url)) {
+      return c.json({ error: AuthErrorKeys.FORBIDDEN }, 403);
     }
 
     const db = c.env?.DB;
@@ -524,26 +539,7 @@ authRoutes.post(
 
     if (!user) {
       const userId = generateId();
-      await db.batch([
-        db
-          .prepare(
-            "INSERT INTO users (id, username, locale, theme_preference, created_at, updated_at, role) VALUES (?, ?, 'en', 'system', ?, ?, 'user')",
-          )
-          .bind(userId, username, now, now),
-        db
-          .prepare("INSERT INTO user_visibility (user_id) VALUES (?)")
-          .bind(userId),
-        db
-          .prepare(
-            "INSERT INTO user_ranks (user_id, tier, rank_points) VALUES (?, 0, 0)",
-          )
-          .bind(userId),
-        db
-          .prepare(
-            "INSERT INTO trustworthiness (user_id, score, last_updated_at) VALUES (?, 7, ?)",
-          )
-          .bind(userId, now),
-      ]);
+      await db.batch(provisionNewUserStatements(db, userId, username, now));
       user = { id: userId, username };
     }
 

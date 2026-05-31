@@ -236,6 +236,16 @@ export const RegisterOptionsInputSchema = z.object({
 });
 export type RegisterOptionsInput = z.infer<typeof RegisterOptionsInputSchema>;
 
+/**
+ * Input for POST /api/auth/dev-login (local-development-only passwordless
+ * sign-in). Kept distinct from the WebAuthn registration schema so the two
+ * contracts can evolve independently.
+ */
+export const DevLoginInputSchema = z.object({
+  username: z.string().min(3).max(32),
+});
+export type DevLoginInput = z.infer<typeof DevLoginInputSchema>;
+
 /** Input for POST /api/auth/register/verify */
 export const RegisterVerifyInputSchema = z.object({
   username: z.string().min(3).max(32),
@@ -305,6 +315,7 @@ export const AuthErrorKeys = {
   CREDENTIAL_NOT_FOUND: "auth.credential_not_found",
   REGISTRATION_FAILED: "auth.registration_failed",
   VERIFICATION_FAILED: "auth.verification_failed",
+  FORBIDDEN: "auth.forbidden",
   DB_NOT_CONFIGURED: "auth.db_not_configured",
   PASSKEY_NOT_SUPPORTED: "auth.passkey_not_supported",
 } as const;

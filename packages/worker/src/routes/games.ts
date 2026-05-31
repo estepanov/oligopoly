@@ -1,7 +1,6 @@
 import {
   applyAction,
   normalizeGameState,
-  rollDice,
   rollPathChoiceDie,
 } from "@oligopoly/shared";
 import type { GameLogEntry, GameSummary } from "@oligopoly/validation";
@@ -15,6 +14,7 @@ import {
   type PersistedGameState,
   toClientGameState,
 } from "../gameStateView.js";
+import { authoritativeRollDice, isLocalDevRequest } from "../lib/localDev.js";
 import { upgradeWebSocket } from "../realtime/upgrade.js";
 import { stepGameAiTurn } from "../services/gameAi.js";
 import { listGames, toGameSummary } from "../services/gameListings.js";
@@ -38,11 +38,6 @@ type Variables = {
 type AppEnv = { Bindings: Bindings; Variables: Variables };
 
 export const gameRoutes = new Hono<AppEnv>();
-
-const isLocalDevRequest = (url: string) => {
-  const hostname = new URL(url).hostname;
-  return hostname === "localhost" || hostname === "127.0.0.1";
-};
 
 type GameAccessRow = {
   id: string;
@@ -382,14 +377,15 @@ gameRoutes.post("/:id/action", async (c) => {
   }
   const actionBody = parsed.data;
 
-  // Server generates the authoritative dice result (clients omit it per the
-  // GameActionSchema contract) and the path-choice die for rolls that may pass
-  // through START.
+  // Server is authoritative for dice: real players always get fresh crypto RNG
+  // (a client-supplied `result` is honored only on local/test origins for
+  // deterministic tests). The path-choice die is generated for rolls that may
+  // pass through START.
   const engineInput = {
     ...actionBody,
     ...(actionBody.type === "roll_dice"
       ? {
-          result: actionBody.result ?? rollDice(),
+          result: authoritativeRollDice(c.req.url, actionBody.result),
           pathChoiceDie: rollPathChoiceDie(),
         }
       : {}),
