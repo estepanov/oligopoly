@@ -15,14 +15,7 @@ export const DIAGONAL_EXIT_POSITION = 20;
 /** Perimeter board size */
 export const BOARD_SIZE = 40;
 
-/**
- * Roll two six-sided dice.
- * Returns a tuple [die1, die2] where each die is 1–6.
- *
- * Note: Uses Math.random for local development.
- * Production server should replace with a seeded/deterministic RNG.
- */
-/** Uniform 1–6 via rejection sampling (256 is not divisible by 6). */
+/** Uniform 1–6 via crypto rejection sampling (252 = 42×6; reject ≥252). */
 export function rollFairD6(): number {
   const bytes = new Uint8Array(1);
   do {
@@ -31,10 +24,16 @@ export function rollFairD6(): number {
   return (bytes[0] % 6) + 1;
 }
 
+/** Two crypto-fair d6 — the server-authoritative roll. */
 export function rollFairDice(): [number, number] {
   return [rollFairD6(), rollFairD6()];
 }
 
+/**
+ * Two d6 via `Math.random`. NON-authoritative and not uniform-guaranteed —
+ * intended only for tests/tooling. Server-authoritative dice use
+ * `rollFairDice` (crypto); see `lib/dice.ts` in the worker.
+ */
 export function rollDice(): [number, number] {
   const die1 = Math.floor(Math.random() * 6) + 1;
   const die2 = Math.floor(Math.random() * 6) + 1;

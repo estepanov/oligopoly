@@ -11,7 +11,7 @@ import {
   normalizeGameState,
   replaceKickedPlayerWithAi,
 } from "@oligopoly/shared";
-import type { AiPersonality, GameAction } from "@oligopoly/validation";
+import type { AiPersonality } from "@oligopoly/validation";
 import { withPathChoiceDie } from "../lib/dice.js";
 import { broadcastGameEvent } from "../realtime/notify.js";
 import { persistGameActionResult } from "./gamePersistence.js";
@@ -58,19 +58,15 @@ async function loadActiveGame(
   return row;
 }
 
-function buildEngineInput(action: GameAction) {
-  // AI supplies its own dice result; only the path-choice die is server-injected.
-  return withPathChoiceDie(action);
-}
-
 function applyAiDecision(
   gameState: InternalGameState,
   decision: AiDecision,
 ): ApplyActionResult {
+  // AI supplies its own dice result; only the path-choice die is server-injected.
   return applyAction(
     gameState,
     decision.actorId,
-    buildEngineInput(decision.action),
+    withPathChoiceDie(decision.action),
   );
 }
 

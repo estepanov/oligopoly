@@ -1,3 +1,4 @@
+import { TRUSTWORTHINESS_DEFAULT } from "@oligopoly/shared";
 import type { AuthSessionResponse } from "@oligopoly/validation";
 
 /** Bearer-token sessions live 30 days. */
@@ -49,9 +50,9 @@ export function provisionNewUserStatements(
       .bind(userId),
     db
       .prepare(
-        "INSERT INTO trustworthiness (user_id, score, last_updated_at) VALUES (?, 7, ?)",
+        "INSERT INTO trustworthiness (user_id, score, last_updated_at) VALUES (?, ?, ?)",
       )
-      .bind(userId, now),
+      .bind(userId, TRUSTWORTHINESS_DEFAULT, now),
   ];
 }
 
