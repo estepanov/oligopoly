@@ -102,6 +102,25 @@ Local multiplayer uses the same Worker, D1/KV, Durable Object, and Vite runtime 
 5. For mixed local play, add other local users and optional AI slots.
 6. Mark every human player ready, then start the game and keep each browser connected to the game WebSocket.
 
+### Local two-player testing without passkeys
+
+Registering a WebAuthn passkey for every local seat is impractical, so a
+**local-development-only** quick login is available (gated to `localhost`/
+`127.0.0.1` on the worker and shown only when `VITE_APP_ENV=development`):
+
+1. Start the stack with `pnpm run dev`.
+2. Open `http://localhost:5173/login` and use **"Dev login (no passkey)"** with a
+   username (the account is created on demand). Use a **normal window** for one
+   player and an **Incognito window** for the other so the two sessions don't
+   share local storage.
+3. Player 1 creates a lobby; Player 2 joins; both mark ready; Player 1 starts.
+   Both windows navigate to the game and receive live updates over WebSocket.
+
+This is purely a local convenience — production auth remains WebAuthn passkeys
+with no guest login. For scripted/API testing you can still seed users and use
+the legacy `x-subject` header, or insert sessions directly via
+`wrangler d1 execute`.
+
 ### AI player setup
 
 AI players work locally with the default deterministic rules engine and do not require an external API key. The rules-based AI is the baseline runtime used for lobby AI seats, turn-timeout takeovers, auction participation, and kicked-player replacements.
