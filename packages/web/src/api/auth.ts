@@ -96,6 +96,24 @@ export async function fetchLoginOptions(
   return res.json() as Promise<PublicKeyCredentialRequestOptionsJSON>;
 }
 
+/**
+ * POST /api/auth/dev-login — local-development-only passwordless sign-in.
+ * The worker gates this to localhost; it is never available in deployment.
+ */
+export async function fetchDevLogin(
+  username: string,
+): Promise<AuthSessionResponse> {
+  return requestJson(
+    `${env.apiUrl}/api/auth/dev-login`,
+    AuthSessionResponseSchema,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username }),
+    },
+  );
+}
+
 /** POST /api/auth/login/verify */
 export async function fetchLoginVerify(
   credential: unknown,

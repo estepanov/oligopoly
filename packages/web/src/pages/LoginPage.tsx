@@ -1,8 +1,13 @@
 import { startAuthentication } from "@simplewebauthn/browser";
 import { useCallback, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { fetchLoginOptions, fetchLoginVerify } from "../api/auth";
+import {
+  fetchDevLogin,
+  fetchLoginOptions,
+  fetchLoginVerify,
+} from "../api/auth";
 import { useAuth } from "../components/AuthContext";
+import { env } from "../env";
 
 const getSafeReturnTo = (value: string | null) =>
   value?.startsWith("/") && !value.startsWith("//") ? value : "/";
@@ -41,6 +46,22 @@ export function LoginPage() {
     },
     [username, login, navigate, returnTo],
   );
+
+  const handleDevLogin = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const session = await fetchDevLogin(username.trim());
+      login(session.token, session.userId, session.username, session.expiresAt);
+      navigate(returnTo);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Dev login failed");
+    } finally {
+      setLoading(false);
+    }
+  }, [username, login, navigate, returnTo]);
+
+  const devLoginEnabled = env.appEnv === "development";
 
   return (
     <div>
@@ -90,6 +111,27 @@ export function LoginPage() {
           </button>
         </div>
       </div>
+
+      {devLoginEnabled && (
+        <div className="card">
+          <h2>Developer quick login</h2>
+          <p className="muted">
+            Local-only passwordless sign-in for testing multiplayer. Enter a
+            username above and continue — the account is created on demand. Not
+            available in deployed environments.
+          </p>
+          <div className="buttonRow" style={{ marginTop: "1rem" }}>
+            <button
+              type="button"
+              className="button buttonSecondary"
+              onClick={() => void handleDevLogin()}
+              disabled={loading || username.trim().length === 0}
+            >
+              {loading ? "Signing in…" : "Dev login (no passkey)"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

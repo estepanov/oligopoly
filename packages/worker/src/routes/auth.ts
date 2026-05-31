@@ -479,6 +479,94 @@ authRoutes.post(
 );
 
 // ---------------------------------------------------------------------------
+// POST /dev-login — local-development-only passwordless sign-in.
+//
+// Auth in this product is WebAuthn passkeys with no guest login. Passkeys are
+// impractical to register for every local seat when testing multiplayer, so
+// this endpoint issues a session for a username WITHOUT a credential. It is
+// strictly gated to localhost/127.0.0.1 (mirroring the local-only AI step
+// endpoint) and is never reachable from deployed origins.
+// ---------------------------------------------------------------------------
+function isLocalDevHost(url: string): boolean {
+  const hostname = new URL(url).hostname;
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+authRoutes.post(
+  "/dev-login",
+  zValidator("json", RegisterOptionsInputSchema, (result, c) => {
+    if (!result.success) {
+      return c.json(
+        { error: "Invalid request body", details: result.error.flatten() },
+        400,
+      );
+    }
+  }),
+  async (c) => {
+    if (!isLocalDevHost(c.req.url)) {
+      return c.json({ error: AuthErrorKeys.VERIFICATION_FAILED }, 403);
+    }
+
+    const db = c.env?.DB;
+    if (!db) {
+      return c.json({ error: AuthErrorKeys.DB_NOT_CONFIGURED }, 500);
+    }
+
+    const { username } = c.req.valid("json");
+    const now = Date.now();
+
+    // Look up existing user, otherwise provision a fresh one with the same
+    // companion rows the WebAuthn registration flow creates.
+    let user = await db
+      .prepare("SELECT id, username FROM users WHERE username = ?")
+      .bind(username)
+      .first<{ id: string; username: string }>();
+
+    if (!user) {
+      const userId = generateId();
+      await db.batch([
+        db
+          .prepare(
+            "INSERT INTO users (id, username, locale, theme_preference, created_at, updated_at, role) VALUES (?, ?, 'en', 'system', ?, ?, 'user')",
+          )
+          .bind(userId, username, now, now),
+        db
+          .prepare("INSERT INTO user_visibility (user_id) VALUES (?)")
+          .bind(userId),
+        db
+          .prepare(
+            "INSERT INTO user_ranks (user_id, tier, rank_points) VALUES (?, 0, 0)",
+          )
+          .bind(userId),
+        db
+          .prepare(
+            "INSERT INTO trustworthiness (user_id, score, last_updated_at) VALUES (?, 7, ?)",
+          )
+          .bind(userId, now),
+      ]);
+      user = { id: userId, username };
+    }
+
+    const token = generateToken();
+    const sessionId = generateId();
+    const expiresAt = now + SESSION_TTL_MS;
+    await db
+      .prepare(
+        "INSERT INTO auth_sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+      )
+      .bind(sessionId, user.id, token, expiresAt, now)
+      .run();
+
+    return c.json({
+      token,
+      userId: user.id,
+      username: user.username,
+      expiresAt,
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
 // GET /session — get current session info
 // ---------------------------------------------------------------------------
 authRoutes.get("/session", async (c) => {
