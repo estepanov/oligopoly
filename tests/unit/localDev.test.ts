@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  authoritativeRollDice,
-  isLocalDevRequest,
-} from "../../packages/worker/src/lib/localDev";
+import { authoritativeRollDice } from "../../packages/worker/src/lib/dice";
+import { isLocalDevRequest } from "../../packages/worker/src/lib/localDev";
 
 describe("isLocalDevRequest", () => {
   it("recognizes loopback hosts", () => {

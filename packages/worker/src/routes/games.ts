@@ -14,7 +14,8 @@ import {
   type PersistedGameState,
   toClientGameState,
 } from "../gameStateView.js";
-import { authoritativeRollDice, isLocalDevRequest } from "../lib/localDev.js";
+import { authoritativeRollDice } from "../lib/dice.js";
+import { isLocalDevRequest } from "../lib/localDev.js";
 import { upgradeWebSocket } from "../realtime/upgrade.js";
 import { stepGameAiTurn } from "../services/gameAi.js";
 import { listGames, toGameSummary } from "../services/gameListings.js";
