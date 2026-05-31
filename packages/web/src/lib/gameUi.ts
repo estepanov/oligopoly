@@ -26,6 +26,34 @@ export function isMyTurn(state: GameState, myPlayerId: string | null): boolean {
   return currentActorId(state) === myPlayerId;
 }
 
+/**
+ * Short, action-oriented guidance for the player whose turn it is, based on the
+ * current phase. Returns null when there is no specific prompt (e.g. it is not
+ * the player's turn, or a dedicated panel already covers the phase).
+ */
+export function turnGuidance(
+  state: GameState,
+  myPlayerId: string | null,
+): string | null {
+  if (!isMyTurn(state, myPlayerId)) return null;
+  switch (state.phase) {
+    case "waiting_for_market_event":
+      return "Draw the market event to start the round.";
+    case "waiting_for_roll":
+      return "Roll the dice to move.";
+    case "rolling_doubles":
+      return "You rolled doubles — roll again!";
+    case "waiting_for_buy":
+      return "Buy this tile or decline it (declining starts an auction).";
+    case "waiting_for_path_choice":
+      return "Choose the perimeter or diagonal path.";
+    case "action":
+      return "Develop or mortgage your tiles, make a deal, then end your turn.";
+    default:
+      return null;
+  }
+}
+
 export function isAuctionPhase(state: GameState): boolean {
   return (
     (state.phase === "waiting_for_auction_bids" ||

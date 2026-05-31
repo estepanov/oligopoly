@@ -1,6 +1,11 @@
 import type { GameAction, GameState } from "@oligopoly/validation";
 import { tileLabel } from "../lib/boardDisplay";
-import { isAuctionPhase, isMyTurn, ownedTilesForPlayer } from "../lib/gameUi";
+import {
+  isAuctionPhase,
+  isMyTurn,
+  ownedTilesForPlayer,
+  turnGuidance,
+} from "../lib/gameUi";
 import { ActionPhaseExtras } from "./ActionPhaseExtras";
 import { AuctionPanel } from "./AuctionPanel";
 import { CoordinationControls } from "./CoordinationControls";
@@ -70,6 +75,10 @@ export function GamePlayControls({
         state.phase !== "syndicate_coordination" && (
           <p className="muted">Waiting for the current player to act…</p>
         )}
+
+      {myTurn && !auctionActive && turnGuidance(state, myPlayerId) && (
+        <p className="turnGuidance ok">{turnGuidance(state, myPlayerId)}</p>
+      )}
 
       <CoordinationControls
         state={state}
