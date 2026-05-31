@@ -30,6 +30,12 @@ export function isMyTurn(state: GameState, myPlayerId: string | null): boolean {
  * Short, action-oriented guidance for the player whose turn it is, based on the
  * current phase. Returns null when there is no specific prompt (e.g. it is not
  * the player's turn, or a dedicated panel already covers the phase).
+ *
+ * This is intentionally a small, standalone phase→message map. It is kept
+ * separate from the per-button enable/disable logic in GamePlayControls (which
+ * also depends on non-phase state like pending purchases, owned tiles and busy
+ * flags); folding both into one capability table would add indirection without
+ * removing real duplication.
  */
 export function turnGuidance(
   state: GameState,

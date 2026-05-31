@@ -1,5 +1,17 @@
 const INTERNAL_ORIGIN = "https://oligopoly.internal";
 
+/**
+ * Path used for internal worker→Durable-Object fan-out POSTs. Exported so the
+ * senders here and the DO's request matcher share one constant and can't drift
+ * on a magic string.
+ */
+export const NOTIFY_PATH = "/notify";
+
+/** True when an incoming request URL targets the internal notify path. */
+export function isNotifyRequest(url: URL): boolean {
+  return url.pathname.endsWith(NOTIFY_PATH);
+}
+
 export async function broadcastGameEvent(
   gameRoom: DurableObjectNamespace | undefined,
   gameId: string,
@@ -9,7 +21,7 @@ export async function broadcastGameEvent(
   const stub = gameRoom.get(gameRoom.idFromName(gameId));
   await stub.fetch(
     new Request(
-      `${INTERNAL_ORIGIN}/notify?gameId=${encodeURIComponent(gameId)}`,
+      `${INTERNAL_ORIGIN}${NOTIFY_PATH}?gameId=${encodeURIComponent(gameId)}`,
       {
         method: "POST",
         body: JSON.stringify(event),
@@ -28,7 +40,7 @@ export async function broadcastLobbyEvent(
   const stub = lobbyRoom.get(lobbyRoom.idFromName(lobbyId));
   await stub.fetch(
     new Request(
-      `${INTERNAL_ORIGIN}/notify?lobbyId=${encodeURIComponent(lobbyId)}`,
+      `${INTERNAL_ORIGIN}${NOTIFY_PATH}?lobbyId=${encodeURIComponent(lobbyId)}`,
       {
         method: "POST",
         body: JSON.stringify(event),

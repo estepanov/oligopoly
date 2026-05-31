@@ -431,6 +431,18 @@ export function createWorkerD1Stub(): WorkerD1Stub {
       return { results: [], success: true };
     }
 
+    if (trimmed.startsWith("INSERT INTO users")) {
+      const [id, username] = binds as [string, string];
+      tables.users.push({ id, username, role: "user" });
+      return { results: [], success: true };
+    }
+
+    if (trimmed.startsWith("SELECT id FROM users WHERE username = ?")) {
+      const row = tables.users.find((r) => r.username === binds[0]) ?? null;
+      const projected = row ? { id: row.id } : null;
+      return { results: projected ? [projected] : [], first: projected };
+    }
+
     if (trimmed.startsWith("SELECT id, role FROM users WHERE id = ?")) {
       const row = tables.users.find((r) => r.id === binds[0]) ?? null;
       return { results: row ? [row] : [], first: row };

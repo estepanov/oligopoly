@@ -34,4 +34,39 @@ describe("POST /api/auth/dev-login — localhost gating", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it("mints a session on localhost and reuses the user on repeat login", async () => {
+    const db = createD1Stub();
+    const username = "devplayer";
+
+    const first = await requestWithEnv("http://localhost/api/auth/dev-login", {
+      method: "POST",
+      body: { username },
+      db,
+    });
+    expect(first.status).toBe(200);
+    const b1 = (await first.json()) as {
+      token: string;
+      userId: string;
+      username: string;
+      expiresAt: number;
+    };
+    expect(typeof b1.token).toBe("string");
+    expect(b1.token.length).toBeGreaterThan(0);
+    expect(b1.username).toBe(username);
+    expect(typeof b1.userId).toBe("string");
+    expect(b1.expiresAt).toBeGreaterThan(Date.now());
+
+    // Repeat login with the same username must reuse the existing user (no
+    // duplicate provisioning) while still issuing a session.
+    const second = await requestWithEnv("http://localhost/api/auth/dev-login", {
+      method: "POST",
+      body: { username },
+      db,
+    });
+    expect(second.status).toBe(200);
+    const b2 = (await second.json()) as { userId: string; token: string };
+    expect(b2.userId).toBe(b1.userId);
+    expect(b2.token.length).toBeGreaterThan(0);
+  });
 });

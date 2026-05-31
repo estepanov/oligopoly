@@ -1,12 +1,13 @@
 import { rollFairDice } from "@oligopoly/shared";
 
 /**
- * True when a request targets a local development origin (localhost / 127.0.0.1
- * / IPv6 loopback). Used to gate local-only routes (dev-login, AI step) and to
- * decide whether client-supplied dice may be honored for deterministic tests.
+ * True when a request targets a loopback origin (localhost / 127.0.0.1 / `::1`).
+ * Used to gate local-only routes (dev-login, AI step) and to decide whether a
+ * client-supplied dice `result` may be honored for deterministic tests.
  *
- * Single source of truth so tunnel hosts / future dev origins change in one
- * place.
+ * Single source of truth for the loopback check. Intentionally loopback-only;
+ * if non-loopback dev origins (e.g. tunnel hosts) ever need access, add an
+ * explicit allowlist here so every caller picks it up at once.
  */
 export function isLocalDevRequest(url: string): boolean {
   // URL.hostname returns IPv6 literals wrapped in brackets (e.g. "[::1]").
