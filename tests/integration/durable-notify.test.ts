@@ -11,16 +11,8 @@ import { describe, expect, it } from "vitest";
  * timeouts. These tests assert notify POSTs are recognized by pathname.
  */
 
-type AlarmStore = {
-  get: () => Promise<undefined>;
-  put: () => Promise<void>;
-  delete: () => Promise<void>;
-  setAlarm: () => Promise<void>;
-  deleteAlarm: () => Promise<void>;
-};
-
 function createMockState() {
-  const storage: AlarmStore = {
+  const storage = {
     get: async () => undefined,
     put: async () => {},
     delete: async () => {},
@@ -29,6 +21,41 @@ function createMockState() {
   };
   return { storage } as unknown as DurableObjectState;
 }
+
+/** Mock DO state that records the alarm deadlines scheduled via setAlarm. */
+function createAlarmTrackingState() {
+  const setAlarmCalls: number[] = [];
+  const store = new Map<string, unknown>();
+  const storage = {
+    get: async (key: string) => store.get(key),
+    put: async (key: string, value: unknown) => {
+      store.set(key, value);
+    },
+    delete: async (key: string) => {
+      store.delete(key);
+    },
+    setAlarm: async (time: number) => {
+      setAlarmCalls.push(time);
+    },
+    deleteAlarm: async () => {},
+  };
+  return { state: { storage } as unknown as DurableObjectState, setAlarmCalls };
+}
+
+const humanPlayer = (playerId: string, actionPoints: number) => ({
+  playerId,
+  kind: "human" as const,
+  position: 0,
+  capital: 1500,
+  ownedTilePositions: [],
+  mortgagedTilePositions: [],
+  developmentTokens: {},
+  trustworthiness: 7,
+  actionPointsRemaining: actionPoints,
+  inRegulation: false,
+  doublesCount: 0,
+  isOnDiagonal: false,
+});
 
 const notifyRequest = (path: string, body: unknown) =>
   new Request(`https://oligopoly.internal${path}`, {
@@ -72,5 +99,39 @@ describe("Durable Object notify routing", () => {
       }),
     );
     expect(res.status).toBe(426);
+  });
+
+  it("does not treat a nested */notify path as a notify request", async () => {
+    const room = new GameRoom(createMockState(), {});
+    const res = await room.fetch(
+      notifyRequest("/internal/notify?gameId=g1", { type: "game.snapshot" }),
+    );
+    expect(res.status).toBe(426);
+  });
+
+  // Guards the *second half* of the original notify defect: handleNotify must
+  // drive syncAfterStateChange so turn/auction alarms reschedule on state change.
+  it("reschedules the turn alarm when a game.action_applied notify arrives", async () => {
+    const { state, setAlarmCalls } = createAlarmTrackingState();
+    const room = new GameRoom(state, {});
+    const gameState = {
+      gameId: "g1",
+      round: 1,
+      phase: "waiting_for_roll",
+      turnOrder: ["p1", "p2"],
+      currentPlayerIndex: 0,
+      players: [humanPlayer("p1", 2), humanPlayer("p2", 0)],
+      settings: { turnTimeout: "5min" },
+    };
+    const res = await room.fetch(
+      notifyRequest("/notify?gameId=g1", {
+        type: "game.action_applied",
+        gameId: "g1",
+        state: gameState,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(setAlarmCalls.length).toBeGreaterThan(0);
+    expect(setAlarmCalls.at(-1) ?? 0).toBeGreaterThan(Date.now());
   });
 });

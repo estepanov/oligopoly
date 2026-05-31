@@ -7,9 +7,11 @@ const INTERNAL_ORIGIN = "https://oligopoly.internal";
  */
 export const NOTIFY_PATH = "/notify";
 
-/** True when an incoming request URL targets the internal notify path. */
+/** True when an incoming request URL targets the internal notify path. Exact
+ * match (senders always use exactly `/notify`) so a future nested route can't
+ * accidentally be treated as a notify. */
 export function isNotifyRequest(url: URL): boolean {
-  return url.pathname.endsWith(NOTIFY_PATH);
+  return url.pathname === NOTIFY_PATH;
 }
 
 export async function broadcastGameEvent(
