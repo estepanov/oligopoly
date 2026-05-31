@@ -230,20 +230,22 @@ export type GameRealtimeEvent = z.infer<typeof GameRealtimeEventSchema>;
 // Passkey / WebAuthn auth schemas
 // ---------------------------------------------------------------------------
 
-/** Input for POST /api/auth/register/options */
-export const RegisterOptionsInputSchema = z.object({
+/** Shared body for endpoints that accept just a username (3–32 chars). */
+export const UsernameInputSchema = z.object({
   username: z.string().min(3).max(32),
 });
+export type UsernameInput = z.infer<typeof UsernameInputSchema>;
+
+/** Input for POST /api/auth/register/options */
+export const RegisterOptionsInputSchema = UsernameInputSchema;
 export type RegisterOptionsInput = z.infer<typeof RegisterOptionsInputSchema>;
 
 /**
  * Input for POST /api/auth/dev-login (local-development-only passwordless
- * sign-in). Kept distinct from the WebAuthn registration schema so the two
- * contracts can evolve independently.
+ * sign-in). References the neutral username schema rather than the WebAuthn
+ * registration schema so the two contracts stay decoupled.
  */
-export const DevLoginInputSchema = z.object({
-  username: z.string().min(3).max(32),
-});
+export const DevLoginInputSchema = UsernameInputSchema;
 export type DevLoginInput = z.infer<typeof DevLoginInputSchema>;
 
 /** Input for POST /api/auth/register/verify */

@@ -530,35 +530,29 @@ authRoutes.post(
     const { username } = c.req.valid("json");
     const now = Date.now();
 
-    // Look up existing user, otherwise provision a fresh one with the same
-    // companion rows the WebAuthn registration flow creates.
-    let user = await db
-      .prepare("SELECT id, username FROM users WHERE username = ?")
+    const existing = await db
+      .prepare("SELECT id FROM users WHERE username = ?")
       .bind(username)
-      .first<{ id: string; username: string }>();
+      .first<{ id: string }>();
 
-    if (!user) {
-      const userId = generateId();
-      await db.batch(provisionNewUserStatements(db, userId, username, now));
-      user = { id: userId, username };
-    }
-
+    const userId = existing?.id ?? generateId();
     const token = generateToken();
-    const sessionId = generateId();
     const expiresAt = now + SESSION_TTL_MS;
-    await db
-      .prepare(
-        "INSERT INTO auth_sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
-      )
-      .bind(sessionId, user.id, token, expiresAt, now)
-      .run();
 
-    return c.json({
-      token,
-      userId: user.id,
-      username: user.username,
-      expiresAt,
-    });
+    // Provision the user (companion rows match the WebAuthn registration flow)
+    // only when new, and issue the session — in a single atomic batch.
+    await db.batch([
+      ...(existing
+        ? []
+        : provisionNewUserStatements(db, userId, username, now)),
+      db
+        .prepare(
+          "INSERT INTO auth_sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(generateId(), userId, token, expiresAt, now),
+    ]);
+
+    return c.json({ token, userId, username, expiresAt });
   },
 );
 
