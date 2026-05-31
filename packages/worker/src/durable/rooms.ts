@@ -40,7 +40,10 @@ abstract class RealtimeRoom {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    if (request.method === "POST" && url.searchParams.has("notify")) {
+    // Internal fan-out POSTs are routed to the `/notify` path (carrying the
+    // gameId/lobbyId as a query param). Detect by pathname — matching on a
+    // `notify` query key would never fire because the senders don't set one.
+    if (request.method === "POST" && url.pathname.endsWith("/notify")) {
       const body = await request.text();
       await this.handleNotify(body);
       return new Response("ok");

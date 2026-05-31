@@ -1,6 +1,7 @@
 import {
   applyAction,
   normalizeGameState,
+  rollDice,
   rollPathChoiceDie,
 } from "@oligopoly/shared";
 import type { GameLogEntry, GameSummary } from "@oligopoly/validation";
@@ -381,11 +382,16 @@ gameRoutes.post("/:id/action", async (c) => {
   }
   const actionBody = parsed.data;
 
-  // Server generates the path-choice die for rolls that may pass through START
+  // Server generates the authoritative dice result (clients omit it per the
+  // GameActionSchema contract) and the path-choice die for rolls that may pass
+  // through START.
   const engineInput = {
     ...actionBody,
     ...(actionBody.type === "roll_dice"
-      ? { pathChoiceDie: rollPathChoiceDie() }
+      ? {
+          result: actionBody.result ?? rollDice(),
+          pathChoiceDie: rollPathChoiceDie(),
+        }
       : {}),
   };
 
