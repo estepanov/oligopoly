@@ -234,7 +234,7 @@ export function GamePlayControls({
                       state={state}
                       tile={tile}
                       myPlayerId={myPlayerId}
-                      tileNames={tileNames}
+                      tileName={name}
                       busy={busy}
                       onAction={onAction}
                     />

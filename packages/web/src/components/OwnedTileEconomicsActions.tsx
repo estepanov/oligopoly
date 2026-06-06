@@ -1,5 +1,4 @@
 import type { GameAction, GameState } from "@oligopoly/validation";
-import { tileLabel } from "../lib/boardDisplay";
 import { getTileEconomics, type TileEconomics } from "../lib/tileEconomics";
 import { TileEconomicsExplainDialog } from "./TileEconomicsExplainDialog";
 
@@ -13,7 +12,7 @@ type OwnedTileEconomicsActionsProps = {
   state: GameState;
   tile: OwnedTileRow;
   myPlayerId: string;
-  tileNames: Map<string, string>;
+  tileName: string;
   busy: boolean;
   onAction: (label: string, action: GameAction) => Promise<void>;
 };
@@ -69,7 +68,7 @@ export function OwnedTileEconomicsActions({
   state,
   tile,
   myPlayerId,
-  tileNames,
+  tileName,
   busy,
   onAction,
 }: OwnedTileEconomicsActionsProps) {
@@ -79,7 +78,6 @@ export function OwnedTileEconomicsActions({
     tile.position,
     myPlayerId,
   );
-  const name = tileLabel(tile.position, tileNames);
   const currencySettings = state.settings;
 
   return (
@@ -93,7 +91,7 @@ export function OwnedTileEconomicsActions({
               disabled={busy}
               onClick={() =>
                 void onAction(
-                  row.buildLogLabel(name),
+                  row.buildLogLabel(tileName),
                   row.buildAction(tile.position, economics),
                 )
               }
@@ -102,7 +100,7 @@ export function OwnedTileEconomicsActions({
             </button>
             <TileEconomicsExplainDialog
               mode={row.mode}
-              tileName={name}
+              tileName={tileName}
               economics={economics}
               currencySettings={currencySettings}
               developmentTokensOnTile={tile.developmentTokens}

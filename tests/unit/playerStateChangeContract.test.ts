@@ -34,6 +34,12 @@ const minimalBodies: {
 };
 
 describe("player_state_changed contract", () => {
+  it("PLAYER_STATE_CHANGE_FIELD_KEYS matches PlayerStateChangesBodySchema shape keys", () => {
+    expect([...PLAYER_STATE_CHANGE_FIELD_KEYS].sort()).toEqual(
+      Object.keys(PlayerStateChangesBodySchema.shape).sort(),
+    );
+  });
+
   it("rejects bodies that mix a known field with unknown keys", () => {
     const parsed = PlayerStateChangesBodySchema.safeParse({
       capital: { before: 0, after: 1, delta: 1 },

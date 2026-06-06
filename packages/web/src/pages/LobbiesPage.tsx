@@ -15,14 +15,16 @@ import {
   joinLobbyWithToken,
   leaveLobby,
   listMyLobbies,
-  listPublicLobbies,
   startLobby,
 } from "../api/lobbies";
 import { useAuth } from "../components/AuthContext";
 import { LobbyAiSettings } from "../components/LobbyAiSettings";
 import { LobbyReadyControls } from "../components/LobbyReadyControls";
-import { useComponentMountedRef } from "../hooks/useComponentMountedRef";
 import { useLobbyRealtime } from "../hooks/useLobbyRealtime";
+import {
+  type PublicLobbyList,
+  usePublicLobbiesRefresh,
+} from "../hooks/usePublicLobbiesRefresh";
 import { canStartLobby, lobbySeatCount } from "../lib/lobbySeats";
 
 const DEFAULT_MAX_PLAYERS = 4;
@@ -149,9 +151,7 @@ export function LobbiesPage() {
   const [joinToken, setJoinToken] = useState(initialJoinToken);
 
   const [loadingPublicLobbies, setLoadingPublicLobbies] = useState(true);
-  const [publicLobbies, setPublicLobbies] = useState<
-    Awaited<ReturnType<typeof listPublicLobbies>>["lobbies"]
-  >([]);
+  const [publicLobbies, setPublicLobbies] = useState<PublicLobbyList>([]);
   const [loadingMyLobbies, setLoadingMyLobbies] = useState(false);
   const [myLobbies, setMyLobbies] = useState<
     Awaited<ReturnType<typeof listMyLobbies>>["lobbies"]
@@ -168,7 +168,6 @@ export function LobbiesPage() {
   const [busyStart, setBusyStart] = useState(false);
   const [message, setMessage] = useState<Message>(null);
   const selectedLobbyCardRef = useRef<HTMLDivElement | null>(null);
-  const publicLobbiesFetchAlive = useComponentMountedRef();
 
   const selectedLobbyId = selectedLobby?.id ?? joinLobbyId;
   const resolvedJoinInput = useMemo(
@@ -185,27 +184,11 @@ export function LobbiesPage() {
     });
   }, []);
 
-  const refreshPublicLobbies = useCallback(async () => {
-    setLoadingPublicLobbies(true);
-    try {
-      const data = await listPublicLobbies();
-      if (!publicLobbiesFetchAlive.current) return;
-      setPublicLobbies(data.lobbies);
-    } catch (error) {
-      if (!publicLobbiesFetchAlive.current) return;
-      setMessage({
-        kind: "error",
-        text:
-          error instanceof ApiError
-            ? `Failed to load public lobbies: ${error.message}`
-            : "Failed to load public lobbies",
-      });
-    } finally {
-      if (publicLobbiesFetchAlive.current) {
-        setLoadingPublicLobbies(false);
-      }
-    }
-  }, [publicLobbiesFetchAlive]);
+  const { refreshPublicLobbies } = usePublicLobbiesRefresh(
+    setLoadingPublicLobbies,
+    setPublicLobbies,
+    setMessage,
+  );
 
   const refreshMyLobbies = useCallback(async () => {
     if (!user) {
