@@ -19,6 +19,7 @@ import {
   LeaderboardSummarySchema,
   type LeaderboardWinsEntry,
 } from "@oligopoly/validation";
+import { safeParseJsonArray } from "../lib/jsonParse";
 
 const MAX_RECENT_GAMES = 20;
 
@@ -55,17 +56,6 @@ async function fetchUsername(db: D1Database, userId: string): Promise<string> {
   return row?.username ?? userId;
 }
 
-/** Never throws — corrupt or non-array JSON becomes []. */
-function tryParseJsonArray(raw: string | null | undefined): unknown[] {
-  if (raw == null || raw === "") return [];
-  try {
-    const value = JSON.parse(raw) as unknown;
-    return Array.isArray(value) ? value : [];
-  } catch {
-    return [];
-  }
-}
-
 async function upsertLeaderboardEntry(
   kv: KVNamespace,
   key: "leaderboard:wins" | "leaderboard:completions",
@@ -76,7 +66,7 @@ async function upsertLeaderboardEntry(
 ): Promise<void> {
   const raw = await kv.get(key);
   if (key === "leaderboard:wins") {
-    const entries = tryParseJsonArray(raw) as LeaderboardWinsEntry[];
+    const entries = safeParseJsonArray(raw) as LeaderboardWinsEntry[];
     const existing = entries.find((entry) => entry.userId === userId);
     if (existing) {
       existing.wins += increment;
@@ -89,7 +79,7 @@ async function upsertLeaderboardEntry(
     return;
   }
 
-  const entries = tryParseJsonArray(raw) as LeaderboardCompletionsEntry[];
+  const entries = safeParseJsonArray(raw) as LeaderboardCompletionsEntry[];
   const existing = entries.find((entry) => entry.userId === userId);
   if (existing) {
     existing.completions += increment;
@@ -199,7 +189,7 @@ export async function processGameCompletion(
     return;
   }
 
-  const playerIdsFromRow = tryParseJsonArray(gameRow.player_ids_json).filter(
+  const playerIdsFromRow = safeParseJsonArray(gameRow.player_ids_json).filter(
     (id): id is string => typeof id === "string",
   );
   const playerIds =
@@ -223,7 +213,7 @@ export async function processGameCompletion(
       .bind(userId)
       .first<{ recent_games_json: string | null }>();
     if (!row) continue;
-    const recent = tryParseJsonArray(
+    const recent = safeParseJsonArray(
       row.recent_games_json ?? null,
     ) as RecentGameSummary[];
     if (recent.some((entry) => entry?.gameId === gameId)) {
@@ -259,7 +249,7 @@ export async function processGameCompletion(
 
     const recentGames = (
       statsRow?.recent_games_json
-        ? tryParseJsonArray(statsRow.recent_games_json)
+        ? safeParseJsonArray(statsRow.recent_games_json)
         : []
     ) as RecentGameSummary[];
     recentGames.unshift({

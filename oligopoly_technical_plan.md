@@ -65,6 +65,8 @@ Package ownership:
 | `@oligopoly/worker` | Route contracts, Durable Object orchestration, persistence adapters |
 | `@oligopoly/web` | Game UX and protocol client |
 
+- **`@oligopoly/worker` JSON helpers:** **`packages/worker/src/lib/jsonParse.ts`** exposes **`safeParseJson`**, **`safeJsonParse`**, and **`safeParseJsonArray`** for D1/KV string fields (admin routes, **`processGameCompletion`**, and similar) so non-throwing parse fallbacks stay centralized instead of per-file copies.
+
 Composition rule:
 
 - Deployment-specific integrations may extend these contracts through adapters and middleware.
