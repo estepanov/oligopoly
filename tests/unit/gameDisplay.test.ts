@@ -285,4 +285,152 @@ describe("game display helpers", () => {
       "foreclosure proceeds · proceeds ¤200 · applied ¤150 · debt remaining ¤50",
     );
   });
+
+  it("formats remaining player_state_changed fields", () => {
+    const cur = { currencySymbol: "¤", currencyMultiplier: "10" };
+    const tileNames = new Map<string, string>([
+      ["0", "Start"],
+      ["5", "Mid tile"],
+    ]);
+
+    const base = {
+      gameId: "g",
+      round: 1,
+      playerId: "human-1",
+      actionType: "player_state_changed" as const,
+      createdAt: 1,
+    };
+
+    expect(
+      formatGameLogEntry(
+        {
+          ...base,
+          id: "ps-lost",
+          payload: {
+            playerId: "human-1",
+            changes: {
+              ownedTilePositions: { added: [], removed: ["5"] },
+            },
+          },
+        },
+        tileNames,
+        cur,
+      ),
+    ).toContain("lost Mid tile");
+
+    expect(
+      formatGameLogEntry(
+        {
+          ...base,
+          id: "ps-redeemed",
+          payload: {
+            playerId: "human-1",
+            changes: {
+              mortgagedTilePositions: { added: [], removed: ["5"] },
+            },
+          },
+        },
+        tileNames,
+        cur,
+      ),
+    ).toContain("redeemed Mid tile");
+
+    expect(
+      formatGameLogEntry(
+        {
+          ...base,
+          id: "ps-move",
+          payload: {
+            playerId: "human-1",
+            changes: { position: { before: 0, after: 5 } },
+          },
+        },
+        tileNames,
+        cur,
+      ),
+    ).toContain("moved to Mid tile");
+
+    expect(
+      formatGameLogEntry(
+        {
+          ...base,
+          id: "ps-ap",
+          payload: {
+            playerId: "human-1",
+            changes: {
+              actionPointsRemaining: { before: 2, after: 0, delta: -2 },
+            },
+          },
+        },
+        tileNames,
+        cur,
+      ),
+    ).toContain("AP -2 to 0");
+
+    expect(
+      formatGameLogEntry(
+        {
+          ...base,
+          id: "ps-trust",
+          payload: {
+            playerId: "human-1",
+            changes: {
+              trustworthiness: { before: 5, after: 6, delta: 1 },
+            },
+          },
+        },
+        tileNames,
+        cur,
+      ),
+    ).toContain("trust +1 to 6");
+
+    expect(
+      formatGameLogEntry(
+        {
+          ...base,
+          id: "ps-debt",
+          payload: {
+            playerId: "human-1",
+            changes: {
+              outstandingDebt: { before: 50, after: 20, delta: -30 },
+            },
+          },
+        },
+        tileNames,
+        cur,
+      ),
+    ).toContain("debt");
+
+    expect(
+      formatGameLogEntry(
+        {
+          ...base,
+          id: "ps-reg-off",
+          payload: {
+            playerId: "human-1",
+            changes: { inRegulation: { before: true, after: false } },
+          },
+        },
+        tileNames,
+        cur,
+      ),
+    ).toContain("left regulation");
+
+    expect(
+      formatGameLogEntry(
+        {
+          ...base,
+          id: "ps-syn-off",
+          payload: {
+            playerId: "human-1",
+            changes: {
+              syndicateId: { before: "synd-x", after: null },
+            },
+          },
+        },
+        tileNames,
+        cur,
+      ),
+    ).toContain("left syndicate");
+  });
 });
