@@ -185,6 +185,34 @@ describe("game display helpers", () => {
       ),
     ).toContain("Search Engine Corp. development 0->1");
 
+    const multiFieldLine = formatGameLogEntry(
+      {
+        id: "log-multi",
+        gameId: "g",
+        round: 1,
+        playerId: "human-1",
+        actionType: "player_state_changed",
+        payload: {
+          playerId: "human-1",
+          changes: {
+            capital: { before: 100, after: 120, delta: 20 },
+            ownedTilePositions: { added: ["3"], removed: [] },
+            inRegulation: { before: false, after: true },
+            syndicateId: { before: null, after: "synd-a" },
+          },
+        },
+        createdAt: 1,
+      },
+      new Map([["3", "Cloud Lane"]]),
+      currencySettings,
+    );
+    const cashAt = multiFieldLine.indexOf("cash");
+    const acquiredAt = multiFieldLine.indexOf("acquired");
+    expect(cashAt).toBeGreaterThan(0);
+    expect(acquiredAt).toBeGreaterThan(cashAt);
+    expect(multiFieldLine).toContain("entered regulation");
+    expect(multiFieldLine).toContain("joined syndicate synd-a");
+
     expect(
       formatGameLogEntry(
         {
