@@ -2,14 +2,23 @@
 // Player change diff logs — appended after successful applyAction results.
 // ---------------------------------------------------------------------------
 
-import type { PlayerStateChangesBody } from "@oligopoly/validation";
+import {
+  PLAYER_STATE_CHANGE_FIELD_KEYS,
+  type PlayerStateChangeFieldKey,
+  type PlayerStateChangesBody,
+} from "@oligopoly/validation";
 import type {
   ApplyActionResult,
   InternalGameState,
   LogEntry,
 } from "./gameStateTypes.js";
 
-interface PlayerChangeSnapshot {
+/**
+ * Per-turn snapshot used to build `player_state_changed` diffs. Field set must
+ * stay aligned with {@link PLAYER_STATE_CHANGE_FIELD_KEYS} in validation.
+ */
+interface PlayerChangeSnapshot
+  extends Record<PlayerStateChangeFieldKey, unknown> {
   capital: number;
   position: number | string;
   actionPointsRemaining: number;
@@ -146,6 +155,15 @@ function buildPlayerChangeLogs(
     }
 
     if (Object.keys(changes).length > 0) {
+      for (const key of Object.keys(changes)) {
+        if (
+          !(PLAYER_STATE_CHANGE_FIELD_KEYS as readonly string[]).includes(key)
+        ) {
+          throw new Error(
+            `player_state_changed emitted unknown key "${key}" — update PLAYER_STATE_CHANGE_FIELD_KEYS and PlayerStateChangesBodySchema`,
+          );
+        }
+      }
       logs.push({
         playerId: player.playerId,
         actionType: "player_state_changed",

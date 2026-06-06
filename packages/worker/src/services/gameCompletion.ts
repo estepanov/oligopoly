@@ -1,35 +1,26 @@
-import type { GameResult } from "@oligopoly/shared";
+import type {
+  CompletedGameSnapshot,
+  GameResult,
+  InternalGameState,
+  RecentGameSummary,
+} from "@oligopoly/shared";
 import {
   ACHIEVEMENTS_REGISTRY,
-  type CompletedGameSnapshot,
   calculateGameRankPoints,
   getRankForPoints,
   hasSectorControl,
-  type InternalGameState,
   isAiControlledActor,
   playerWonGame,
-  type RecentGameSummary,
   SECTORS,
 } from "@oligopoly/shared";
+import {
+  type LeaderboardCompletionsEntry,
+  type LeaderboardSummary,
+  LeaderboardSummarySchema,
+  type LeaderboardWinsEntry,
+} from "@oligopoly/validation";
 
 const MAX_RECENT_GAMES = 20;
-
-type LeaderboardWinsEntry = {
-  userId: string;
-  username: string;
-  wins: number;
-};
-
-type LeaderboardCompletionsEntry = {
-  userId: string;
-  username: string;
-  completions: number;
-};
-
-type LeaderboardSummary = {
-  humanWins: number;
-  aiWins: number;
-};
 
 function countSectorsControlled(
   state: CompletedGameSnapshot,
@@ -104,18 +95,21 @@ async function incrementLeaderboardSummary(
 ): Promise<void> {
   const raw = await kv.get("leaderboard:summary");
   const existing: LeaderboardSummary = raw
-    ? (JSON.parse(raw) as LeaderboardSummary)
+    ? LeaderboardSummarySchema.parse(JSON.parse(raw))
     : { humanWins: 0, aiWins: 0 };
-  await kv.put(
-    "leaderboard:summary",
-    JSON.stringify({
-      humanWins: Math.max(0, (existing.humanWins ?? 0) + increment.humanWins),
-      aiWins: Math.max(0, (existing.aiWins ?? 0) + increment.aiWins),
-    }),
-  );
+  const next = LeaderboardSummarySchema.parse({
+    humanWins: Math.max(0, (existing.humanWins ?? 0) + increment.humanWins),
+    aiWins: Math.max(0, (existing.aiWins ?? 0) + increment.aiWins),
+  });
+  await kv.put("leaderboard:summary", JSON.stringify(next));
 }
 
-function isAiSeat(playerId: string): boolean {
+/**
+ * Synthetic AI lobby seats use `ai:*` ids and are not backed by D1 users.
+ * Human seats keep their user id under timeout AI takeover — use
+ * `isAiControlledActor` when classifying runtime control, not for this filter.
+ */
+function isDedicatedSyntheticAiPlayerId(playerId: string): boolean {
   return playerId.startsWith("ai:");
 }
 
@@ -184,7 +178,9 @@ export async function processGameCompletion(
   }
 
   const playerIds = JSON.parse(gameRow.player_ids_json) as string[];
-  const humanPlayerIds = playerIds.filter((playerId) => !isAiSeat(playerId));
+  const humanPlayerIds = playerIds.filter(
+    (playerId) => !isDedicatedSyntheticAiPlayerId(playerId),
+  );
   const idempotencyCandidates =
     humanPlayerIds.length > 0 ? humanPlayerIds : playerIds.slice(0, 1);
 
@@ -216,7 +212,7 @@ export async function processGameCompletion(
 
   for (const playerId of playerIds) {
     const isKicked = state.kickedPlayerIds?.includes(playerId) ?? false;
-    const aiSeat = isAiSeat(playerId);
+    const aiSeat = isDedicatedSyntheticAiPlayerId(playerId);
     const won = playerWonGame(state, playerId, winnerId);
 
     if (aiSeat) {

@@ -257,6 +257,28 @@ export type PlayerStateChangesBody = z.infer<
   typeof PlayerStateChangesBodySchema
 >;
 
+/**
+ * Authoritative ordered list of keys allowed on `player_state_changed` payloads.
+ * The engine (`playerChangeLogs`), this schema, and the web log formatter should
+ * only emit/consume fields listed here — add new diffs by extending this tuple
+ * and the Zod object above together.
+ */
+export const PLAYER_STATE_CHANGE_FIELD_KEYS = [
+  "capital",
+  "position",
+  "actionPointsRemaining",
+  "trustworthiness",
+  "inRegulation",
+  "syndicateId",
+  "outstandingDebt",
+  "ownedTilePositions",
+  "mortgagedTilePositions",
+  "developmentTokens",
+] as const satisfies ReadonlyArray<keyof PlayerStateChangesBody>;
+
+export type PlayerStateChangeFieldKey =
+  (typeof PLAYER_STATE_CHANGE_FIELD_KEYS)[number];
+
 export const PlayerStateChangedPayloadSchema = z.object({
   playerId: z.string(),
   changes: PlayerStateChangesBodySchema,

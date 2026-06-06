@@ -1,3 +1,4 @@
+import type { LeaderboardSummary } from "@oligopoly/validation";
 import { useEffect, useState } from "react";
 import {
   fetchLeaderboardCompletions,
@@ -9,11 +10,6 @@ type Entry = {
   username: string;
   wins?: number;
   completions?: number;
-};
-
-type LeaderboardSummary = {
-  humanWins: number;
-  aiWins: number;
 };
 
 export function LeaderboardPage() {

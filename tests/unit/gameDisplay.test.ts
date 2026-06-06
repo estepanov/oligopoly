@@ -101,7 +101,7 @@ describe("game display helpers", () => {
         new Map([["6", "Search Engine Corp."]]),
         currencySettings,
       ),
-    ).toBe("Mortgaged tile · Search Engine Corp. · +¤700");
+    ).toBe("Mortgaged tile · Search Engine Corp.");
 
     expect(
       formatGameLogEntry(
