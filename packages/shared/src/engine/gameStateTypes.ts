@@ -151,7 +151,6 @@ export interface InternalPlayerState {
   outstandingDebt?: number;
   rentCollectedTotal?: number;
   dealValueTotal?: number;
-  coordinationAcknowledged?: boolean;
 }
 
 export interface InternalTileState {

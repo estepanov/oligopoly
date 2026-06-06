@@ -698,6 +698,12 @@ export function handleEndTurn(
       payload: { round: newState.round },
     });
     newState = processCoordinationPhase(newState, logs);
+    if (newState.phase === "game_over") {
+      newState.aiPlayers = (newState.aiPlayers ?? []).filter(
+        (ai) => ai.takeoverForPlayerId !== playerId,
+      );
+      return { state: newState, logEntries: logs };
+    }
     const roundStart = advanceToFirstPlayerOfNewRound(newState, logs);
     newState = roundStart.state;
     newState.aiPlayers = (newState.aiPlayers ?? []).filter(

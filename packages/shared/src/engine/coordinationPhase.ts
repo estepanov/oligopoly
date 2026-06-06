@@ -48,7 +48,7 @@ export function processCoordinationPhase(
 
   logs.push({
     playerId: null,
-    actionType: "coordination_phase_complete",
+    actionType: "round_boundary_complete",
     payload: { round: newState.round },
   });
 

@@ -54,6 +54,11 @@ const ACTION_LABELS: Record<string, string> = {
   final_round_ended: "Final round ended",
   game_won: "Game won",
   player_state_changed: "Player changed",
+  rate_card_set: "Rate card set",
+  round_phase_advanced: "Round advanced",
+  round_boundary_complete: "Round housekeeping complete",
+  debt_interest: "Debt interest accrued",
+  new_round: "New round",
 };
 
 function formatNumberDelta(delta: number): string {

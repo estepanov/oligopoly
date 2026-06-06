@@ -178,7 +178,6 @@ export const PlayerStateSchema = z.object({
   isOnDiagonal: z.boolean(),
   syndicateId: z.string().nullable().optional(),
   outstandingDebt: z.number().int().min(0).optional(),
-  coordinationAcknowledged: z.boolean().optional(),
   hostileTakeoverUsed: z.boolean().optional(),
   marketManipulationUsedThisRound: z.boolean().optional(),
   usedAffinityIds: z.array(z.string()).optional(),

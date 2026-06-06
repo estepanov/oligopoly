@@ -174,7 +174,7 @@ describe("game display helpers", () => {
         new Map(),
         currencySettings,
       ),
-    ).toBe("debt interest · total ¤330 · interest ¤30");
+    ).toBe("Debt interest accrued · total ¤330 · interest ¤30");
 
     expect(
       formatGameLogEntry(
