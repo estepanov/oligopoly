@@ -167,6 +167,8 @@ export function LobbiesPage() {
   const [busyStart, setBusyStart] = useState(false);
   const [message, setMessage] = useState<Message>(null);
   const selectedLobbyCardRef = useRef<HTMLDivElement | null>(null);
+  /** False after unmount so async public lobby loads do not setState (Vitest / Strict Mode safe). */
+  const publicLobbiesFetchAlive = useRef(true);
 
   const selectedLobbyId = selectedLobby?.id ?? joinLobbyId;
   const resolvedJoinInput = useMemo(
@@ -187,8 +189,10 @@ export function LobbiesPage() {
     setLoadingPublicLobbies(true);
     try {
       const data = await listPublicLobbies();
+      if (!publicLobbiesFetchAlive.current) return;
       setPublicLobbies(data.lobbies);
     } catch (error) {
+      if (!publicLobbiesFetchAlive.current) return;
       setMessage({
         kind: "error",
         text:
@@ -197,7 +201,9 @@ export function LobbiesPage() {
             : "Failed to load public lobbies",
       });
     } finally {
-      setLoadingPublicLobbies(false);
+      if (publicLobbiesFetchAlive.current) {
+        setLoadingPublicLobbies(false);
+      }
     }
   }, []);
 
@@ -269,6 +275,13 @@ export function LobbiesPage() {
   const { wsStatus: lobbyWsStatus } = useLobbyRealtime(selectedLobby?.id, {
     onUpdate: ({ lobby }) => commitSelectedLobby(lobby),
   });
+
+  useEffect(() => {
+    publicLobbiesFetchAlive.current = true;
+    return () => {
+      publicLobbiesFetchAlive.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     void refreshPublicLobbies();
