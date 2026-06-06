@@ -348,40 +348,30 @@ function payloadSuffix(
   }
   const moneyParts = formatMoneyPayloadParts(record, currencySettings);
 
-  if (
-    typeof record.position === "number" ||
-    typeof record.position === "string"
-  ) {
-    const amount =
-      typeof record.cost === "number"
-        ? ` · ${formatCurrencyAmount(record.cost, currencySettings)}`
-        : typeof record.mortgageValue === "number"
-          ? ` · ${formatSignedCurrencyAmount(
-              record.mortgageValue,
-              currencySettings,
-            )}`
-          : typeof record.redemptionCost === "number"
-            ? ` · ${formatCurrencyAmount(
-                record.redemptionCost,
-                currencySettings,
-              )}`
-            : "";
-    return ` · ${[tileLabel(record.position, tileNames), ...playerParts].join(
+  const geoPos = tilePositionFromPayload(record);
+  if (geoPos !== undefined) {
+    let amountSuffix = "";
+    if (typeof record.cost === "number") {
+      amountSuffix = ` · ${formatCurrencyAmount(record.cost, currencySettings)}`;
+    } else if (typeof record.mortgageValue === "number") {
+      amountSuffix = ` · ${formatSignedCurrencyAmount(
+        record.mortgageValue,
+        currencySettings,
+      )}`;
+    } else if (typeof record.redemptionCost === "number") {
+      amountSuffix = ` · ${formatCurrencyAmount(
+        record.redemptionCost,
+        currencySettings,
+      )}`;
+    } else if (typeof record.amount === "number") {
+      amountSuffix = ` · ${formatCurrencyAmount(
+        record.amount,
+        currencySettings,
+      )}`;
+    }
+    return ` · ${[tileLabel(geoPos, tileNames), ...playerParts].join(
       " · ",
-    )}${amount}`;
-  }
-  if (
-    typeof record.tilePosition === "number" ||
-    typeof record.tilePosition === "string"
-  ) {
-    const amount =
-      typeof record.amount === "number"
-        ? ` · ${formatCurrencyAmount(record.amount, currencySettings)}`
-        : "";
-    return ` · ${[
-      tileLabel(record.tilePosition, tileNames),
-      ...playerParts,
-    ].join(" · ")}${amount}`;
+    )}${amountSuffix}`;
   }
   if (playerParts.length > 0 || moneyParts.length > 0) {
     return ` · ${[...contextParts, ...playerParts, ...moneyParts].join(" · ")}`;

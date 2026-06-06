@@ -125,6 +125,69 @@ describe("game display helpers", () => {
     expect(
       formatGameLogEntry(
         {
+          id: "log-owned",
+          gameId: "g",
+          round: 1,
+          playerId: "human-1",
+          actionType: "player_state_changed",
+          payload: {
+            playerId: "human-1",
+            changes: {
+              ownedTilePositions: { added: ["6"], removed: [] },
+            },
+          },
+          createdAt: 1,
+        },
+        new Map([["6", "Search Engine Corp."]]),
+        currencySettings,
+      ),
+    ).toContain("acquired Search Engine Corp.");
+
+    expect(
+      formatGameLogEntry(
+        {
+          id: "log-mort",
+          gameId: "g",
+          round: 1,
+          playerId: "human-1",
+          actionType: "player_state_changed",
+          payload: {
+            playerId: "human-1",
+            changes: {
+              mortgagedTilePositions: { added: ["1"], removed: [] },
+            },
+          },
+          createdAt: 1,
+        },
+        new Map([["1", "Retail Row"]]),
+        currencySettings,
+      ),
+    ).toContain("mortgaged Retail Row");
+
+    expect(
+      formatGameLogEntry(
+        {
+          id: "log-dev",
+          gameId: "g",
+          round: 1,
+          playerId: "human-1",
+          actionType: "player_state_changed",
+          payload: {
+            playerId: "human-1",
+            changes: {
+              developmentTokens: [{ position: 6, before: 0, after: 1 }],
+            },
+          },
+          createdAt: 1,
+        },
+        new Map([["6", "Search Engine Corp."]]),
+        currencySettings,
+      ),
+    ).toContain("Search Engine Corp. development 0->1");
+
+    expect(
+      formatGameLogEntry(
+        {
           id: "log-4",
           gameId: "g",
           round: 1,

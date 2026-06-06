@@ -21,6 +21,7 @@ import {
 import { useAuth } from "../components/AuthContext";
 import { LobbyAiSettings } from "../components/LobbyAiSettings";
 import { LobbyReadyControls } from "../components/LobbyReadyControls";
+import { useComponentMountedRef } from "../hooks/useComponentMountedRef";
 import { useLobbyRealtime } from "../hooks/useLobbyRealtime";
 import { canStartLobby, lobbySeatCount } from "../lib/lobbySeats";
 
@@ -167,8 +168,7 @@ export function LobbiesPage() {
   const [busyStart, setBusyStart] = useState(false);
   const [message, setMessage] = useState<Message>(null);
   const selectedLobbyCardRef = useRef<HTMLDivElement | null>(null);
-  /** False after unmount so async public lobby loads do not setState (Vitest / Strict Mode safe). */
-  const publicLobbiesFetchAlive = useRef(true);
+  const publicLobbiesFetchAlive = useComponentMountedRef();
 
   const selectedLobbyId = selectedLobby?.id ?? joinLobbyId;
   const resolvedJoinInput = useMemo(
@@ -205,7 +205,7 @@ export function LobbiesPage() {
         setLoadingPublicLobbies(false);
       }
     }
-  }, []);
+  }, [publicLobbiesFetchAlive]);
 
   const refreshMyLobbies = useCallback(async () => {
     if (!user) {
@@ -275,13 +275,6 @@ export function LobbiesPage() {
   const { wsStatus: lobbyWsStatus } = useLobbyRealtime(selectedLobby?.id, {
     onUpdate: ({ lobby }) => commitSelectedLobby(lobby),
   });
-
-  useEffect(() => {
-    publicLobbiesFetchAlive.current = true;
-    return () => {
-      publicLobbiesFetchAlive.current = false;
-    };
-  }, []);
 
   useEffect(() => {
     void refreshPublicLobbies();

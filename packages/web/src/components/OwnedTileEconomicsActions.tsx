@@ -1,6 +1,6 @@
 import type { GameAction, GameState } from "@oligopoly/validation";
 import { tileLabel } from "../lib/boardDisplay";
-import { getTileEconomics } from "../lib/tileEconomics";
+import { getTileEconomics, type TileEconomics } from "../lib/tileEconomics";
 import { TileEconomicsExplainDialog } from "./TileEconomicsExplainDialog";
 
 type OwnedTileRow = {
@@ -17,6 +17,53 @@ type OwnedTileEconomicsActionsProps = {
   busy: boolean;
   onAction: (label: string, action: GameAction) => Promise<void>;
 };
+
+type TileEconomicsDialogMode = "develop" | "mortgage" | "redeem";
+
+type OwnedTileActionRow = {
+  mode: TileEconomicsDialogMode;
+  isEnabled: (economics: TileEconomics) => boolean;
+  buttonLabel: (economics: TileEconomics) => string;
+  buildLogLabel: (tileName: string) => string;
+  buildAction: (
+    tilePosition: number | string,
+    economics: TileEconomics,
+  ) => GameAction;
+};
+
+const OWNED_TILE_ACTION_ROWS: OwnedTileActionRow[] = [
+  {
+    mode: "develop",
+    isEnabled: (e) => e.canDevelop && e.developmentCost !== null,
+    buttonLabel: (e) => `Develop (${e.formattedDevelopmentCost})`,
+    buildLogLabel: (name) => `Developed ${name}`,
+    buildAction: (tilePosition, e) => ({
+      type: "develop_tile",
+      tilePosition,
+      tokenNumber: e.nextDevelopmentToken,
+    }),
+  },
+  {
+    mode: "mortgage",
+    isEnabled: (e) => e.canMortgage && e.availableMortgageValue !== null,
+    buttonLabel: (e) => `Mortgage (+${e.formattedAvailableMortgageValue})`,
+    buildLogLabel: (name) => `Mortgaged ${name}`,
+    buildAction: (tilePosition) => ({
+      type: "mortgage_tile",
+      tilePosition,
+    }),
+  },
+  {
+    mode: "redeem",
+    isEnabled: (e) => e.canRedeem && e.redemptionCost !== null,
+    buttonLabel: (e) => `Redeem (${e.formattedRedemptionCost})`,
+    buildLogLabel: (name) => `Redeemed ${name}`,
+    buildAction: (tilePosition) => ({
+      type: "redeem_tile",
+      tilePosition,
+    }),
+  },
+];
 
 export function OwnedTileEconomicsActions({
   state,
@@ -37,78 +84,31 @@ export function OwnedTileEconomicsActions({
 
   return (
     <div className="buttonRow">
-      {economics.canDevelop && economics.developmentCost !== null && (
-        <span className="actionWithInfo">
-          <button
-            type="button"
-            className="button buttonSecondary"
-            disabled={busy}
-            onClick={() =>
-              void onAction(`Developed ${name}`, {
-                type: "develop_tile",
-                tilePosition: tile.position,
-                tokenNumber: economics.nextDevelopmentToken,
-              })
-            }
-          >
-            Develop ({economics.formattedDevelopmentCost})
-          </button>
-          <TileEconomicsExplainDialog
-            mode="develop"
-            tileName={name}
-            economics={economics}
-            currencySettings={currencySettings}
-            developmentTokensOnTile={tile.developmentTokens}
-          />
-        </span>
-      )}
-      {economics.canMortgage && economics.availableMortgageValue !== null && (
-        <span className="actionWithInfo">
-          <button
-            type="button"
-            className="button buttonSecondary"
-            disabled={busy}
-            onClick={() =>
-              void onAction(`Mortgaged ${name}`, {
-                type: "mortgage_tile",
-                tilePosition: tile.position,
-              })
-            }
-          >
-            Mortgage (+{economics.formattedAvailableMortgageValue})
-          </button>
-          <TileEconomicsExplainDialog
-            mode="mortgage"
-            tileName={name}
-            economics={economics}
-            currencySettings={currencySettings}
-            developmentTokensOnTile={tile.developmentTokens}
-          />
-        </span>
-      )}
-      {economics.canRedeem && economics.redemptionCost !== null && (
-        <span className="actionWithInfo">
-          <button
-            type="button"
-            className="button buttonSecondary"
-            disabled={busy}
-            onClick={() =>
-              void onAction(`Redeemed ${name}`, {
-                type: "redeem_tile",
-                tilePosition: tile.position,
-              })
-            }
-          >
-            Redeem ({economics.formattedRedemptionCost})
-          </button>
-          <TileEconomicsExplainDialog
-            mode="redeem"
-            tileName={name}
-            economics={economics}
-            currencySettings={currencySettings}
-            developmentTokensOnTile={tile.developmentTokens}
-          />
-        </span>
+      {OWNED_TILE_ACTION_ROWS.map((row) =>
+        row.isEnabled(economics) ? (
+          <span key={row.mode} className="actionWithInfo">
+            <button
+              type="button"
+              className="button buttonSecondary"
+              disabled={busy}
+              onClick={() =>
+                void onAction(
+                  row.buildLogLabel(name),
+                  row.buildAction(tile.position, economics),
+                )
+              }
+            >
+              {row.buttonLabel(economics)}
+            </button>
+            <TileEconomicsExplainDialog
+              mode={row.mode}
+              tileName={name}
+              economics={economics}
+              currencySettings={currencySettings}
+              developmentTokensOnTile={tile.developmentTokens}
+            />
+          </span>
+        ) : null,
       )}
     </div>
   );
