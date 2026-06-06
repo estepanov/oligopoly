@@ -39,6 +39,28 @@ function indexTileOwners(state: GameState) {
   return map;
 }
 
+function indexTilesByPosition(state: GameState) {
+  const map = new Map<string, NonNullable<GameState["tiles"]>[number]>();
+  for (const tile of state.tiles ?? []) {
+    map.set(String(tile.position), tile);
+  }
+  return map;
+}
+
+function occupantLabels(
+  state: GameState,
+  occupants: NonNullable<GameState["players"]>,
+  myPlayerId: string | null,
+): string {
+  return occupants
+    .map((player) =>
+      player.playerId === myPlayerId
+        ? "You"
+        : playerDisplayName(state, player.playerId),
+    )
+    .join(", ");
+}
+
 function BoardCell({
   position,
   ownerId,
@@ -96,13 +118,7 @@ function BoardCell({
           <span className="boardGridName">{label}</span>
           {occupants.length > 0 && (
             <span className="boardGridOccupants">
-              {occupants
-                .map((player) =>
-                  player.playerId === myPlayerId
-                    ? "You"
-                    : playerDisplayName(state, player.playerId),
-                )
-                .join(", ")}
+              {occupantLabels(state, occupants, myPlayerId)}
             </span>
           )}
         </>
@@ -156,13 +172,7 @@ function BoardCell({
         <dt className="muted">Occupants</dt>
         <dd>
           {occupants.length > 0
-            ? occupants
-                .map((player) =>
-                  player.playerId === myPlayerId
-                    ? "You"
-                    : playerDisplayName(state, player.playerId),
-                )
-                .join(", ")
+            ? occupantLabels(state, occupants, myPlayerId)
             : "None"}
         </dd>
       </dl>
@@ -179,6 +189,7 @@ export function BoardGrid({
 }: BoardGridProps) {
   const occupantsByPosition = indexPlayersByPosition(state);
   const ownerByPosition = indexTileOwners(state);
+  const tilesByPosition = indexTilesByPosition(state);
   const diagonalOccupants = DIAGONAL_POSITIONS.flatMap(
     (position) => occupantsByPosition.get(position) ?? [],
   );
@@ -196,9 +207,7 @@ export function BoardGrid({
             tileNames={tileNames}
             tileDetails={tileDetails}
             myPlayerId={myPlayerId}
-            tileState={state.tiles?.find(
-              (tile) => String(tile.position) === String(position),
-            )}
+            tileState={tilesByPosition.get(String(position))}
             state={state}
           />
         ))}
@@ -216,9 +225,7 @@ export function BoardGrid({
               tileNames={tileNames}
               tileDetails={tileDetails}
               myPlayerId={myPlayerId}
-              tileState={state.tiles?.find(
-                (tile) => String(tile.position) === String(position),
-              )}
+              tileState={tilesByPosition.get(String(position))}
               state={state}
             />
           ))}
@@ -251,9 +258,7 @@ export function BoardGrid({
                 tileNames={tileNames}
                 tileDetails={tileDetails}
                 myPlayerId={myPlayerId}
-                tileState={state.tiles?.find(
-                  (tile) => String(tile.position) === position,
-                )}
+                tileState={tilesByPosition.get(String(position))}
                 state={state}
               />
             ))}
@@ -271,9 +276,7 @@ export function BoardGrid({
               tileNames={tileNames}
               tileDetails={tileDetails}
               myPlayerId={myPlayerId}
-              tileState={state.tiles?.find(
-                (tile) => String(tile.position) === String(position),
-              )}
+              tileState={tilesByPosition.get(String(position))}
               state={state}
             />
           ))}
@@ -291,9 +294,7 @@ export function BoardGrid({
             tileNames={tileNames}
             tileDetails={tileDetails}
             myPlayerId={myPlayerId}
-            tileState={state.tiles?.find(
-              (tile) => String(tile.position) === String(position),
-            )}
+            tileState={tilesByPosition.get(String(position))}
             state={state}
           />
         ))}

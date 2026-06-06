@@ -1,6 +1,6 @@
 import type { GameAction, GameState } from "@oligopoly/validation";
-import { type BoardTileDetails, tileLabel } from "../lib/boardDisplay";
-import { formatCurrencyAmount, playerDisplayName } from "../lib/gameDisplay";
+import { tileLabel } from "../lib/boardDisplay";
+import { playerDisplayName } from "../lib/gameDisplay";
 import {
   canBuyPendingTile,
   isAuctionPhase,
@@ -13,14 +13,13 @@ import { getTileEconomics } from "../lib/tileEconomics";
 import { ActionPhaseExtras } from "./ActionPhaseExtras";
 import { AuctionPanel } from "./AuctionPanel";
 import { CoordinationControls } from "./CoordinationControls";
-import { InfoDialog } from "./InfoDialog";
 import { InsiderPeekPanel } from "./InsiderPeekPanel";
+import { TileEconomicsExplainDialog } from "./TileEconomicsExplainDialog";
 
 type GamePlayControlsProps = {
   state: GameState;
   myPlayerId: string | null;
   tileNames: Map<string, string>;
-  tileDetails: Map<string, BoardTileDetails>;
   busy: boolean;
   onAction: (label: string, action: GameAction) => Promise<void>;
 };
@@ -256,41 +255,13 @@ export function GamePlayControls({
                           >
                             Develop ({economics.formattedDevelopmentCost})
                           </button>
-                          <InfoDialog
-                            title={`Develop ${name}`}
-                            triggerLabel={`Explain developing ${name}`}
-                          >
-                            <div className="economicsCallout">
-                              <span className="economicsLabel">
-                                Token {economics.nextDevelopmentToken} cost
-                              </span>
-                              <strong>
-                                {economics.formattedDevelopmentCost}
-                              </strong>
-                            </div>
-                            <dl className="detailsGrid">
-                              <dt className="muted">Tile value</dt>
-                              <dd>{economics.formattedTileCost}</dd>
-                              <dt className="muted">Current development</dt>
-                              <dd>
-                                {tile.developmentTokens} of{" "}
-                                {economics.maxDevelopmentTokens} tokens
-                              </dd>
-                              <dt className="muted">Action cost</dt>
-                              <dd>2 action points</dd>
-                              <dt className="muted">Modifier</dt>
-                              <dd>
-                                {economics.hasLeanDiscount
-                                  ? "Lean Manufacturing applied: 20% development discount."
-                                  : "No visible development discount applies."}
-                              </dd>
-                            </dl>
-                            <p>
-                              This adds the next development token to an active
-                              sector tile so future rent uses the higher
-                              development rent tier.
-                            </p>
-                          </InfoDialog>
+                          <TileEconomicsExplainDialog
+                            mode="develop"
+                            tileName={name}
+                            economics={economics}
+                            currencySettings={currencySettings}
+                            developmentTokensOnTile={tile.developmentTokens}
+                          />
                         </span>
                       )}
                     {economics.canMortgage &&
@@ -310,52 +281,13 @@ export function GamePlayControls({
                             Mortgage (+
                             {economics.formattedAvailableMortgageValue})
                           </button>
-                          <InfoDialog
-                            title={`Mortgage ${name}`}
-                            triggerLabel={`Explain mortgaging ${name}`}
-                          >
-                            <div className="economicsCallout">
-                              <span className="economicsLabel">
-                                You receive
-                              </span>
-                              <strong>
-                                {economics.formattedAvailableMortgageValue}
-                              </strong>
-                            </div>
-                            <dl className="detailsGrid">
-                              <dt className="muted">Tile value</dt>
-                              <dd>{economics.formattedTileCost}</dd>
-                              <dt className="muted">Mortgage rate</dt>
-                              <dd>
-                                {Math.round(
-                                  economics.availableMortgageRate * 100,
-                                )}
-                                %
-                              </dd>
-                              {economics.syntheticCdoActive &&
-                                economics.availableMortgageValue !== null &&
-                                economics.standardMortgageValue !== null && (
-                                  <>
-                                    <dt className="muted">
-                                      Synthetic CDO bonus
-                                    </dt>
-                                    <dd>
-                                      +
-                                      {formatCurrencyAmount(
-                                        economics.availableMortgageValue -
-                                          economics.standardMortgageValue,
-                                        currencySettings,
-                                      )}{" "}
-                                      this round
-                                    </dd>
-                                  </>
-                                )}
-                            </dl>
-                            <p>
-                              The tile stays yours, but it cannot collect rent,
-                              be traded, or receive development until redeemed.
-                            </p>
-                          </InfoDialog>
+                          <TileEconomicsExplainDialog
+                            mode="mortgage"
+                            tileName={name}
+                            economics={economics}
+                            currencySettings={currencySettings}
+                            developmentTokensOnTile={tile.developmentTokens}
+                          />
                         </span>
                       )}
                     {economics.canRedeem &&
@@ -374,43 +306,13 @@ export function GamePlayControls({
                           >
                             Redeem ({economics.formattedRedemptionCost})
                           </button>
-                          <InfoDialog
-                            title={`Redeem ${name}`}
-                            triggerLabel={`Explain redeeming ${name}`}
-                          >
-                            <div className="economicsCallout">
-                              <span className="economicsLabel">You pay</span>
-                              <strong>
-                                {economics.formattedRedemptionCost}
-                              </strong>
-                            </div>
-                            <dl className="detailsGrid">
-                              <dt className="muted">Tile value</dt>
-                              <dd>{economics.formattedTileCost}</dd>
-                              <dt className="muted">Stored mortgage value</dt>
-                              <dd>{economics.formattedStoredMortgageValue}</dd>
-                              <dt className="muted">Mortgage rate</dt>
-                              <dd>
-                                {Math.round(economics.storedMortgageRate * 100)}
-                                %
-                              </dd>
-                              <dt className="muted">Redemption rate</dt>
-                              <dd>
-                                {Math.round(economics.redemptionRate * 100)}% of
-                                stored mortgage value
-                              </dd>
-                              <dt className="muted">Modifier</dt>
-                              <dd>
-                                {economics.hasPropTechDiscount
-                                  ? "PropTech Pioneer applied: lower redemption rate."
-                                  : "No visible redemption discount applies."}
-                              </dd>
-                            </dl>
-                            <p>
-                              Redeeming restores rent collection and makes the
-                              tile eligible for development again.
-                            </p>
-                          </InfoDialog>
+                          <TileEconomicsExplainDialog
+                            mode="redeem"
+                            tileName={name}
+                            economics={economics}
+                            currencySettings={currencySettings}
+                            developmentTokensOnTile={tile.developmentTokens}
+                          />
                         </span>
                       )}
                   </div>

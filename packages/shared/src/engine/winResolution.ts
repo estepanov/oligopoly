@@ -185,7 +185,7 @@ export function triggerFinalRoundIfNeeded(
 
   state.finalRound = {
     pendingWinnerId: evaluation.winnerId,
-    winType: evaluation.winType === "syndicate" ? "syndicate" : "solo",
+    winType: "syndicate",
     remainingTurnPlayerIds: remaining,
   };
   logs.push({

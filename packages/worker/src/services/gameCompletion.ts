@@ -6,6 +6,7 @@ import {
   getRankForPoints,
   hasSectorControl,
   type InternalGameState,
+  isAiControlledActor,
   playerWonGame,
   type RecentGameSummary,
   SECTORS,
@@ -118,17 +119,6 @@ function isAiSeat(playerId: string): boolean {
   return playerId.startsWith("ai:");
 }
 
-function isAiControlledSeat(
-  state: InternalGameState,
-  playerId: string,
-): boolean {
-  const player = state.players.find((entry) => entry.playerId === playerId);
-  if (player?.kind === "ai") return true;
-  return (state.aiPlayers ?? []).some(
-    (ai) => ai.playerId === playerId || ai.takeoverForPlayerId === playerId,
-  );
-}
-
 function leaderboardOutcomeForGame(
   state: InternalGameState,
   winnerId: string,
@@ -141,7 +131,7 @@ function leaderboardOutcomeForGame(
   }
 
   const hasHumanWinner = winners.some(
-    (player) => !isAiControlledSeat(state, player.playerId),
+    (player) => !isAiControlledActor(state, player.playerId),
   );
   return hasHumanWinner
     ? { humanWins: 1, aiWins: 0 }

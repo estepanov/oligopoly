@@ -734,7 +734,7 @@ These rules may only be enabled if the game admin has achieved **Capital Baron**
 
 **Market Manipulation** — Once per round (during the admin's turn in Phase 2), a player may pay $50 to **freeze one opponent's tile** for the remainder of that round. A frozen tile cannot collect rent from any player landing on it this round, regardless of the owner's game state. The freeze affects only one round.
 
-**Insider Trading** — Before each Market Event card is drawn in Phase 1, the player designated to draw (rotated each round through all players) may **peek** at the top card of the Market Event deck without revealing it to others. They may then choose to discard that card and draw the next card instead. The peeked card (if not drawn) is returned to the bottom of the deck face-down.
+**Insider Trading** — Before each automatic turn-start Market Event card is drawn, the player whose turn is starting may **peek** at the top card of the Market Event deck without revealing it to others. They may then choose to discard that card and draw the next card instead. The peeked card (if not drawn) is returned to the bottom of the deck face-down.
 
 ---
 

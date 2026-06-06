@@ -16,16 +16,8 @@ import {
   canRedeemTile,
   isTileDevelopableByPlayer,
   playerById,
+  tileStateByPosition,
 } from "./gameUi";
-
-function tileStateByPosition(
-  state: GameState,
-  position: number | string,
-): NonNullable<GameState["tiles"]>[number] | undefined {
-  return state.tiles?.find(
-    (tile) => String(tile.position) === String(position),
-  );
-}
 
 export function getTileEconomics(
   state: GameState,
@@ -124,11 +116,6 @@ export function getTileEconomics(
       storedMortgageValue !== null
         ? formatCurrencyAmount(storedMortgageValue, currencySettings)
         : null,
-    mortgageValue: availableMortgageValue,
-    formattedMortgageValue:
-      availableMortgageValue !== null
-        ? formatCurrencyAmount(availableMortgageValue, currencySettings)
-        : null,
     standardMortgageValue,
     formattedStandardMortgageValue:
       standardMortgageValue !== null
@@ -154,3 +141,5 @@ export function getTileEconomics(
     maxDevelopmentTokens: MAX_DEVELOPMENT_TOKENS,
   };
 }
+
+export type TileEconomics = ReturnType<typeof getTileEconomics>;

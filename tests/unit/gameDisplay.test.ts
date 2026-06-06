@@ -112,6 +112,7 @@ describe("game display helpers", () => {
           playerId: "human-1",
           actionType: "player_state_changed",
           payload: {
+            playerId: "human-1",
             changes: { capital: { before: 100, after: 150, delta: 50 } },
           },
           createdAt: 1,

@@ -64,7 +64,6 @@ describe("core game display names", () => {
           state={state}
           myPlayerId="human-1"
           tileNames={tileNames}
-          tileDetails={new Map()}
         />
         <GameBoardPanel
           state={state}

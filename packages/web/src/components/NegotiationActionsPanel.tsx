@@ -32,14 +32,13 @@ export function NegotiationActionsPanel({
   const canNegotiate = canStartNegotiation(state, myPlayerId);
   const canProposeContract = canProposeBindingContract(state, myPlayerId);
   const unmortgaged = contractEligibleTilesForPlayer(state, myPlayerId);
-  const signableContracts =
+  const myContracts =
     state.activeContracts?.filter(
       (contract) =>
-        (contract.partyA === myPlayerId || contract.partyB === myPlayerId) &&
-        !contract.partySignatures?.[myPlayerId],
+        contract.partyA === myPlayerId || contract.partyB === myPlayerId,
     ) ?? [];
 
-  if (!canNegotiate && !canProposeContract && signableContracts.length === 0) {
+  if (!canNegotiate && !canProposeContract && myContracts.length === 0) {
     return null;
   }
 
@@ -136,29 +135,33 @@ export function NegotiationActionsPanel({
         </div>
       )}
 
-      {signableContracts.length > 0 && (
+      {myContracts.length > 0 && (
         <ul className="contractList muted">
-          {signableContracts.map((contract) => (
+          {myContracts.map((contract) => (
             <li key={contract.id}>
               {contract.id}:{" "}
               {playerDisplayName(state, contract.partyA, {
                 myPlayerId,
               })}{" "}
               ↔ {playerDisplayName(state, contract.partyB, { myPlayerId })}
-              <button
-                type="button"
-                className="button buttonSecondary"
-                style={{ marginLeft: "0.5rem" }}
-                disabled={busy}
-                onClick={() =>
-                  void onAction("Signed contract", {
-                    type: "sign_contract",
-                    contractId: contract.id,
-                  })
-                }
-              >
-                Sign
-              </button>
+              {contract.partySignatures?.[myPlayerId] ? (
+                " (you signed)"
+              ) : (
+                <button
+                  type="button"
+                  className="button buttonSecondary"
+                  style={{ marginLeft: "0.5rem" }}
+                  disabled={busy}
+                  onClick={() =>
+                    void onAction("Signed contract", {
+                      type: "sign_contract",
+                      contractId: contract.id,
+                    })
+                  }
+                >
+                  Sign
+                </button>
+              )}
             </li>
           ))}
         </ul>

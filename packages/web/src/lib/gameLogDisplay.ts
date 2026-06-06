@@ -1,4 +1,7 @@
-import type { GameLogEntry } from "@oligopoly/validation";
+import {
+  type GameLogEntry,
+  PlayerStateChangedPayloadSchema,
+} from "@oligopoly/validation";
 import { tileLabel } from "./boardDisplay";
 import {
   type CurrencyDisplaySettings,
@@ -117,18 +120,16 @@ function formatMoneyPayloadParts(
 }
 
 function formatPlayerStateChange(
-  record: Record<string, unknown>,
+  payload: unknown,
   tileNames: Map<string, string>,
   currencySettings?: CurrencyDisplaySettings,
 ): string {
-  const changes = record.changes;
-  if (!changes || typeof changes !== "object") return "";
-  const changed = changes as Record<string, unknown>;
+  const parsed = PlayerStateChangedPayloadSchema.safeParse(payload);
+  if (!parsed.success) return "";
+  const { changes } = parsed.data;
   const parts: string[] = [];
 
-  const capital = changed.capital as
-    | { before?: unknown; after?: unknown; delta?: unknown }
-    | undefined;
+  const capital = changes.capital;
   if (typeof capital?.delta === "number") {
     parts.push(
       `cash ${formatSignedCurrencyAmount(capital.delta, currencySettings)} to ${
@@ -139,43 +140,28 @@ function formatPlayerStateChange(
     );
   }
 
-  const owned = changed.ownedTilePositions as
-    | { added?: unknown; removed?: unknown }
-    | undefined;
+  const owned = changes.ownedTilePositions;
   const acquired = formatTileList(owned?.added, tileNames);
   const lost = formatTileList(owned?.removed, tileNames);
   if (acquired) parts.push(`acquired ${acquired}`);
   if (lost) parts.push(`lost ${lost}`);
 
-  const mortgaged = changed.mortgagedTilePositions as
-    | { added?: unknown; removed?: unknown }
-    | undefined;
-  const newlyMortgaged = formatTileList(mortgaged?.added, tileNames);
-  const redeemed = formatTileList(mortgaged?.removed, tileNames);
+  const mortgagedTiles = changes.mortgagedTilePositions;
+  const newlyMortgaged = formatTileList(mortgagedTiles?.added, tileNames);
+  const redeemed = formatTileList(mortgagedTiles?.removed, tileNames);
   if (newlyMortgaged) parts.push(`mortgaged ${newlyMortgaged}`);
   if (redeemed) parts.push(`redeemed ${redeemed}`);
 
-  const development = changed.developmentTokens;
+  const development = changes.developmentTokens;
   if (Array.isArray(development) && development.length > 0) {
     for (const item of development) {
-      if (!item || typeof item !== "object") continue;
-      const entry = item as Record<string, unknown>;
-      if (
-        (typeof entry.position === "number" ||
-          typeof entry.position === "string") &&
-        typeof entry.before === "number" &&
-        typeof entry.after === "number"
-      ) {
-        parts.push(
-          `${tileLabel(entry.position, tileNames)} development ${entry.before}->${entry.after}`,
-        );
-      }
+      parts.push(
+        `${tileLabel(item.position, tileNames)} development ${item.before}->${item.after}`,
+      );
     }
   }
 
-  const actionPoints = changed.actionPointsRemaining as
-    | { after?: unknown; delta?: unknown }
-    | undefined;
+  const actionPoints = changes.actionPointsRemaining;
   if (typeof actionPoints?.delta === "number") {
     parts.push(
       `AP ${formatNumberDelta(actionPoints.delta)} to ${String(
@@ -184,9 +170,7 @@ function formatPlayerStateChange(
     );
   }
 
-  const trustworthiness = changed.trustworthiness as
-    | { after?: unknown; delta?: unknown }
-    | undefined;
+  const trustworthiness = changes.trustworthiness;
   if (typeof trustworthiness?.delta === "number") {
     parts.push(
       `trust ${formatNumberDelta(trustworthiness.delta)} to ${String(
@@ -195,9 +179,7 @@ function formatPlayerStateChange(
     );
   }
 
-  const debt = changed.outstandingDebt as
-    | { after?: unknown; delta?: unknown }
-    | undefined;
+  const debt = changes.outstandingDebt;
   if (typeof debt?.delta === "number") {
     parts.push(
       `debt ${formatSignedCurrencyAmount(debt.delta, currencySettings)} to ${
@@ -208,7 +190,7 @@ function formatPlayerStateChange(
     );
   }
 
-  const position = changed.position as { after?: unknown } | undefined;
+  const position = changes.position;
   if (
     typeof position?.after === "number" ||
     typeof position?.after === "string"
@@ -216,16 +198,16 @@ function formatPlayerStateChange(
     parts.push(`moved to ${tileLabel(position.after, tileNames)}`);
   }
 
-  if (changed.inRegulation) {
-    const regulation = changed.inRegulation as { after?: unknown };
-    parts.push(regulation.after ? "entered regulation" : "left regulation");
+  if (changes.inRegulation) {
+    parts.push(
+      changes.inRegulation.after ? "entered regulation" : "left regulation",
+    );
   }
 
-  if (changed.syndicateId) {
-    const syndicate = changed.syndicateId as { after?: unknown };
+  if (changes.syndicateId) {
     parts.push(
-      typeof syndicate.after === "string"
-        ? `joined syndicate ${syndicate.after}`
+      typeof changes.syndicateId.after === "string"
+        ? `joined syndicate ${changes.syndicateId.after}`
         : "left syndicate",
     );
   }

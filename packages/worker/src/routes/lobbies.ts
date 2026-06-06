@@ -1400,8 +1400,11 @@ lobbyRoutes.post("/:id/start", async (c) => {
   const startResponse = await buildLobbyResponse(db, updated, lobbyPlayers);
   await publishLobbyUpdate(c.env, id, startResponse);
 
-  const { affinityAssignments: _affinity, ...publicInitialState } =
-    stateToPersist;
+  const {
+    affinityAssignments: _affinity,
+    pendingInsiderPeek: _pendingInsiderPeek,
+    ...publicInitialState
+  } = stateToPersist;
   await notifyGameSchedule(c.env?.GAME_ROOM, gameId, publicInitialState);
 
   return c.json(startResponse);

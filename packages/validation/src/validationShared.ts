@@ -189,6 +189,79 @@ export const GameLogEntrySchema = z.object({
 });
 export type GameLogEntry = z.infer<typeof GameLogEntrySchema>;
 
+const TilePositionValueSchema = z.union([z.number(), z.string()]);
+
+export const PlayerStateTileSetDiffSchema = z.object({
+  added: z.array(TilePositionValueSchema).optional(),
+  removed: z.array(TilePositionValueSchema).optional(),
+});
+
+export const DevelopmentTokenDeltaSchema = z.object({
+  position: TilePositionValueSchema,
+  before: z.number(),
+  after: z.number(),
+});
+
+export const PlayerStateChangesBodySchema = z.object({
+  capital: z
+    .object({
+      before: z.number(),
+      after: z.number(),
+      delta: z.number(),
+    })
+    .optional(),
+  position: z
+    .object({
+      before: TilePositionValueSchema,
+      after: TilePositionValueSchema,
+    })
+    .optional(),
+  actionPointsRemaining: z
+    .object({
+      before: z.number(),
+      after: z.number(),
+      delta: z.number().optional(),
+    })
+    .optional(),
+  trustworthiness: z
+    .object({
+      before: z.number(),
+      after: z.number(),
+      delta: z.number().optional(),
+    })
+    .optional(),
+  inRegulation: z
+    .object({
+      before: z.boolean(),
+      after: z.boolean(),
+    })
+    .optional(),
+  syndicateId: z
+    .object({
+      before: z.string().nullable(),
+      after: z.string().nullable(),
+    })
+    .optional(),
+  outstandingDebt: z
+    .object({
+      before: z.number(),
+      after: z.number(),
+      delta: z.number(),
+    })
+    .optional(),
+  ownedTilePositions: PlayerStateTileSetDiffSchema.optional(),
+  mortgagedTilePositions: PlayerStateTileSetDiffSchema.optional(),
+  developmentTokens: z.array(DevelopmentTokenDeltaSchema).optional(),
+});
+
+export const PlayerStateChangedPayloadSchema = z.object({
+  playerId: z.string(),
+  changes: PlayerStateChangesBodySchema,
+});
+export type PlayerStateChangedPayload = z.infer<
+  typeof PlayerStateChangedPayloadSchema
+>;
+
 export const GameLogListResponseSchema = z.object({
   log: z.array(GameLogEntrySchema),
 });

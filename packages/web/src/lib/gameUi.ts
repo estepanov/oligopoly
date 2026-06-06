@@ -3,7 +3,9 @@ import {
   AFFINITY_IDS,
   canCreateBindingContract,
   getTileByPosition,
+  type InternalGameState,
   isActionBlockedByContracts,
+  isAiControlledActor as isAiControlledActorShared,
   MAX_DEVELOPMENT_TOKENS,
 } from "@oligopoly/shared";
 import type { GameState, PlayerState } from "@oligopoly/validation";
@@ -39,11 +41,7 @@ export function isAiControlledActor(
   actorId: string | null,
 ): boolean {
   if (!actorId) return false;
-  const player = playerById(state, actorId);
-  if (player?.kind === "ai") return true;
-  return (state.aiPlayers ?? []).some(
-    (ai) => ai.playerId === actorId || ai.takeoverForPlayerId === actorId,
-  );
+  return isAiControlledActorShared(state as InternalGameState, actorId);
 }
 
 type PhaseUiCapabilities = {
@@ -271,10 +269,10 @@ function isActionTurn(state: GameState, myPlayerId: string | null): boolean {
   return state.phase === "action" && isMyTurn(state, myPlayerId);
 }
 
-function tileStateByPosition(
+export function tileStateByPosition(
   state: GameState,
   position: number | string | null | undefined,
-) {
+): NonNullable<GameState["tiles"]>[number] | undefined {
   if (position === null || position === undefined) return undefined;
   return state.tiles?.find(
     (tile) => String(tile.position) === String(position),

@@ -160,7 +160,7 @@ export function useGameSession(
       setError(null);
       try {
         const next = await submitGameAction(gameId, action);
-        setState(next);
+        setState((current) => mergeAuctionClientView(current, next));
         setStatusLine(label);
         if (next.logEntries?.length) {
           setLogEntries((current) =>
@@ -182,7 +182,7 @@ export function useGameSession(
       fetchGameState(gameId),
       loadGameLog(gameId),
     ]);
-    setState(gameState);
+    setState((current) => mergeAuctionClientView(current, gameState));
     setLogEntries(log);
     setStatusLine(null);
   }, [gameId]);

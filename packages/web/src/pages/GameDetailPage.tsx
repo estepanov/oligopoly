@@ -94,7 +94,6 @@ export function GameDetailPage() {
             state={state}
             myPlayerId={myPlayerId}
             tileNames={tileNames}
-            tileDetails={tileDetails}
           />
 
           <div className="card">
@@ -153,7 +152,6 @@ export function GameDetailPage() {
               state={state}
               myPlayerId={myPlayerId}
               tileNames={tileNames}
-              tileDetails={tileDetails}
               busy={busyAction}
               onAction={runAction}
             />

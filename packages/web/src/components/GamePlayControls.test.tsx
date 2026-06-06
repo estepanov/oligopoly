@@ -44,21 +44,6 @@ describe("GamePlayControls economics dialogs", () => {
         state={state}
         myPlayerId="me"
         tileNames={new Map([["6", "Search Engine Corp."]])}
-        tileDetails={
-          new Map([
-            [
-              "6",
-              {
-                position: 6,
-                name: "Search Engine Corp.",
-                type: "sector_tile",
-                sectorId: "big_tech",
-                cost: 140,
-                baseRent: 10,
-              },
-            ],
-          ])
-        }
         busy={false}
         onAction={async () => undefined}
       />,

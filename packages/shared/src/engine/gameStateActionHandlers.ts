@@ -682,6 +682,13 @@ export function handleEndTurn(
     newState = markFinalRoundTurnComplete(newState, playerId, logs);
   }
 
+  if (newState.phase === "game_over") {
+    newState.aiPlayers = (newState.aiPlayers ?? []).filter(
+      (ai) => ai.takeoverForPlayerId !== playerId,
+    );
+    return { state: newState, logEntries: logs };
+  }
+
   if (roundWrapped && nextIndex === 0) {
     newState.round += 1;
     logs.push({
