@@ -121,7 +121,7 @@ export function useGameSession(
         ]);
         if (!cancelled) {
           setGame(summary);
-          setState(gameState);
+          setState((current) => mergeAuctionClientView(current, gameState));
           setLogEntries(log);
         }
       } catch (e) {

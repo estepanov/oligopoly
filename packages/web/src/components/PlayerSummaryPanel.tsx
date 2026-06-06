@@ -6,6 +6,7 @@ import {
   mortgageEconomicsLabels,
 } from "../lib/tileEconomics";
 import { InfoDialog } from "./InfoDialog";
+import { TileEconomicsExplainContent } from "./TileEconomicsExplainContent";
 
 type PlayerSummaryPanelProps = {
   state: GameState;
@@ -134,69 +135,13 @@ export function PlayerSummaryPanel({
                             title={`${propertyName} economics`}
                             triggerLabel={`Explain develop and mortgage numbers for ${propertyName}`}
                           >
-                            {economics.formattedTileCost && (
-                              <div className="economicsCallout">
-                                <span className="economicsLabel">
-                                  Tile value
-                                </span>
-                                <strong>{economics.formattedTileCost}</strong>
-                              </div>
-                            )}
-                            <dl className="detailsGrid">
-                              <dt className="muted">Current development</dt>
-                              <dd>
-                                {developmentTokens} of{" "}
-                                {economics.maxDevelopmentTokens} tokens
-                              </dd>
-                              <dt className="muted">Next token</dt>
-                              <dd>
-                                {economics.formattedDevelopmentCost ??
-                                  "Not available while mortgaged or capped"}
-                              </dd>
-                              <dt className="muted">{mortgageLabel}</dt>
-                              <dd>
-                                {formattedMortgageValue ?? "Not available"}
-                              </dd>
-                              {economics.syntheticCdoActive &&
-                                !mortgaged &&
-                                economics.availableMortgageValue !== null &&
-                                economics.standardMortgageValue !== null && (
-                                  <>
-                                    <dt className="muted">
-                                      Synthetic CDO bonus
-                                    </dt>
-                                    <dd>
-                                      +
-                                      {formatCurrencyAmount(
-                                        economics.availableMortgageValue -
-                                          economics.standardMortgageValue,
-                                        currencySettings,
-                                      )}
-                                    </dd>
-                                  </>
-                                )}
-                              <dt className="muted">Mortgage rate</dt>
-                              <dd>
-                                {Math.round(
-                                  (mortgaged
-                                    ? economics.storedMortgageRate
-                                    : economics.availableMortgageRate) * 100,
-                                )}
-                                %
-                              </dd>
-                              <dt className="muted">Redeem cost</dt>
-                              <dd>
-                                {economics.formattedRedemptionCost ??
-                                  "Not available"}
-                              </dd>
-                            </dl>
-                            <p>
-                              Mortgage and development values are calculated
-                              from this tile's current state and visible
-                              modifiers. Mortgaged tiles keep tokens visible but
-                              cannot collect rent or be developed until
-                              redeemed.
-                            </p>
+                            <TileEconomicsExplainContent
+                              mode="property_overview"
+                              economics={economics}
+                              currencySettings={currencySettings}
+                              developmentTokens={developmentTokens}
+                              mortgaged={mortgaged}
+                            />
                           </InfoDialog>
                         </div>
                       </li>

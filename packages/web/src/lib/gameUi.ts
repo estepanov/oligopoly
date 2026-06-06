@@ -223,6 +223,13 @@ export function mergeAuctionClientView(
   previous: GameState | null,
   incoming: GameState,
 ): GameState {
+  if (
+    previous?.gameId &&
+    incoming.gameId &&
+    previous.gameId !== incoming.gameId
+  ) {
+    return incoming;
+  }
   const prevAuction = previous?.pendingAuction;
   const nextAuction = incoming.pendingAuction;
   if (

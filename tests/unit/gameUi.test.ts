@@ -80,6 +80,31 @@ describe("mergeAuctionClientView", () => {
     expect(merged.pendingAuction?.mySubmission).toBeUndefined();
   });
 
+  it("does not preserve mySubmission across different games", () => {
+    const pending = {
+      tilePosition: 3,
+      trigger: "decline" as const,
+      auctionType: "sealed_bids" as const,
+      submissions: {},
+      eligiblePlayerIds: ["p1", "p2"],
+      tieBreakRound: 0,
+      resumePhase: "action" as const,
+      submissionCount: 1,
+      mySubmission: 90,
+    };
+    const previous: GameState = { ...auctionState(pending), gameId: "game-a" };
+    const incoming: GameState = {
+      ...auctionState({
+        ...pending,
+        submissionCount: 2,
+        mySubmission: undefined,
+      }),
+      gameId: "game-b",
+    };
+
+    expect(mergeAuctionClientView(previous, incoming)).toEqual(incoming);
+  });
+
   it("does not preserve mySubmission for open auctions", () => {
     const previous = auctionState({
       tilePosition: 3,

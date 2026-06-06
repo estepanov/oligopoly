@@ -10,7 +10,12 @@ import {
   sumOwnedTileMarketValue,
   syndicateMarketValue,
 } from "./syndicate.js";
-import { checkSoloWin, checkSyndicateWin } from "./winCondition.js";
+import {
+  checkSoloWin,
+  checkSyndicateWin,
+  SOLO_WIN_THRESHOLD,
+  SYNDICATE_WIN_THRESHOLD,
+} from "./winCondition.js";
 
 export function playerMarketValue(
   state: InternalGameState,
@@ -25,9 +30,6 @@ export interface WinEvaluation {
   marketValue: number;
 }
 
-const SOLO_WIN_SHARE = 0.35;
-const SYNDICATE_WIN_SHARE = 0.6;
-
 function formatPercent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
@@ -40,9 +42,9 @@ function buildWinSummary(
   const syndicate = getSyndicateForPlayer(state, evaluation.winnerId);
   const thresholdShare =
     evaluation.winType === "syndicate"
-      ? SYNDICATE_WIN_SHARE
+      ? SYNDICATE_WIN_THRESHOLD
       : evaluation.winType === "solo"
-        ? SOLO_WIN_SHARE
+        ? SOLO_WIN_THRESHOLD
         : undefined;
   const thresholdMarketValue =
     thresholdShare === undefined
@@ -52,8 +54,8 @@ function buildWinSummary(
     evaluation.winType === "last_standing"
       ? "Won as the last non-eliminated player."
       : evaluation.winType === "syndicate"
-        ? `Syndicate controlled ${evaluation.marketValue} of ${TOTAL_BOARD_MARKET_VALUE} market value (${formatPercent(marketShare)}), meeting the ${formatPercent(SYNDICATE_WIN_SHARE)} syndicate threshold after final-round checks.`
-        : `Controlled ${evaluation.marketValue} of ${TOTAL_BOARD_MARKET_VALUE} market value (${formatPercent(marketShare)}), meeting the ${formatPercent(SOLO_WIN_SHARE)} solo threshold.`;
+        ? `Syndicate controlled ${evaluation.marketValue} of ${TOTAL_BOARD_MARKET_VALUE} market value (${formatPercent(marketShare)}), meeting the ${formatPercent(SYNDICATE_WIN_THRESHOLD)} syndicate threshold after final-round checks.`
+        : `Controlled ${evaluation.marketValue} of ${TOTAL_BOARD_MARKET_VALUE} market value (${formatPercent(marketShare)}), meeting the ${formatPercent(SOLO_WIN_THRESHOLD)} solo threshold.`;
 
   return {
     winnerId: evaluation.winnerId,

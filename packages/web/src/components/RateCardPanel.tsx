@@ -1,6 +1,5 @@
 import {
   getSyndicateForPlayer,
-  type InternalGameState,
   RATE_CARD_STEP,
   SECTOR_IDS,
   type SectorId,
@@ -8,6 +7,7 @@ import {
 } from "@oligopoly/shared";
 import type { GameAction, GameState } from "@oligopoly/validation";
 import { useMemo, useState } from "react";
+import { engineGameState } from "../lib/engineGameState";
 import { isMyTurn, isSyndicateAdmin } from "../lib/gameUi";
 
 type RateCardPanelProps = {
@@ -32,14 +32,12 @@ export function RateCardPanel({
 
   const qualifyingSectorIds = useMemo(() => {
     if (!myPlayerId || !admin) return [];
-    const syndicate = getSyndicateForPlayer(
-      state as unknown as InternalGameState,
-      myPlayerId,
-    );
+    const engineState = engineGameState(state);
+    const syndicate = getSyndicateForPlayer(engineState, myPlayerId);
     if (!syndicate) return [];
     return SECTOR_IDS.filter((sectorId: SectorId) =>
       syndicateQualifiesForRateCard(
-        state as unknown as InternalGameState,
+        engineState,
         syndicate.syndicateId,
         sectorId,
       ),
