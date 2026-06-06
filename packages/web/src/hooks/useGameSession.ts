@@ -13,11 +13,7 @@ import {
   submitGameAction,
 } from "../api/games";
 import { ApiError } from "../api/http";
-import {
-  type BoardTileDetails,
-  buildTileDetailsMap,
-  buildTileNameMap,
-} from "../lib/boardDisplay";
+import { type BoardTileDetails, buildTileMaps } from "../lib/boardDisplay";
 import {
   currentActorId,
   isAiControlledActor,
@@ -84,8 +80,9 @@ export function useGameSession(
     void fetchGameConfig()
       .then((config) => {
         if (!cancelled) {
-          setTileNames(buildTileNameMap(config));
-          setTileDetails(buildTileDetailsMap(config));
+          const { names, details } = buildTileMaps(config);
+          setTileNames(names);
+          setTileDetails(details);
         }
       })
       .catch(() => {

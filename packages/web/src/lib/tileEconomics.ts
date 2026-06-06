@@ -137,7 +137,6 @@ export function getTileEconomics(
     mortgaged,
     availableMortgageRate,
     storedMortgageRate,
-    mortgageRate: availableMortgageRate,
     redemptionRate: hasPropTechDiscount
       ? PROPTECH_REDEMPTION_RATE
       : REDEMPTION_RATE,

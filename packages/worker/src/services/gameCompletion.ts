@@ -185,18 +185,20 @@ export async function processGameCompletion(
 
   const playerIds = JSON.parse(gameRow.player_ids_json) as string[];
   const humanPlayerIds = playerIds.filter((playerId) => !isAiSeat(playerId));
-  const idempotencyUserId = humanPlayerIds[0] ?? playerIds[0];
-  const alreadyProcessed = await db
-    .prepare(
-      "SELECT recent_games_json FROM user_stats WHERE user_id = ? LIMIT 1",
-    )
-    .bind(idempotencyUserId)
-    .first<{ recent_games_json: string }>();
+  const idempotencyCandidates =
+    humanPlayerIds.length > 0 ? humanPlayerIds : playerIds.slice(0, 1);
 
-  if (alreadyProcessed?.recent_games_json) {
+  for (const userId of idempotencyCandidates) {
+    const row = await db
+      .prepare(
+        "SELECT recent_games_json FROM user_stats WHERE user_id = ? LIMIT 1",
+      )
+      .bind(userId)
+      .first<{ recent_games_json: string }>();
+    if (!row?.recent_games_json) continue;
     let recent: RecentGameSummary[] = [];
     try {
-      const parsed = JSON.parse(alreadyProcessed.recent_games_json) as unknown;
+      const parsed = JSON.parse(row.recent_games_json) as unknown;
       if (Array.isArray(parsed)) {
         recent = parsed as RecentGameSummary[];
       }

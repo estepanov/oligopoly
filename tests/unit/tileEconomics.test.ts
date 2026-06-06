@@ -43,7 +43,6 @@ describe("getTileEconomics", () => {
 
     expect(economics.availableMortgageRate).toBe(0.6);
     expect(economics.storedMortgageRate).toBe(0.5);
-    expect(economics.mortgageRate).toBe(0.6);
     expect(economics.availableMortgageValue).toBe(84);
     expect(economics.formattedAvailableMortgageValue).toBe("$84");
     expect(economics.storedMortgageValue).toBeNull();
@@ -89,7 +88,6 @@ describe("getTileEconomics", () => {
 
     expect(economics.availableMortgageRate).toBe(0.5);
     expect(economics.storedMortgageRate).toBe(0.6);
-    expect(economics.mortgageRate).toBe(0.5);
     expect(economics.availableMortgageValue).toBe(70);
     expect(economics.formattedAvailableMortgageValue).toBe("$70");
     expect(economics.storedMortgageValue).toBe(84);

@@ -84,7 +84,7 @@ export function PlayerSummaryPanel({
                   {player.ownedTilePositions.map((position) => {
                     const economics = getTileEconomics(
                       state,
-                      isMe ? player.playerId : null,
+                      player.playerId,
                       position,
                       myPlayerId,
                     );

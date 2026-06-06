@@ -90,15 +90,15 @@ function BoardCell({
   const label = tileLabel(position, tileNames);
   const details = tileDetails.get(String(position));
   const currencySettings = state.settings;
-  const economics = getTileEconomics(
-    state,
-    isMine ? myPlayerId : null,
-    position,
-    myPlayerId,
-  );
-  const canShowEconomics = economics.tileCost !== null;
-  const { label: mortgageLabel, formattedValue: formattedMortgageValue } =
-    mortgageEconomicsLabels(economics);
+  const economics = isMine
+    ? getTileEconomics(state, myPlayerId, position, myPlayerId)
+    : null;
+  const showOwnerActionEconomics =
+    isMine && economics !== null && economics.tileCost !== null;
+  const mortgageLine =
+    showOwnerActionEconomics && economics
+      ? mortgageEconomicsLabels(economics)
+      : null;
 
   return (
     <InfoDialog
@@ -159,12 +159,12 @@ function BoardCell({
             <dd>{tileState.developmentTokens} token(s)</dd>
           </>
         )}
-        {canShowEconomics && (
+        {showOwnerActionEconomics && economics && mortgageLine && (
           <>
             <dt className="muted">Next development</dt>
             <dd>{economics.formattedDevelopmentCost ?? "Not available"}</dd>
-            <dt className="muted">{mortgageLabel}</dt>
-            <dd>{formattedMortgageValue ?? "Not available"}</dd>
+            <dt className="muted">{mortgageLine.label}</dt>
+            <dd>{mortgageLine.formattedValue ?? "Not available"}</dd>
             <dt className="muted">Redeem cost</dt>
             <dd>{economics.formattedRedemptionCost ?? "Not available"}</dd>
           </>

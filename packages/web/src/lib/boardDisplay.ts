@@ -12,26 +12,33 @@ type BoardConfigSlice = {
   diagonalTiles: BoardTileLike[];
 };
 
+export type BoardTileDetails = BoardTileLike;
+
+/** Single pass over board config for both name and detail maps. */
+export function buildTileMaps(config: BoardConfigSlice): {
+  names: Map<string, string>;
+  details: Map<string, BoardTileDetails>;
+} {
+  const names = new Map<string, string>();
+  const details = new Map<string, BoardTileDetails>();
+  for (const tile of [...config.perimeterTiles, ...config.diagonalTiles]) {
+    const key = String(tile.position);
+    names.set(key, tile.name);
+    details.set(key, tile);
+  }
+  return { names, details };
+}
+
 export function buildTileNameMap(
   config: BoardConfigSlice,
 ): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const tile of [...config.perimeterTiles, ...config.diagonalTiles]) {
-    map.set(String(tile.position), tile.name);
-  }
-  return map;
+  return buildTileMaps(config).names;
 }
-
-export type BoardTileDetails = BoardTileLike;
 
 export function buildTileDetailsMap(
   config: BoardConfigSlice,
 ): Map<string, BoardTileDetails> {
-  const map = new Map<string, BoardTileDetails>();
-  for (const tile of [...config.perimeterTiles, ...config.diagonalTiles]) {
-    map.set(String(tile.position), tile);
-  }
-  return map;
+  return buildTileMaps(config).details;
 }
 
 /**

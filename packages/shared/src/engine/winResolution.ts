@@ -195,7 +195,7 @@ export function triggerFinalRoundIfNeeded(
     actionType: "final_round_started",
     payload: {
       remainingTurnPlayerIds: remaining,
-      winType: evaluation.winType,
+      winType: "syndicate",
     },
   });
   return state;
