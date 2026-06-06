@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   advanceAuctionSettle,
-  completeCoordinationPhase,
   createAndStartGame,
   createD1Stub,
   drawRoundStartMarketEvent,
@@ -642,9 +641,8 @@ describe("Full game round cycle", () => {
     const end2Body = (await endRes2.json()) as Record<string, unknown>;
     // After both players go, round should advance
     expect(end2Body.round).toBe(2);
-    expect(end2Body.phase).toBe("syndicate_coordination");
+    expect(end2Body.phase).toBe("waiting_for_roll");
 
-    await completeCoordinationPhase(db, gameId, [currentPlayer, otherPlayer]);
     await drawRoundStartMarketEvent(db, gameId, currentPlayer);
 
     // Player 1 can take their turn again in round 2

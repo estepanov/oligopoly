@@ -12,8 +12,8 @@ import {
 import { getTileEconomics } from "../lib/tileEconomics";
 import { ActionPhaseExtras } from "./ActionPhaseExtras";
 import { AuctionPanel } from "./AuctionPanel";
-import { CoordinationControls } from "./CoordinationControls";
 import { InsiderPeekPanel } from "./InsiderPeekPanel";
+import { RateCardPanel } from "./RateCardPanel";
 import { TileEconomicsExplainDialog } from "./TileEconomicsExplainDialog";
 
 type GamePlayControlsProps = {
@@ -73,18 +73,15 @@ export function GamePlayControls({
         </p>
       )}
 
-      {myPlayerId &&
-        !myTurn &&
-        !auctionActive &&
-        state.phase !== "syndicate_coordination" && (
-          <p className="muted">Waiting for the current player to act…</p>
-        )}
+      {myPlayerId && !myTurn && !auctionActive && (
+        <p className="muted">Waiting for the current player to act…</p>
+      )}
 
       {myTurn && !auctionActive && guidance && (
         <p className="turnGuidance ok">{guidance}</p>
       )}
 
-      <CoordinationControls
+      <RateCardPanel
         state={state}
         myPlayerId={myPlayerId}
         busy={busy}
@@ -225,6 +222,7 @@ export function GamePlayControls({
                 state,
                 myPlayerId,
                 tile.position,
+                myPlayerId,
               );
               const name = tileLabel(tile.position, tileNames);
 

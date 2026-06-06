@@ -880,7 +880,7 @@ describe("GameActionSchema", () => {
 
 describe("GamePhaseSchema", () => {
   it("accepts all valid phases", () => {
-    for (const p of ["market_event", "action", "syndicate_coordination"]) {
+    for (const p of ["market_event", "action", "waiting_for_roll"]) {
       expect(GamePhaseSchema.safeParse(p).success).toBe(true);
     }
   });

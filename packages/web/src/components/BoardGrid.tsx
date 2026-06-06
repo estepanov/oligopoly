@@ -1,7 +1,10 @@
 import type { GameState } from "@oligopoly/validation";
 import { type BoardTileDetails, tileLabel } from "../lib/boardDisplay";
 import { formatCurrencyAmount, playerDisplayName } from "../lib/gameDisplay";
-import { getTileEconomics } from "../lib/tileEconomics";
+import {
+  getTileEconomics,
+  mortgageEconomicsLabels,
+} from "../lib/tileEconomics";
 import { InfoDialog } from "./InfoDialog";
 
 type BoardGridProps = {
@@ -91,14 +94,11 @@ function BoardCell({
     state,
     isMine ? myPlayerId : null,
     position,
+    myPlayerId,
   );
   const canShowEconomics = economics.tileCost !== null;
-  const mortgageLabel = economics.mortgaged
-    ? "Stored mortgage value"
-    : "Mortgage gain";
-  const formattedMortgageValue = economics.mortgaged
-    ? economics.formattedStoredMortgageValue
-    : economics.formattedAvailableMortgageValue;
+  const { label: mortgageLabel, formattedValue: formattedMortgageValue } =
+    mortgageEconomicsLabels(economics);
 
   return (
     <InfoDialog

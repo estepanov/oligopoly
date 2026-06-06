@@ -49,6 +49,7 @@ import {
   regulationPenaltiesEnabled,
 } from "./optionalRulesEngine.js";
 import { resolvePostMovePhase } from "./phaseHelpers.js";
+import { advanceToFirstPlayerOfNewRound } from "./rateCardActions.js";
 import {
   recordOpposingSectorLanding,
   revokeRateCardsForMortgage,
@@ -697,10 +698,11 @@ export function handleEndTurn(
       payload: { round: newState.round },
     });
     newState = processCoordinationPhase(newState, logs);
-    newState.phase = "syndicate_coordination";
-    newState.currentPlayerIndex = 0;
-    newState.lastDiceRoll = null;
-    newState.pendingBuyTilePosition = null;
+    const roundStart = advanceToFirstPlayerOfNewRound(newState, logs);
+    newState = roundStart.state;
+    newState.aiPlayers = (newState.aiPlayers ?? []).filter(
+      (ai) => ai.takeoverForPlayerId !== playerId,
+    );
     return { state: newState, logEntries: logs };
   }
 

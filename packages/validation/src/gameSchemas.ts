@@ -109,9 +109,6 @@ export const GameActionSchema = z.discriminatedUnion("type", [
     multiplier: z.number().min(0.5).max(2.0),
   }),
   z.object({
-    type: z.literal("end_coordination"),
-  }),
-  z.object({
     type: z.literal("initiate_auction"),
     tilePosition: z.union([z.number().int(), z.string()]),
     amount: z.number().int().min(1).optional(),
@@ -151,7 +148,6 @@ export type GameAction = z.infer<typeof GameActionSchema>;
 export const GamePhaseSchema = z.enum([
   "market_event",
   "action",
-  "syndicate_coordination",
   "waiting_for_market_event",
   "waiting_for_roll",
   "waiting_for_buy",
@@ -316,6 +312,12 @@ export const GameStateSchema = z.object({
   aiPlayers: z.array(AiPlayerRuntimeSchema).optional(),
   /** The requesting player's own affinity card (hidden from other players) */
   myAffinityCardId: z.string().nullable().optional(),
+  /**
+   * Server-side affinity map (often omitted on per-player views; see
+   * `toClientGameState`). When present, it is the source of truth over
+   * `myAffinityCardId` for listed players.
+   */
+  affinityAssignments: z.record(z.string(), z.string()).optional(),
   /** Position of tile awaiting purchase decision */
   pendingBuyTilePosition: z
     .union([z.number().int(), z.string()])

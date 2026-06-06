@@ -253,6 +253,9 @@ export const PlayerStateChangesBodySchema = z.object({
   mortgagedTilePositions: PlayerStateTileSetDiffSchema.optional(),
   developmentTokens: z.array(DevelopmentTokenDeltaSchema).optional(),
 });
+export type PlayerStateChangesBody = z.infer<
+  typeof PlayerStateChangesBodySchema
+>;
 
 export const PlayerStateChangedPayloadSchema = z.object({
   playerId: z.string(),

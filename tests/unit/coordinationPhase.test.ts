@@ -1,8 +1,8 @@
 import { applyAction, normalizeGameState } from "@oligopoly/shared";
 import { describe, expect, it } from "vitest";
 
-describe("syndicate coordination phase", () => {
-  it("enters coordination after the final player ends the round", () => {
+describe("round boundary after full lap", () => {
+  it("increments round and starts the next turn with turn-start market event", () => {
     const state = normalizeGameState({
       gameId: "g-coord",
       round: 1,
@@ -48,7 +48,7 @@ describe("syndicate coordination phase", () => {
     });
 
     const result = applyAction(state, "p2", { type: "end_turn" });
-    expect(result.state.phase).toBe("syndicate_coordination");
     expect(result.state.round).toBe(2);
+    expect(result.state.phase).toBe("waiting_for_roll");
   });
 });

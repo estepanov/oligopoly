@@ -175,12 +175,15 @@ describe("processGameCompletion", () => {
       state_json: null,
     });
 
+    // user-2 was kicked and replaced by AI (same seat id, kind "ai"). They
+    // must not earn human completion stats; aggregate wins still count as AI.
     await processGameCompletion(
       db,
       kv,
       "game-1",
       makeCompletedState({
         winnerId: "user-2",
+        kickedPlayerIds: ["user-2"],
         players: [
           makeCompletedState().players[0],
           {

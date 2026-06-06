@@ -1,9 +1,11 @@
 import {
   AFFINITY_IDS,
+  type AffinityContext,
   calculateDevelopmentCost,
   calculateMortgageValue,
   calculateRedemptionCost,
   getTileByPosition,
+  hasPlayerAffinity,
   MAX_DEVELOPMENT_TOKENS,
   MORTGAGE_RATE,
   PROPTECH_REDEMPTION_RATE,
@@ -14,6 +16,7 @@ import { formatCurrencyAmount } from "./gameDisplay";
 import {
   canMortgageTile,
   canRedeemTile,
+  effectiveAffinityContext,
   isTileDevelopableByPlayer,
   playerById,
   tileStateByPosition,
@@ -23,12 +26,17 @@ export function getTileEconomics(
   state: GameState,
   playerId: string | null,
   position: number | string,
+  viewerPlayerId: string | null = playerId,
 ) {
   const boardTile = getTileByPosition(position);
   const tileState = tileStateByPosition(state, position);
   const player = playerId ? playerById(state, playerId) : undefined;
   const ownerId = tileState?.ownerId ?? null;
   const isMine = Boolean(playerId && ownerId === playerId);
+  const affinityCtx: AffinityContext =
+    ownerId !== null
+      ? effectiveAffinityContext(state, ownerId, viewerPlayerId)
+      : {};
   const tileCost = boardTile?.cost ?? null;
   const developmentTokens = tileState?.developmentTokens ?? 0;
   const nextDevelopmentToken = developmentTokens + 1;
@@ -42,9 +50,13 @@ export function getTileEconomics(
       ? Math.floor(tileCost * storedMortgageRate)
       : null;
   const hasLeanDiscount =
-    isMine && state.myAffinityCardId === AFFINITY_IDS.lean_manufacturing;
+    isMine &&
+    ownerId !== null &&
+    hasPlayerAffinity(affinityCtx, ownerId, AFFINITY_IDS.lean_manufacturing);
   const hasPropTechDiscount =
-    isMine && state.myAffinityCardId === AFFINITY_IDS.proptech_pioneer;
+    isMine &&
+    ownerId !== null &&
+    hasPlayerAffinity(affinityCtx, ownerId, AFFINITY_IDS.proptech_pioneer);
   const isDevelopableTile =
     boardTile?.type === "sector_tile" &&
     !mortgaged &&
@@ -139,6 +151,19 @@ export function getTileEconomics(
     hasLeanDiscount,
     hasPropTechDiscount,
     maxDevelopmentTokens: MAX_DEVELOPMENT_TOKENS,
+  };
+}
+
+export function mortgageEconomicsLabels(economics: {
+  mortgaged: boolean;
+  formattedStoredMortgageValue: string | null;
+  formattedAvailableMortgageValue: string | null;
+}): { label: string; formattedValue: string | null } {
+  return {
+    label: economics.mortgaged ? "Stored mortgage value" : "Mortgage gain",
+    formattedValue: economics.mortgaged
+      ? economics.formattedStoredMortgageValue
+      : economics.formattedAvailableMortgageValue,
   };
 }
 

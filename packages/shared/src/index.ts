@@ -100,6 +100,7 @@ export {
 export {
   AFFINITY_IDS,
   type AffinityContext,
+  applyAcquisitionCostAffinity,
   getPlayerAffinityId,
   hasPlayerAffinity,
 } from "./engine/affinity.js";
@@ -109,7 +110,6 @@ export {
   chooseAiActionForPlayer,
   findNextAiActorForPhase,
   findNextAiAuctionActor,
-  findNextAiCoordinationActor,
 } from "./engine/ai.js";
 export {
   applyTimeoutTakeover,
@@ -277,6 +277,7 @@ export {
   MAX_DEVELOPMENT_TOKENS,
   RATE_CARD_MAX,
   RATE_CARD_MIN,
+  RATE_CARD_STEP,
   RENT_MULTIPLIERS,
   UTILITY_RENT_MULTIPLIER,
 } from "./engine/rent.js";
@@ -303,6 +304,7 @@ export {
   buildDefaultSyndicateCharter,
   controllingPlayerIds,
   findSyndicateWinnerId,
+  formSyndicateApCost,
   getSyndicateForPlayer,
   hasSectorControl,
   type SyndicateState,

@@ -1,7 +1,10 @@
 import {
   ACTION_COSTS,
   AFFINITY_IDS,
+  type AffinityContext,
+  applyAcquisitionCostAffinity,
   canCreateBindingContract,
+  formSyndicateApCost,
   getTileByPosition,
   type InternalGameState,
   isActionBlockedByContracts,
@@ -42,6 +45,30 @@ export function isAiControlledActor(
 ): boolean {
   if (!actorId) return false;
   return isAiControlledActorShared(state as InternalGameState, actorId);
+}
+
+/**
+ * Merge server `affinityAssignments` with the viewer's `myAffinityCardId` when
+ * the subject is the viewer and the server has not yet populated that slot.
+ */
+export function effectiveAffinityContext(
+  state: GameState,
+  subjectPlayerId: string | null,
+  viewerPlayerId: string | null,
+): AffinityContext {
+  const assignments: Record<string, string> = {
+    ...(state.affinityAssignments ?? {}),
+  };
+  if (
+    subjectPlayerId &&
+    viewerPlayerId &&
+    subjectPlayerId === viewerPlayerId &&
+    state.myAffinityCardId &&
+    assignments[subjectPlayerId] === undefined
+  ) {
+    assignments[subjectPlayerId] = state.myAffinityCardId;
+  }
+  return { affinityAssignments: assignments };
 }
 
 type PhaseUiCapabilities = {
@@ -225,19 +252,6 @@ export function mergeAuctionClientView(
   };
 }
 
-export function isCoordinationPhase(state: GameState): boolean {
-  return state.phase === "syndicate_coordination";
-}
-
-export function playerNeedsCoordinationAck(
-  state: GameState,
-  myPlayerId: string | null,
-): boolean {
-  if (!myPlayerId || !isCoordinationPhase(state)) return false;
-  const player = playerById(state, myPlayerId);
-  return player?.coordinationAcknowledged !== true;
-}
-
 export function syndicateAdminIdForPlayer(
   state: GameState,
   myPlayerId: string | null,
@@ -281,17 +295,17 @@ export function tileStateByPosition(
 
 function acquisitionCostForPlayer(
   state: GameState,
+  buyerPlayerId: string,
   position: number | string,
 ): number | null {
   const tile = getTileByPosition(position);
   if (!tile || tile.cost === null) return null;
-  if (
-    state.myAffinityCardId === AFFINITY_IDS.ai_pioneer &&
-    (tile.sectorId === "big_tech" || tile.sectorId === "emerging_tech")
-  ) {
-    return Math.floor(tile.cost * 0.85);
-  }
-  return tile.cost;
+  return applyAcquisitionCostAffinity(
+    effectiveAffinityContext(state, buyerPlayerId, buyerPlayerId),
+    buyerPlayerId,
+    tile.sectorId,
+    tile.cost,
+  );
 }
 
 export function canBuyPendingTile(
@@ -309,7 +323,11 @@ export function canBuyPendingTile(
     return false;
   }
   const player = playerById(state, myPlayerId);
-  const cost = acquisitionCostForPlayer(state, state.pendingBuyTilePosition);
+  const cost = acquisitionCostForPlayer(
+    state,
+    myPlayerId,
+    state.pendingBuyTilePosition,
+  );
   return Boolean(player && cost !== null && player.capital >= cost);
 }
 
@@ -365,17 +383,17 @@ export function canPayDebt(state: GameState, playerId: string): boolean {
   );
 }
 
-function formSyndicateApCost(state: GameState): number {
-  return state.myAffinityCardId === AFFINITY_IDS.founding_partner ? 0 : 1;
-}
-
 export function canFormSyndicate(state: GameState, playerId: string): boolean {
   const player = playerById(state, playerId);
   return Boolean(
     isActionTurn(state, playerId) &&
       player &&
       !player.syndicateId &&
-      player.actionPointsRemaining >= formSyndicateApCost(state) &&
+      player.actionPointsRemaining >=
+        formSyndicateApCost(
+          effectiveAffinityContext(state, playerId, playerId),
+          playerId,
+        ) &&
       otherHumanPlayers(state, playerId).some((other) => !other.syndicateId),
   );
 }

@@ -2,6 +2,7 @@
 // Player change diff logs — appended after successful applyAction results.
 // ---------------------------------------------------------------------------
 
+import type { PlayerStateChangesBody } from "@oligopoly/validation";
 import type {
   ApplyActionResult,
   InternalGameState,
@@ -89,7 +90,7 @@ function buildPlayerChangeLogs(
       previous.developmentTokens,
       player.developmentTokens,
     );
-    const changes: Record<string, unknown> = {};
+    const changes: PlayerStateChangesBody = {};
 
     if (player.capital !== previous.capital) {
       changes.capital = {

@@ -2197,7 +2197,7 @@ describe("applyAction — end_turn", () => {
     const result = applyAction(state, "player-2", { type: "end_turn" });
     expect(result.state.currentPlayerIndex).toBe(0);
     expect(result.state.round).toBe(2);
-    expect(result.state.phase).toBe("syndicate_coordination");
+    expect(result.state.phase).toBe("waiting_for_roll");
   });
 });
 
@@ -2529,15 +2529,7 @@ describe("applyAction — regulation penalty persists through next turn", () => 
     state.turnOrder = ["player-1", "player-2"];
     state.players[0].inRegulation = true;
 
-    let result = applyAction(state, "player-2", { type: "end_turn" });
-    expect(result.state.phase).toBe("syndicate_coordination");
-
-    result = applyAction(result.state, "player-1", {
-      type: "end_coordination",
-    });
-    result = applyAction(result.state, "player-2", {
-      type: "end_coordination",
-    });
+    const result = applyAction(state, "player-2", { type: "end_turn" });
     expect(result.state.phase).toBe("waiting_for_roll");
     const p1 = result.state.players.find((p) => p.playerId === "player-1")!;
     expect(p1.actionPointsRemaining).toBe(0);

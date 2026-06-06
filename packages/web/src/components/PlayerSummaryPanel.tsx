@@ -1,7 +1,10 @@
 import type { GameState } from "@oligopoly/validation";
 import { tileLabel } from "../lib/boardDisplay";
 import { formatCurrencyAmount, playerDisplayName } from "../lib/gameDisplay";
-import { getTileEconomics } from "../lib/tileEconomics";
+import {
+  getTileEconomics,
+  mortgageEconomicsLabels,
+} from "../lib/tileEconomics";
 import { InfoDialog } from "./InfoDialog";
 
 type PlayerSummaryPanelProps = {
@@ -82,6 +85,7 @@ export function PlayerSummaryPanel({
                       state,
                       isMe ? player.playerId : null,
                       position,
+                      myPlayerId,
                     );
                     const developmentTokens =
                       economics.developmentTokens ??
@@ -94,12 +98,16 @@ export function PlayerSummaryPanel({
                           String(tilePosition) === String(position),
                       );
                     const propertyName = tileLabel(position, tileNames);
-                    const mortgageLabel = mortgaged
-                      ? "Stored mortgage value"
-                      : "Mortgage gain";
-                    const formattedMortgageValue = mortgaged
-                      ? economics.formattedStoredMortgageValue
-                      : economics.formattedAvailableMortgageValue;
+                    const {
+                      label: mortgageLabel,
+                      formattedValue: formattedMortgageValue,
+                    } = mortgageEconomicsLabels({
+                      mortgaged,
+                      formattedStoredMortgageValue:
+                        economics.formattedStoredMortgageValue,
+                      formattedAvailableMortgageValue:
+                        economics.formattedAvailableMortgageValue,
+                    });
 
                     return (
                       <li key={String(position)} className="propertyListItem">

@@ -396,14 +396,14 @@ Tile acquisition costs reflect current market conditions. Market Event cards for
 When a Syndicate controls **all tiles in a sector AND owns that sector's Sector Hub**, it may post a **Rate Card** — overriding the calculated rent on every tile in that sector with a custom multiplier.
 
 #### When Rate Cards Become Available
-A Rate Card becomes available to a Syndicate during the **Syndicate Coordination Phase** of any round in which the Syndicate meets both conditions:
+A Rate Card becomes available in any round where the Syndicate meets both conditions:
 1. Owns all sector tiles (full perimeter + diagonal tiles in that sector)
 2. Owns the Sector Hub for that sector
 
-If the Syndicate loses either condition (tile traded away, mortgaged, or taken by Hostile Takeover), the Rate Card is immediately revoked and rent returns to the standard calculated rate. **If any single tile in the qualifying sector or its Sector Hub becomes mortgaged, the Rate Card is revoked in its entirety** — even if the other tiles remain owned and unmortgaged. The Rate Card can only be reinstated once all disqualifying conditions are resolved and the Syndicate re-activates it during a subsequent Syndicate Coordination Phase.
+If the Syndicate loses either condition (tile traded away, mortgaged, or taken by Hostile Takeover), the Rate Card is immediately revoked and rent returns to the standard calculated rate. **If any single tile in the qualifying sector or its Sector Hub becomes mortgaged, the Rate Card is revoked in its entirety** — even if the other tiles remain owned and unmortgaged. The Rate Card can only be reinstated once all disqualifying conditions are resolved and the Syndicate admin posts a new Rate Card again while qualified (see below).
 
 #### Setting a Rate
-During the Syndicate Coordination Phase, the Syndicate admin may set or adjust the Rate Card multiplier for any sector in which they qualify. The multiplier is a percentage of the **fully calculated rent** (base × all applicable multipliers before the Rate Card is applied):
+While you are the **active player** on your own turn (**Action Phase**, including between doubles when you are still rolling), the **Syndicate admin** may set or adjust the Rate Card multiplier for any sector in which the Syndicate currently qualifies. The change applies **immediately** to the next rent resolution in that sector. The multiplier is a percentage of the **fully calculated rent** (base × all applicable multipliers before the Rate Card is applied):
 
 | Multiplier | Effect |
 |---|---|
@@ -433,7 +433,7 @@ Aggressive monopolisation imposes costs on all players. Some Market Event cards 
 
 ## Turn Structure
 
-Each full round has three sequential phases.
+Each full round has two player-facing phases. **Between rounds** (after the last player ends their turn and before the next turn-start market event), the server applies bookkeeping automatically (debt interest when enabled, negotiation expiry, rate-card market-pressure ticks, and similar) — there is no separate pause for table acknowledgement.
 
 ---
 
@@ -443,7 +443,7 @@ At the start of each player's turn, the server automatically draws and resolves 
 
 ---
 
-### Phase 2: Action Phase
+### Action phase
 
 Each player takes their turn in order. A turn consists of a mandatory **Movement Step** followed by optional **Action Points**.
 
@@ -496,14 +496,17 @@ After resolving tile effects, spend **2 Action Points:**
 
 ---
 
-### Phase 3: Syndicate Coordination Phase
+### Between-round housekeeping (automatic)
 
-- Joint sector acquisitions resolve
-- Syndicate revenue distributes per charter
-- Oligopoly pricing decisions take effect
-- Market Control tracker updates
-- Winning threshold check
+At the end of each full lap of turns, before the next player’s turn-start market draw, the server resolves bookkeeping that does not require player input:
+
+- Joint sector acquisitions from the prior round are fully reflected on the board state
+- Syndicate revenue and charter obligations continue to apply as written elsewhere
+- **Oligopoly pricing (Rate Cards)** set during turns remain in force unless revoked by loss of control, mortgage, or market-pressure reset
+- Market Control tracker updates and winning-threshold checks run as implemented in the live ruleset
 - Regulation effects reset for players who completed their Regulation turn
+
+Players do not wait on a separate “coordination” step; syndicate admins adjust Rate Cards on **their own** turns when qualified.
 
 ---
 
@@ -724,7 +727,7 @@ Game admins may enable any of the following **optional house rules** in the lobb
 
 **Open Negotiation** — All negotiation proposals, counter-proposals, and agreements are visible to all players in the game (not just the parties involved). Transparency may encourage or discourage negotiation; use with caution.
 
-**Debt Spiral** — If a player cannot pay rent immediately and has no available Capital, they owe the debt as an interest-bearing obligation. The debt accrues **10% simple interest per round** until fully paid (applied to the original debt amount only — not compounding). Interest is calculated on the principal at the end of each Round 3 (Syndicate Coordination Phase). A player may pay off debt at any time.
+**Debt Spiral** — If a player cannot pay rent immediately and has no available Capital, they owe the debt as an interest-bearing obligation. The debt accrues **10% simple interest per round** until fully paid (applied to the original debt amount only — not compounding). Interest is calculated on the principal at the **end of each full player round** (immediately before the next round’s first turn-start market event). A player may pay off debt at any time.
 
 ### Rank-Gated Optional Rules (Requires Capital Baron Rank or Above)
 

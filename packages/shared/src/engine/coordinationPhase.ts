@@ -44,10 +44,6 @@ export function processCoordinationPhase(
   newState = tickRateCardPressureResets(newState, logs);
   newState = expireNegotiationThreads(newState, logs);
 
-  for (const player of newState.players) {
-    player.coordinationAcknowledged = false;
-  }
-
   newState = triggerFinalRoundIfNeeded(newState, logs);
 
   logs.push({
