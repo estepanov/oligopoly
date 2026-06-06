@@ -4,6 +4,7 @@ import {
   normalizeGameState,
 } from "@oligopoly/shared";
 import { toClientGameState } from "../gameStateView.js";
+import { isNotifyRequest } from "../realtime/notify.js";
 import {
   applyAuctionBidWindowExpiry,
   applyAuctionSettleExpiry,
@@ -40,7 +41,10 @@ abstract class RealtimeRoom {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    if (request.method === "POST" && url.searchParams.has("notify")) {
+    // Internal fan-out POSTs are routed to the shared NOTIFY_PATH (carrying the
+    // gameId/lobbyId as a query param). Match via the same helper the senders
+    // use so the two can't drift on a magic string.
+    if (request.method === "POST" && isNotifyRequest(url)) {
       const body = await request.text();
       await this.handleNotify(body);
       return new Response("ok");

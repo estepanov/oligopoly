@@ -1,6 +1,8 @@
 import { zValidator } from "@hono/zod-validator";
+import { isLoopbackUrl } from "@oligopoly/shared";
 import {
   AuthErrorKeys,
+  DevLoginInputSchema,
   LoginOptionsInputSchema,
   LoginVerifyInputSchema,
   RegisterOptionsInputSchema,
@@ -20,6 +22,11 @@ import {
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
 import { Hono } from "hono";
+import {
+  generateId,
+  issueAuthSession,
+  provisionNewUserStatements,
+} from "../lib/authProvisioning.js";
 
 type Bindings = {
   DB?: D1Database;
@@ -54,23 +61,6 @@ function getExpectedOrigin(c: { env?: Bindings }): string {
   return c.env?.WEBAUTHN_ORIGIN ?? "http://localhost:5173";
 }
 
-function generateId(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function generateToken(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const CHALLENGE_TTL_SECONDS = 300; // 5 minutes
 
 interface CredentialRow {
@@ -219,30 +209,11 @@ authRoutes.post(
       ? JSON.stringify(regCredential.transports)
       : null;
 
-    const token = generateToken();
-    const sessionId = generateId();
-    const expiresAt = now + SESSION_TTL_MS;
+    const session = issueAuthSession(db, userId, username, now);
 
     // Batch all inserts so they succeed or fail atomically
     await db.batch([
-      db
-        .prepare(
-          "INSERT INTO users (id, username, locale, theme_preference, created_at, updated_at, role) VALUES (?, ?, 'en', 'system', ?, ?, 'user')",
-        )
-        .bind(userId, username, now, now),
-      db
-        .prepare("INSERT INTO user_visibility (user_id) VALUES (?)")
-        .bind(userId),
-      db
-        .prepare(
-          "INSERT INTO user_ranks (user_id, tier, rank_points) VALUES (?, 0, 0)",
-        )
-        .bind(userId),
-      db
-        .prepare(
-          "INSERT INTO trustworthiness (user_id, score, last_updated_at) VALUES (?, 7, ?)",
-        )
-        .bind(userId, now),
+      ...provisionNewUserStatements(db, userId, username, now),
       db
         .prepare(
           "INSERT INTO passkey_credentials (id, user_id, credential_id, public_key, counter, device_type, backed_up, transports, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -258,11 +229,7 @@ authRoutes.post(
           transportsJson,
           now,
         ),
-      db
-        .prepare(
-          "INSERT INTO auth_sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(sessionId, userId, token, expiresAt, now),
+      ...session.statements,
     ]);
 
     // Clean up used challenge (single-use per WebAuthn protocol)
@@ -272,12 +239,7 @@ authRoutes.post(
         .catch(() => {});
     }
 
-    return c.json({
-      token,
-      userId,
-      username,
-      expiresAt,
-    });
+    return c.json(session.response);
   },
 );
 
@@ -445,22 +407,8 @@ authRoutes.post(
 
     // Create session
     const now = Date.now();
-    const token = generateToken();
-    const sessionId = generateId();
-    const expiresAt = now + SESSION_TTL_MS;
-
-    await db.batch([
-      db
-        .prepare(
-          "INSERT INTO auth_sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(sessionId, user.id, token, expiresAt, now),
-      db
-        .prepare(
-          "DELETE FROM auth_sessions WHERE user_id = ? AND expires_at < ?",
-        )
-        .bind(user.id, now),
-    ]);
+    const session = issueAuthSession(db, user.id, user.username, now);
+    await db.batch(session.statements);
 
     // Clean up used challenge (single-use per WebAuthn protocol)
     if (matchedLoginChallenge) {
@@ -469,12 +417,61 @@ authRoutes.post(
         .catch(() => {});
     }
 
-    return c.json({
-      token,
-      userId: user.id,
-      username: user.username,
-      expiresAt,
-    });
+    return c.json(session.response);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /dev-login — local-development-only passwordless sign-in.
+//
+// Auth in this product is WebAuthn passkeys with no guest login. Passkeys are
+// impractical to register for every local seat when testing multiplayer, so
+// this endpoint issues a session for a username WITHOUT a credential. It is
+// strictly gated to loopback origins via the shared `isLoopbackUrl` helper
+// (same gate as the local-only AI step endpoint) and is never reachable from
+// deployed origins.
+// ---------------------------------------------------------------------------
+authRoutes.post(
+  "/dev-login",
+  zValidator("json", DevLoginInputSchema, (result, c) => {
+    if (!result.success) {
+      return c.json(
+        { error: "Invalid request body", details: result.error.flatten() },
+        400,
+      );
+    }
+  }),
+  async (c) => {
+    if (!isLoopbackUrl(c.req.url)) {
+      return c.json({ error: AuthErrorKeys.FORBIDDEN }, 403);
+    }
+
+    const db = c.env?.DB;
+    if (!db) {
+      return c.json({ error: AuthErrorKeys.DB_NOT_CONFIGURED }, 500);
+    }
+
+    const { username } = c.req.valid("json");
+    const now = Date.now();
+
+    const existing = await db
+      .prepare("SELECT id FROM users WHERE username = ?")
+      .bind(username)
+      .first<{ id: string }>();
+
+    const userId = existing?.id ?? generateId();
+    const session = issueAuthSession(db, userId, username, now);
+
+    // Provision the user (companion rows match the WebAuthn registration flow)
+    // only when new, and issue the session — in a single atomic batch.
+    await db.batch([
+      ...(existing
+        ? []
+        : provisionNewUserStatements(db, userId, username, now)),
+      ...session.statements,
+    ]);
+
+    return c.json(session.response);
   },
 );
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   advanceAuctionSettle,
   completeCoordinationPhase,
@@ -11,6 +11,10 @@ import {
   requestWithEnv,
   storedActorId,
 } from "../helpers/workerGameplayHarness.js";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("POST /api/games/:id/action — draw_market_event", () => {
   it("starts games in waiting_for_market_event and resolves the round-start draw", async () => {
@@ -180,6 +184,68 @@ describe("POST /api/games/:id/action — roll_dice", () => {
     const movedPlayer = players.find((p) => p.playerId === currentPlayer);
     expect(movedPlayer).toBeDefined();
     expect(movedPlayer?.position).toBe(5);
+  });
+
+  it("ignores client-supplied dice on deployed-origin URLs", async () => {
+    vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation(
+      (array) => {
+        array[0] = 0;
+        return array;
+      },
+    );
+
+    const db = createD1Stub();
+    const { gameId, currentPlayer } = await createAndStartGame(db);
+
+    const res = await requestWithEnv(
+      `https://play.oligopoly.test/api/games/${gameId}/action`,
+      {
+        method: "POST",
+        headers: { "x-subject": currentPlayer },
+        body: { type: "roll_dice", result: [6, 6] },
+        db,
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.lastDiceRoll).not.toEqual([6, 6]);
+
+    const players = body.players as Array<{
+      playerId: string;
+      position: number | string;
+    }>;
+    const movedPlayer = players.find((p) => p.playerId === currentPlayer);
+    expect(movedPlayer?.position).not.toBe(12);
+  });
+
+  it("rolls with server-injected RNG when the client omits result", async () => {
+    // The web client sends `{ type: "roll_dice" }` with no dice; the worker
+    // must fill the authoritative result from RNG. Regression for a defect
+    // where omitted dice returned game.invalid_action (rolling impossible).
+    const db = createD1Stub();
+    const { gameId, currentPlayer } = await createAndStartGame(db);
+
+    const res = await requestWithEnv(`/api/games/${gameId}/action`, {
+      method: "POST",
+      headers: { "x-subject": currentPlayer },
+      body: { type: "roll_dice" },
+      db,
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    const roll = body.lastDiceRoll as [number, number] | null;
+    expect(Array.isArray(roll)).toBe(true);
+    expect(roll?.[0]).toBeGreaterThanOrEqual(1);
+    expect(roll?.[0]).toBeLessThanOrEqual(6);
+    expect(roll?.[1]).toBeGreaterThanOrEqual(1);
+    expect(roll?.[1]).toBeLessThanOrEqual(6);
+    // Player advanced off the start tile.
+    const players = body.players as Array<{
+      playerId: string;
+      position: number | string;
+    }>;
+    const moved = players.find((p) => p.playerId === currentPlayer);
+    expect(moved?.position).not.toBe(0);
   });
 
   it("returns 400 when trying to roll again without doubles", async () => {

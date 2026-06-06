@@ -1,7 +1,7 @@
 import {
   applyAction,
+  isLoopbackUrl,
   normalizeGameState,
-  rollPathChoiceDie,
 } from "@oligopoly/shared";
 import type { GameLogEntry, GameSummary } from "@oligopoly/validation";
 import {
@@ -14,6 +14,7 @@ import {
   type PersistedGameState,
   toClientGameState,
 } from "../gameStateView.js";
+import { buildEngineActionInput } from "../lib/dice.js";
 import { upgradeWebSocket } from "../realtime/upgrade.js";
 import { stepGameAiTurn } from "../services/gameAi.js";
 import { listGames, toGameSummary } from "../services/gameListings.js";
@@ -37,11 +38,6 @@ type Variables = {
 type AppEnv = { Bindings: Bindings; Variables: Variables };
 
 export const gameRoutes = new Hono<AppEnv>();
-
-const isLocalDevRequest = (url: string) => {
-  const hostname = new URL(url).hostname;
-  return hostname === "localhost" || hostname === "127.0.0.1";
-};
 
 type GameAccessRow = {
   id: string;
@@ -381,13 +377,9 @@ gameRoutes.post("/:id/action", async (c) => {
   }
   const actionBody = parsed.data;
 
-  // Server generates the path-choice die for rolls that may pass through START
-  const engineInput = {
-    ...actionBody,
-    ...(actionBody.type === "roll_dice"
-      ? { pathChoiceDie: rollPathChoiceDie() }
-      : {}),
-  };
+  // Enrich with server-authoritative fields (crypto dice + path-choice die for
+  // roll_dice) before applying. See buildEngineActionInput for the dice policy.
+  const engineInput = buildEngineActionInput(actionBody, c.req.url);
 
   try {
     const result = applyAction(gameState, subject, engineInput);
@@ -416,7 +408,7 @@ gameRoutes.post("/:id/action", async (c) => {
 // ---------------------------------------------------------------------------
 gameRoutes.post("/:id/ai/step", async (c) => {
   const id = c.req.param("id");
-  if (!isLocalDevRequest(c.req.url)) {
+  if (!isLoopbackUrl(c.req.url)) {
     return c.json({ error: GameErrorKeys.FORBIDDEN }, 403);
   }
   if (!c.get("userId")) {

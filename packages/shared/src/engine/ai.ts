@@ -68,7 +68,10 @@ function deterministicDice(
   for (const ch of seed) {
     hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
   }
-  return [((hash % 6) + 1) as 1, (((hash >> 3) % 6) + 1) as 1];
+  // Use the UNSIGNED right shift so the second die stays in 1..6. A signed
+  // `>>` can produce a negative value for large hashes, yielding invalid dice
+  // (e.g. -4) and negative board positions during AI / timeout-takeover rolls.
+  return [((hash % 6) + 1) as 1, (((hash >>> 3) % 6) + 1) as 1];
 }
 
 function shouldKeepPeekedMarketEvent(
