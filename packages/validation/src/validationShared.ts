@@ -202,57 +202,59 @@ export const DevelopmentTokenDeltaSchema = z.object({
   after: z.number(),
 });
 
-export const PlayerStateChangesBodySchema = z.object({
-  capital: z
-    .object({
-      before: z.number(),
-      after: z.number(),
-      delta: z.number(),
-    })
-    .optional(),
-  position: z
-    .object({
-      before: TilePositionValueSchema,
-      after: TilePositionValueSchema,
-    })
-    .optional(),
-  actionPointsRemaining: z
-    .object({
-      before: z.number(),
-      after: z.number(),
-      delta: z.number().optional(),
-    })
-    .optional(),
-  trustworthiness: z
-    .object({
-      before: z.number(),
-      after: z.number(),
-      delta: z.number().optional(),
-    })
-    .optional(),
-  inRegulation: z
-    .object({
-      before: z.boolean(),
-      after: z.boolean(),
-    })
-    .optional(),
-  syndicateId: z
-    .object({
-      before: z.string().nullable(),
-      after: z.string().nullable(),
-    })
-    .optional(),
-  outstandingDebt: z
-    .object({
-      before: z.number(),
-      after: z.number(),
-      delta: z.number(),
-    })
-    .optional(),
-  ownedTilePositions: PlayerStateTileSetDiffSchema.optional(),
-  mortgagedTilePositions: PlayerStateTileSetDiffSchema.optional(),
-  developmentTokens: z.array(DevelopmentTokenDeltaSchema).optional(),
-});
+export const PlayerStateChangesBodySchema = z
+  .object({
+    capital: z
+      .object({
+        before: z.number(),
+        after: z.number(),
+        delta: z.number(),
+      })
+      .optional(),
+    position: z
+      .object({
+        before: TilePositionValueSchema,
+        after: TilePositionValueSchema,
+      })
+      .optional(),
+    actionPointsRemaining: z
+      .object({
+        before: z.number(),
+        after: z.number(),
+        delta: z.number().optional(),
+      })
+      .optional(),
+    trustworthiness: z
+      .object({
+        before: z.number(),
+        after: z.number(),
+        delta: z.number().optional(),
+      })
+      .optional(),
+    inRegulation: z
+      .object({
+        before: z.boolean(),
+        after: z.boolean(),
+      })
+      .optional(),
+    syndicateId: z
+      .object({
+        before: z.string().nullable(),
+        after: z.string().nullable(),
+      })
+      .optional(),
+    outstandingDebt: z
+      .object({
+        before: z.number(),
+        after: z.number(),
+        delta: z.number(),
+      })
+      .optional(),
+    ownedTilePositions: PlayerStateTileSetDiffSchema.optional(),
+    mortgagedTilePositions: PlayerStateTileSetDiffSchema.optional(),
+    developmentTokens: z.array(DevelopmentTokenDeltaSchema).optional(),
+  })
+  .strict();
 export type PlayerStateChangesBody = z.infer<
   typeof PlayerStateChangesBodySchema
 >;

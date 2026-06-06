@@ -216,6 +216,35 @@ describe("processGameCompletion", () => {
     expect(kickedStats?.games_played).toBe(0);
   });
 
+  it("recovers from corrupt leaderboard:summary KV when incrementing", async () => {
+    const db = createWorkerD1Stub();
+    const kv = createKvStub();
+    kv._store.set("leaderboard:summary", "not-json");
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      status: "completed",
+      started_at: 1,
+      ended_at: 2,
+      winner_id: "user-1",
+      player_ids_json: JSON.stringify(["user-1", "user-2"]),
+      state_json: null,
+    });
+
+    await processGameCompletion(
+      db,
+      kv,
+      "game-1",
+      makeCompletedState({ kickedPlayerIds: [] }),
+      1000,
+    );
+
+    expect(JSON.parse(kv._store.get("leaderboard:summary") ?? "{}")).toEqual({
+      humanWins: 1,
+      aiWins: 0,
+    });
+  });
+
   it("counts a syndicate win once in aggregate summary", async () => {
     const db = createWorkerD1Stub();
     const kv = createKvStub();

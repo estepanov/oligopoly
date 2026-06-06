@@ -79,19 +79,6 @@ function diffDevelopmentTokens(
     .filter((change) => change.before !== change.after);
 }
 
-/** Rejects payloads whose keys are not in {@link PLAYER_STATE_CHANGE_FIELD_KEYS}. */
-export function assertKnownPlayerStateChangeKeys(
-  changes: PlayerStateChangesBody,
-): void {
-  for (const key of Object.keys(changes)) {
-    if (!(PLAYER_STATE_CHANGE_FIELD_KEYS as readonly string[]).includes(key)) {
-      throw new Error(
-        `player_state_changed emitted unknown key "${key}" — update PLAYER_STATE_CHANGE_FIELD_KEYS and PlayerStateChangesBodySchema`,
-      );
-    }
-  }
-}
-
 /**
  * One entry per {@link PLAYER_STATE_CHANGE_FIELD_KEYS} key — exhaustiveness
  * keeps engine diffs aligned with validation + web formatting.
@@ -210,7 +197,6 @@ function buildPlayerChangeLogs(
     }
 
     if (Object.keys(changes).length > 0) {
-      assertKnownPlayerStateChangeKeys(changes);
       logs.push({
         playerId: player.playerId,
         actionType: "player_state_changed",

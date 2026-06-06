@@ -260,7 +260,6 @@ export {
   isOptionalRuleEnabled,
   regulationPenaltiesEnabled,
 } from "./engine/optionalRulesEngine.js";
-export { assertKnownPlayerStateChangeKeys } from "./engine/playerChangeLogs.js";
 export {
   getActiveRateCardMultiplier,
   recordOpposingSectorLanding,

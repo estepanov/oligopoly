@@ -1,4 +1,3 @@
-import { assertKnownPlayerStateChangeKeys } from "@oligopoly/shared";
 import {
   PLAYER_STATE_CHANGE_FIELD_KEYS,
   type PlayerStateChangeFieldKey,
@@ -35,13 +34,12 @@ const minimalBodies: {
 };
 
 describe("player_state_changed contract", () => {
-  it("assertKnownPlayerStateChangeKeys throws on unknown keys", () => {
-    expect(() =>
-      assertKnownPlayerStateChangeKeys({
-        capital: { before: 0, after: 1, delta: 1 },
-        notInRegistry: true,
-      } as PlayerStateChangesBody),
-    ).toThrow(/unknown key/);
+  it("rejects bodies that mix a known field with unknown keys", () => {
+    const parsed = PlayerStateChangesBodySchema.safeParse({
+      capital: { before: 0, after: 1, delta: 1 },
+      notInRegistry: true,
+    });
+    expect(parsed.success).toBe(false);
   });
 
   it("each PLAYER_STATE_CHANGE_FIELD_KEYS field parses with PlayerStateChangesBodySchema", () => {

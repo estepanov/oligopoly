@@ -142,97 +142,99 @@ function formatMoneyPayloadParts(
   return parts;
 }
 
-function formatOnePlayerStateField(
-  key: PlayerStateChangeFieldKey,
+type PlayerStateLogPartFn = (
   changes: PlayerStateChangesBody,
   tileNames: Map<string, string>,
   currencySettings?: CurrencyDisplaySettings,
-): string | null {
-  switch (key) {
-    case "capital": {
-      const capital = changes.capital;
-      if (typeof capital?.delta !== "number") return null;
-      return `cash ${formatSignedCurrencyAmount(capital.delta, currencySettings)} to ${
-        typeof capital.after === "number"
-          ? formatCurrencyAmount(capital.after, currencySettings)
-          : String(capital.after)
-      }`;
+) => string | null;
+
+/** Mirrors keyed diff maps in the engine — one formatter per registry field. */
+const PLAYER_STATE_LOG_PARTS: {
+  [K in PlayerStateChangeFieldKey]: PlayerStateLogPartFn;
+} = {
+  capital(changes, _tileNames, currencySettings) {
+    const capital = changes.capital;
+    if (typeof capital?.delta !== "number") return null;
+    return `cash ${formatSignedCurrencyAmount(capital.delta, currencySettings)} to ${
+      typeof capital.after === "number"
+        ? formatCurrencyAmount(capital.after, currencySettings)
+        : String(capital.after)
+    }`;
+  },
+  ownedTilePositions(changes, tileNames) {
+    const owned = changes.ownedTilePositions;
+    const acquired = formatTileList(owned?.added, tileNames);
+    const lost = formatTileList(owned?.removed, tileNames);
+    const parts: string[] = [];
+    if (acquired) parts.push(`acquired ${acquired}`);
+    if (lost) parts.push(`lost ${lost}`);
+    return parts.length > 0 ? parts.join("; ") : null;
+  },
+  mortgagedTilePositions(changes, tileNames) {
+    const mortgagedTiles = changes.mortgagedTilePositions;
+    const newlyMortgaged = formatTileList(mortgagedTiles?.added, tileNames);
+    const redeemed = formatTileList(mortgagedTiles?.removed, tileNames);
+    const parts: string[] = [];
+    if (newlyMortgaged) parts.push(`mortgaged ${newlyMortgaged}`);
+    if (redeemed) parts.push(`redeemed ${redeemed}`);
+    return parts.length > 0 ? parts.join("; ") : null;
+  },
+  developmentTokens(changes, tileNames) {
+    const development = changes.developmentTokens;
+    if (!Array.isArray(development) || development.length === 0) return null;
+    return development
+      .map(
+        (item) =>
+          `${tileLabel(item.position, tileNames)} development ${item.before}->${item.after}`,
+      )
+      .join("; ");
+  },
+  actionPointsRemaining(changes) {
+    const actionPoints = changes.actionPointsRemaining;
+    if (typeof actionPoints?.delta !== "number") return null;
+    return `AP ${formatNumberDelta(actionPoints.delta)} to ${String(
+      actionPoints.after,
+    )}`;
+  },
+  trustworthiness(changes) {
+    const trustworthiness = changes.trustworthiness;
+    if (typeof trustworthiness?.delta !== "number") return null;
+    return `trust ${formatNumberDelta(trustworthiness.delta)} to ${String(
+      trustworthiness.after,
+    )}`;
+  },
+  outstandingDebt(changes, _tileNames, currencySettings) {
+    const debt = changes.outstandingDebt;
+    if (typeof debt?.delta !== "number") return null;
+    return `debt ${formatSignedCurrencyAmount(debt.delta, currencySettings)} to ${
+      typeof debt.after === "number"
+        ? formatCurrencyAmount(debt.after, currencySettings)
+        : String(debt.after)
+    }`;
+  },
+  position(changes, tileNames) {
+    const position = changes.position;
+    if (
+      typeof position?.after !== "number" &&
+      typeof position?.after !== "string"
+    ) {
+      return null;
     }
-    case "ownedTilePositions": {
-      const owned = changes.ownedTilePositions;
-      const acquired = formatTileList(owned?.added, tileNames);
-      const lost = formatTileList(owned?.removed, tileNames);
-      const parts: string[] = [];
-      if (acquired) parts.push(`acquired ${acquired}`);
-      if (lost) parts.push(`lost ${lost}`);
-      return parts.length > 0 ? parts.join("; ") : null;
-    }
-    case "mortgagedTilePositions": {
-      const mortgagedTiles = changes.mortgagedTilePositions;
-      const newlyMortgaged = formatTileList(mortgagedTiles?.added, tileNames);
-      const redeemed = formatTileList(mortgagedTiles?.removed, tileNames);
-      const parts: string[] = [];
-      if (newlyMortgaged) parts.push(`mortgaged ${newlyMortgaged}`);
-      if (redeemed) parts.push(`redeemed ${redeemed}`);
-      return parts.length > 0 ? parts.join("; ") : null;
-    }
-    case "developmentTokens": {
-      const development = changes.developmentTokens;
-      if (!Array.isArray(development) || development.length === 0) return null;
-      return development
-        .map(
-          (item) =>
-            `${tileLabel(item.position, tileNames)} development ${item.before}->${item.after}`,
-        )
-        .join("; ");
-    }
-    case "actionPointsRemaining": {
-      const actionPoints = changes.actionPointsRemaining;
-      if (typeof actionPoints?.delta !== "number") return null;
-      return `AP ${formatNumberDelta(actionPoints.delta)} to ${String(
-        actionPoints.after,
-      )}`;
-    }
-    case "trustworthiness": {
-      const trustworthiness = changes.trustworthiness;
-      if (typeof trustworthiness?.delta !== "number") return null;
-      return `trust ${formatNumberDelta(trustworthiness.delta)} to ${String(
-        trustworthiness.after,
-      )}`;
-    }
-    case "outstandingDebt": {
-      const debt = changes.outstandingDebt;
-      if (typeof debt?.delta !== "number") return null;
-      return `debt ${formatSignedCurrencyAmount(debt.delta, currencySettings)} to ${
-        typeof debt.after === "number"
-          ? formatCurrencyAmount(debt.after, currencySettings)
-          : String(debt.after)
-      }`;
-    }
-    case "position": {
-      const position = changes.position;
-      if (
-        typeof position?.after !== "number" &&
-        typeof position?.after !== "string"
-      ) {
-        return null;
-      }
-      return `moved to ${tileLabel(position.after, tileNames)}`;
-    }
-    case "inRegulation": {
-      const ir = changes.inRegulation;
-      if (!ir) return null;
-      return ir.after ? "entered regulation" : "left regulation";
-    }
-    case "syndicateId": {
-      const syn = changes.syndicateId;
-      if (!syn) return null;
-      return typeof syn.after === "string"
-        ? `joined syndicate ${syn.after}`
-        : "left syndicate";
-    }
-  }
-}
+    return `moved to ${tileLabel(position.after, tileNames)}`;
+  },
+  inRegulation(changes) {
+    const ir = changes.inRegulation;
+    if (!ir) return null;
+    return ir.after ? "entered regulation" : "left regulation";
+  },
+  syndicateId(changes) {
+    const syn = changes.syndicateId;
+    if (!syn) return null;
+    return typeof syn.after === "string"
+      ? `joined syndicate ${syn.after}`
+      : "left syndicate";
+  },
+};
 
 function formatPlayerStateChange(
   payload: unknown,
@@ -244,8 +246,7 @@ function formatPlayerStateChange(
   const { changes } = parsed.data;
   const parts: string[] = [];
   for (const key of PLAYER_STATE_CHANGE_FIELD_KEYS) {
-    const line = formatOnePlayerStateField(
-      key,
+    const line = PLAYER_STATE_LOG_PARTS[key](
       changes,
       tileNames,
       currencySettings,
@@ -353,16 +354,6 @@ function payloadSuffix(
     let amountSuffix = "";
     if (typeof record.cost === "number") {
       amountSuffix = ` · ${formatCurrencyAmount(record.cost, currencySettings)}`;
-    } else if (typeof record.mortgageValue === "number") {
-      amountSuffix = ` · ${formatSignedCurrencyAmount(
-        record.mortgageValue,
-        currencySettings,
-      )}`;
-    } else if (typeof record.redemptionCost === "number") {
-      amountSuffix = ` · ${formatCurrencyAmount(
-        record.redemptionCost,
-        currencySettings,
-      )}`;
     } else if (typeof record.amount === "number") {
       amountSuffix = ` · ${formatCurrencyAmount(
         record.amount,

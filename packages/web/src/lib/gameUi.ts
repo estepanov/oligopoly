@@ -384,30 +384,6 @@ export function getTileOwnershipActionGates(
   };
 }
 
-export function isTileDevelopableByPlayer(
-  state: GameState,
-  playerId: string,
-  position: number | string,
-): boolean {
-  return getTileOwnershipActionGates(state, playerId, position).canDevelopGate;
-}
-
-export function canMortgageTile(
-  state: GameState,
-  playerId: string,
-  position: number | string,
-): boolean {
-  return getTileOwnershipActionGates(state, playerId, position).canMortgageGate;
-}
-
-export function canRedeemTile(
-  state: GameState,
-  playerId: string,
-  position: number | string,
-): boolean {
-  return getTileOwnershipActionGates(state, playerId, position).canRedeemGate;
-}
-
 export function canPayDebt(state: GameState, playerId: string): boolean {
   const player = playerById(state, playerId);
   return Boolean(

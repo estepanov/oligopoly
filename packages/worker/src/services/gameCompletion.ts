@@ -22,6 +22,11 @@ import {
 
 const MAX_RECENT_GAMES = 20;
 
+const EMPTY_LEADERBOARD_SUMMARY: LeaderboardSummary = {
+  humanWins: 0,
+  aiWins: 0,
+};
+
 function countSectorsControlled(
   state: CompletedGameSnapshot,
   playerId: string,
@@ -94,13 +99,23 @@ async function incrementLeaderboardSummary(
   increment: LeaderboardSummary,
 ): Promise<void> {
   const raw = await kv.get("leaderboard:summary");
-  const existing: LeaderboardSummary = raw
-    ? LeaderboardSummarySchema.parse(JSON.parse(raw))
-    : { humanWins: 0, aiWins: 0 };
-  const next = LeaderboardSummarySchema.parse({
+  let existing = EMPTY_LEADERBOARD_SUMMARY;
+  if (raw) {
+    try {
+      const parsed = LeaderboardSummarySchema.safeParse(JSON.parse(raw));
+      if (parsed.success) {
+        existing = parsed.data;
+      }
+    } catch {
+      // Malformed JSON — treat as empty summary.
+    }
+  }
+  const merged: LeaderboardSummary = {
     humanWins: Math.max(0, (existing.humanWins ?? 0) + increment.humanWins),
     aiWins: Math.max(0, (existing.aiWins ?? 0) + increment.aiWins),
-  });
+  };
+  const nextParsed = LeaderboardSummarySchema.safeParse(merged);
+  const next = nextParsed.success ? nextParsed.data : merged;
   await kv.put("leaderboard:summary", JSON.stringify(next));
 }
 
