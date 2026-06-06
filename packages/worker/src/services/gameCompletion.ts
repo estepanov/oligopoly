@@ -55,6 +55,17 @@ async function fetchUsername(db: D1Database, userId: string): Promise<string> {
   return row?.username ?? userId;
 }
 
+/** Never throws — corrupt or non-array JSON becomes []. */
+function tryParseJsonArray(raw: string | null | undefined): unknown[] {
+  if (raw == null || raw === "") return [];
+  try {
+    const value = JSON.parse(raw) as unknown;
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+
 async function upsertLeaderboardEntry(
   kv: KVNamespace,
   key: "leaderboard:wins" | "leaderboard:completions",
@@ -65,9 +76,7 @@ async function upsertLeaderboardEntry(
 ): Promise<void> {
   const raw = await kv.get(key);
   if (key === "leaderboard:wins") {
-    const entries: LeaderboardWinsEntry[] = raw
-      ? (JSON.parse(raw) as LeaderboardWinsEntry[])
-      : [];
+    const entries = tryParseJsonArray(raw) as LeaderboardWinsEntry[];
     const existing = entries.find((entry) => entry.userId === userId);
     if (existing) {
       existing.wins += increment;
@@ -80,9 +89,7 @@ async function upsertLeaderboardEntry(
     return;
   }
 
-  const entries: LeaderboardCompletionsEntry[] = raw
-    ? (JSON.parse(raw) as LeaderboardCompletionsEntry[])
-    : [];
+  const entries = tryParseJsonArray(raw) as LeaderboardCompletionsEntry[];
   const existing = entries.find((entry) => entry.userId === userId);
   if (existing) {
     existing.completions += increment;
@@ -192,7 +199,16 @@ export async function processGameCompletion(
     return;
   }
 
-  const playerIds = JSON.parse(gameRow.player_ids_json) as string[];
+  const playerIdsFromRow = tryParseJsonArray(gameRow.player_ids_json).filter(
+    (id): id is string => typeof id === "string",
+  );
+  const playerIds =
+    playerIdsFromRow.length > 0
+      ? playerIdsFromRow
+      : state.players.map((player) => player.playerId);
+  if (playerIds.length === 0) {
+    return;
+  }
   const humanPlayerIds = playerIds.filter(
     (playerId) => !isDedicatedSyntheticAiPlayerId(playerId),
   );
@@ -205,17 +221,11 @@ export async function processGameCompletion(
         "SELECT recent_games_json FROM user_stats WHERE user_id = ? LIMIT 1",
       )
       .bind(userId)
-      .first<{ recent_games_json: string }>();
-    if (!row?.recent_games_json) continue;
-    let recent: RecentGameSummary[] = [];
-    try {
-      const parsed = JSON.parse(row.recent_games_json) as unknown;
-      if (Array.isArray(parsed)) {
-        recent = parsed as RecentGameSummary[];
-      }
-    } catch {
-      recent = [];
-    }
+      .first<{ recent_games_json: string | null }>();
+    if (!row) continue;
+    const recent = tryParseJsonArray(
+      row.recent_games_json ?? null,
+    ) as RecentGameSummary[];
     if (recent.some((entry) => entry?.gameId === gameId)) {
       return;
     }
@@ -247,9 +257,11 @@ export async function processGameCompletion(
         recent_games_json: string;
       }>();
 
-    const recentGames = statsRow?.recent_games_json
-      ? (JSON.parse(statsRow.recent_games_json) as RecentGameSummary[])
-      : [];
+    const recentGames = (
+      statsRow?.recent_games_json
+        ? tryParseJsonArray(statsRow.recent_games_json)
+        : []
+    ) as RecentGameSummary[];
     recentGames.unshift({
       gameId,
       result: gameResultForPlayer(state, playerId, winnerId),

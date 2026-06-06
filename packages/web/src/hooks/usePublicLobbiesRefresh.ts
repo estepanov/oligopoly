@@ -1,7 +1,6 @@
-import { useCallback } from "react";
+import { type SetStateAction, useCallback, useEffect, useRef } from "react";
 import { ApiError } from "../api/http";
 import { listPublicLobbies } from "../api/lobbies";
-import { useComponentMountedRef } from "./useComponentMountedRef";
 
 export type PublicLobbyList = Awaited<
   ReturnType<typeof listPublicLobbies>
@@ -9,25 +8,47 @@ export type PublicLobbyList = Awaited<
 
 type LobbyBannerMessage = { kind: "ok" | "error"; text: string } | null;
 
+function clearPublicLobbiesLoadError(
+  prev: LobbyBannerMessage,
+): LobbyBannerMessage {
+  if (
+    prev?.kind === "error" &&
+    prev.text.startsWith("Failed to load public lobbies")
+  ) {
+    return null;
+  }
+  return prev;
+}
+
 /**
- * Public lobby list fetch with mount guard — keeps async completion from touching
- * React state after unmount (Strict Mode / fast navigation).
+ * Public lobby list fetch with generation guard so in-flight responses are
+ * ignored after unmount or React 18 Strict Mode remount (unlike a plain
+ * mounted boolean that flips true again before the first fetch settles).
  */
 export function usePublicLobbiesRefresh(
   setLoadingPublicLobbies: (value: boolean) => void,
   setPublicLobbies: (lobbies: PublicLobbyList) => void,
-  setMessage: (message: LobbyBannerMessage) => void,
+  setMessage: (value: SetStateAction<LobbyBannerMessage>) => void,
 ) {
-  const fetchAlive = useComponentMountedRef();
+  const fetchGeneration = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      fetchGeneration.current += 1;
+    };
+  }, []);
 
   const refreshPublicLobbies = useCallback(async () => {
+    const startedAt = fetchGeneration.current;
     setLoadingPublicLobbies(true);
     try {
       const data = await listPublicLobbies();
-      if (!fetchAlive.current) return;
+      if (startedAt !== fetchGeneration.current) return;
       setPublicLobbies(data.lobbies);
+      setMessage((prev) => clearPublicLobbiesLoadError(prev));
     } catch (error) {
-      if (!fetchAlive.current) return;
+      if (startedAt !== fetchGeneration.current) return;
+      setPublicLobbies([]);
       setMessage({
         kind: "error",
         text:
@@ -36,11 +57,11 @@ export function usePublicLobbiesRefresh(
             : "Failed to load public lobbies",
       });
     } finally {
-      if (fetchAlive.current) {
+      if (startedAt === fetchGeneration.current) {
         setLoadingPublicLobbies(false);
       }
     }
-  }, [fetchAlive, setLoadingPublicLobbies, setPublicLobbies, setMessage]);
+  }, [setLoadingPublicLobbies, setPublicLobbies, setMessage]);
 
   return { refreshPublicLobbies };
 }

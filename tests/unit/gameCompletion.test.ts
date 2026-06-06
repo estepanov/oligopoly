@@ -245,6 +245,104 @@ describe("processGameCompletion", () => {
     });
   });
 
+  it("recovers from corrupt leaderboard:wins KV when upserting", async () => {
+    const db = createWorkerD1Stub();
+    const kv = createKvStub();
+    kv._store.set("leaderboard:wins", "not-json");
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      status: "completed",
+      started_at: 1,
+      ended_at: 2,
+      winner_id: "user-1",
+      player_ids_json: JSON.stringify(["user-1", "user-2"]),
+      state_json: null,
+    });
+
+    await processGameCompletion(
+      db,
+      kv,
+      "game-1",
+      makeCompletedState({ kickedPlayerIds: [] }),
+      1000,
+    );
+
+    const wins = JSON.parse(
+      kv._store.get("leaderboard:wins") ?? "[]",
+    ) as Array<{
+      userId: string;
+      wins: number;
+    }>;
+    expect(wins).toEqual([{ userId: "user-1", username: "user-1", wins: 1 }]);
+  });
+
+  it("recovers from corrupt recent_games_json when updating stats", async () => {
+    const db = createWorkerD1Stub();
+    const kv = createKvStub();
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      status: "completed",
+      started_at: 1,
+      ended_at: 2,
+      winner_id: "user-1",
+      player_ids_json: JSON.stringify(["user-1", "user-2"]),
+      state_json: null,
+    });
+    db._tables.user_stats.push({
+      user_id: "user-1",
+      games_played: 0,
+      wins: 0,
+      trades_completed: 0,
+      auctions_won: 0,
+      recent_games_json: "not-json",
+    });
+
+    await processGameCompletion(
+      db,
+      kv,
+      "game-1",
+      makeCompletedState({ kickedPlayerIds: [] }),
+      1000,
+    );
+
+    const stats = db._tables.user_stats.find((row) => row.user_id === "user-1");
+    expect(stats?.games_played).toBe(1);
+    const recent = JSON.parse(stats?.recent_games_json as string) as Array<{
+      gameId: string;
+    }>;
+    expect(recent[0]?.gameId).toBe("game-1");
+  });
+
+  it("falls back to state seat ids when player_ids_json is empty", async () => {
+    const db = createWorkerD1Stub();
+    const kv = createKvStub();
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      status: "completed",
+      started_at: 1,
+      ended_at: 2,
+      winner_id: "user-1",
+      player_ids_json: JSON.stringify([]),
+      state_json: null,
+    });
+
+    await processGameCompletion(
+      db,
+      kv,
+      "game-1",
+      makeCompletedState({ kickedPlayerIds: [] }),
+      1000,
+    );
+
+    expect(JSON.parse(kv._store.get("leaderboard:summary") ?? "{}")).toEqual({
+      humanWins: 1,
+      aiWins: 0,
+    });
+  });
+
   it("counts a syndicate win once in aggregate summary", async () => {
     const db = createWorkerD1Stub();
     const kv = createKvStub();
