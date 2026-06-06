@@ -15,11 +15,11 @@ import type {
 } from "./gameStateTypes.js";
 
 /**
- * Per-turn snapshot used to build `player_state_changed` diffs. Field set must
- * stay aligned with {@link PLAYER_STATE_CHANGE_FIELD_KEYS} in validation.
+ * Per-turn snapshot for `player_state_changed` diffs — one field per
+ * {@link PLAYER_STATE_CHANGE_FIELD_KEYS} entry (kept explicit so registry
+ * `snapshot` functions stay assignable without circular mapped types).
  */
-interface PlayerChangeSnapshot
-  extends Record<PlayerStateChangeFieldKey, unknown> {
+interface PlayerChangeSnapshot {
   capital: number;
   position: number | string;
   actionPointsRemaining: number;

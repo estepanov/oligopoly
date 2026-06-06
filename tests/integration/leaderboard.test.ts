@@ -65,6 +65,27 @@ describe("GET /api/leaderboard/wins", () => {
     expect(body).toEqual({ entries: [], summary: { humanWins: 0, aiWins: 0 } });
   });
 
+  it("falls back summary to zeros when leaderboard:summary is invalid JSON", async () => {
+    const kv = createKvStub();
+    await kv.put("leaderboard:wins", JSON.stringify([]));
+    await kv.put("leaderboard:summary", "not-json");
+    const res = await requestWithEnv("/api/leaderboard/wins", { kv });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.entries).toEqual([]);
+    expect(body.summary).toEqual({ humanWins: 0, aiWins: 0 });
+  });
+
+  it("falls back summary to zeros when leaderboard:summary fails schema", async () => {
+    const kv = createKvStub();
+    await kv.put("leaderboard:wins", JSON.stringify([]));
+    await kv.put("leaderboard:summary", JSON.stringify({ unexpected: true }));
+    const res = await requestWithEnv("/api/leaderboard/wins", { kv });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.summary).toEqual({ humanWins: 0, aiWins: 0 });
+  });
+
   it("returns entries from KV when populated", async () => {
     const kv = createKvStub();
     const entries = [
@@ -133,6 +154,27 @@ describe("GET /api/leaderboard/completions", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ entries: [], summary: { humanWins: 0, aiWins: 0 } });
+  });
+
+  it("falls back summary to zeros when leaderboard:summary is invalid JSON", async () => {
+    const kv = createKvStub();
+    await kv.put("leaderboard:completions", JSON.stringify([]));
+    await kv.put("leaderboard:summary", "not-json");
+    const res = await requestWithEnv("/api/leaderboard/completions", { kv });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.entries).toEqual([]);
+    expect(body.summary).toEqual({ humanWins: 0, aiWins: 0 });
+  });
+
+  it("falls back summary to zeros when leaderboard:summary fails schema", async () => {
+    const kv = createKvStub();
+    await kv.put("leaderboard:completions", JSON.stringify([]));
+    await kv.put("leaderboard:summary", JSON.stringify({ unexpected: true }));
+    const res = await requestWithEnv("/api/leaderboard/completions", { kv });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.summary).toEqual({ humanWins: 0, aiWins: 0 });
   });
 
   it("returns entries from KV when populated", async () => {

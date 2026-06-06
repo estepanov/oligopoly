@@ -15,11 +15,17 @@ export const leaderboardRoutes = new Hono<{ Bindings: Bindings }>();
 
 const EMPTY_SUMMARY = { humanWins: 0, aiWins: 0 };
 
-async function readLeaderboardSummary(kv: KVNamespace) {
+async function readLeaderboardSummary(
+  kv: KVNamespace,
+): Promise<LeaderboardSummary> {
   const raw = await kv.get("leaderboard:summary");
   if (!raw) return EMPTY_SUMMARY;
-  const parsed = JSON.parse(raw);
-  return LeaderboardSummarySchema.parse(parsed);
+  try {
+    const parsed = LeaderboardSummarySchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : EMPTY_SUMMARY;
+  } catch {
+    return EMPTY_SUMMARY;
+  }
 }
 
 function isAiLeaderboardEntry(entry: unknown): boolean {
@@ -45,12 +51,8 @@ async function readFilteredLeaderboardPayload(
 > {
   const raw = await kv.get(entriesKey);
   if (!raw) {
-    try {
-      const summary = await readLeaderboardSummary(kv);
-      return { ok: true, entries: [], summary };
-    } catch {
-      return { ok: false, error: LeaderboardErrorKeys.INVALID_DATA };
-    }
+    const summary = await readLeaderboardSummary(kv);
+    return { ok: true, entries: [], summary };
   }
 
   let parsed: unknown;
