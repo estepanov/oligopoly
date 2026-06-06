@@ -1,6 +1,10 @@
 type BoardTileLike = {
   position: number | string;
   name: string;
+  cost?: number | null;
+  baseRent?: number | null;
+  sectorId?: string | null;
+  type?: string;
 };
 
 type BoardConfigSlice = {
@@ -14,6 +18,18 @@ export function buildTileNameMap(
   const map = new Map<string, string>();
   for (const tile of [...config.perimeterTiles, ...config.diagonalTiles]) {
     map.set(String(tile.position), tile.name);
+  }
+  return map;
+}
+
+export type BoardTileDetails = BoardTileLike;
+
+export function buildTileDetailsMap(
+  config: BoardConfigSlice,
+): Map<string, BoardTileDetails> {
+  const map = new Map<string, BoardTileDetails>();
+  for (const tile of [...config.perimeterTiles, ...config.diagonalTiles]) {
+    map.set(String(tile.position), tile);
   }
   return map;
 }

@@ -118,6 +118,7 @@ export {
   replaceKickedPlayerWithAi,
   resolveAiPersonality,
 } from "./engine/aiControl.js";
+export { generateFriendlyAiName } from "./engine/aiNames.js";
 export type {
   DeclineAuctionType,
   PendingAuctionState,
@@ -232,6 +233,7 @@ export type { MarketEventTrigger } from "./engine/marketEvents.js";
 export {
   buildMarketEventDeck,
   drawAndResolveMarketEvent,
+  drawTurnStartMarketEvent,
   handleInsiderDiscardMarketEvent,
   handleInsiderKeepMarketEvent,
   normalizeMarketEventDeck,

@@ -13,5 +13,5 @@ ALTER TABLE lobbies ADD COLUMN spectator_mode TEXT NOT NULL DEFAULT 'disabled';
 ALTER TABLE lobbies ADD COLUMN market_event_deck_json TEXT;
 ALTER TABLE lobbies ADD COLUMN optional_event_card_ids_json TEXT;
 ALTER TABLE lobbies ADD COLUMN currency_name TEXT NOT NULL DEFAULT 'Capital';
-ALTER TABLE lobbies ADD COLUMN currency_symbol TEXT NOT NULL DEFAULT '¤';
+ALTER TABLE lobbies ADD COLUMN currency_symbol TEXT NOT NULL DEFAULT '$';
 ALTER TABLE lobbies ADD COLUMN currency_multiplier TEXT NOT NULL DEFAULT '1';

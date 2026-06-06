@@ -504,7 +504,6 @@ export function LobbiesPage() {
         optionalRuleIds: [],
         aiSlots: Array.from({ length: createAiCount }, (_, index) => ({
           id: `ai-${index + 1}`,
-          name: `AI ${index + 1}`,
           personality: createAiPersonality,
         })),
       });

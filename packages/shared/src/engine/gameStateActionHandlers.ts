@@ -35,7 +35,10 @@ import type {
   LogEntry,
 } from "./gameStateTypes.js";
 import { syntheticCdoMortgageBoostActive } from "./marketEventModifiers.js";
-import { drawAndResolveMarketEvent } from "./marketEvents.js";
+import {
+  drawAndResolveMarketEvent,
+  drawTurnStartMarketEvent,
+} from "./marketEvents.js";
 import {
   calculateMortgageValueForState,
   calculateRedemptionCost,
@@ -701,9 +704,11 @@ export function handleEndTurn(
   nextPlayer.actionPointsRemaining = nextPlayer.inRegulation
     ? 0
     : ACTION_POINTS_PER_TURN;
-  newState.phase = "waiting_for_roll";
   newState.lastDiceRoll = null;
   newState.pendingBuyTilePosition = null;
+  const drawResult = drawTurnStartMarketEvent(newState, nextPlayerId);
+  logs.push(...drawResult.logEntries);
+  newState = drawResult.state;
 
   newState.aiPlayers = (newState.aiPlayers ?? []).filter(
     (ai) => ai.takeoverForPlayerId !== playerId,

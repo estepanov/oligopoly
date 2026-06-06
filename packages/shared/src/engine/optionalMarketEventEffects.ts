@@ -24,7 +24,9 @@ import { getPlayer, transferTileOwnership } from "./stateUtils.js";
 function auctionResumePhaseForTrigger(
   trigger: MarketEventTrigger | undefined,
 ): AuctionResumePhase {
-  return trigger === "round_start" ? "waiting_for_roll" : "action";
+  return trigger === "round_start" || trigger === "turn_start"
+    ? "waiting_for_roll"
+    : "action";
 }
 
 function seededD6(

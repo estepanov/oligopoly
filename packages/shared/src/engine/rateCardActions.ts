@@ -4,6 +4,7 @@ import type {
   InternalGameState,
   LogEntry,
 } from "./gameStateTypes.js";
+import { drawTurnStartMarketEvent } from "./marketEvents.js";
 import { syndicateQualifiesForRateCard, upsertRateCard } from "./rateCards.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
 import { getSyndicateForPlayer } from "./syndicate.js";
@@ -81,13 +82,18 @@ export function handleEndCoordination(
   ];
 
   if (allAcked) {
-    newState.phase = "waiting_for_market_event";
     newState.currentPlayerIndex = 0;
     logs.push({
       playerId: null,
       actionType: "round_phase_advanced",
       payload: { phase: "waiting_for_market_event", round: newState.round },
     });
+    const firstPlayerId = newState.turnOrder[0];
+    if (firstPlayerId) {
+      const drawResult = drawTurnStartMarketEvent(newState, firstPlayerId);
+      logs.push(...drawResult.logEntries);
+      return { state: drawResult.state, logEntries: logs };
+    }
   }
 
   return { state: newState, logEntries: logs };

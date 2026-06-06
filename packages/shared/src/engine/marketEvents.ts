@@ -181,7 +181,7 @@ export function shouldOfferInsiderPeek(
   trigger: MarketEventTrigger,
 ): boolean {
   return (
-    trigger === "round_start" &&
+    trigger !== "tile" &&
     isOptionalRuleEnabled(state.settings, "insider_trading") &&
     drawingPlayerId === state.turnOrder[state.currentPlayerIndex]
   );
@@ -308,7 +308,7 @@ function advanceAfterMarketEventDraw(
   drawingPlayerId: string,
   trigger: MarketEventTrigger,
 ): void {
-  if (trigger !== "round_start") return;
+  if (trigger === "tile") return;
   if (hasBlockingWorkAfterMarketEventDraw(state)) return;
   enterWaitingForRoll(state, drawingPlayerId);
 }
@@ -416,4 +416,13 @@ export function drawAndResolveMarketEvent(
   finishMarketEventDraw(newState, drawingPlayerId, trigger, tilePosition, logs);
 
   return { state: newState, logEntries: logs };
+}
+
+export function drawTurnStartMarketEvent(
+  state: InternalGameState,
+  drawingPlayerId: string,
+): ApplyActionResult {
+  const newState = deepClone(state);
+  newState.phase = "waiting_for_market_event";
+  return drawAndResolveMarketEvent(newState, drawingPlayerId, "turn_start");
 }

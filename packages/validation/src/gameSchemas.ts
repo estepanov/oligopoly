@@ -185,6 +185,7 @@ export const PlayerStateSchema = z.object({
   coordinationAcknowledged: z.boolean().optional(),
   hostileTakeoverUsed: z.boolean().optional(),
   marketManipulationUsedThisRound: z.boolean().optional(),
+  usedAffinityIds: z.array(z.string()).optional(),
 });
 export type PlayerState = z.infer<typeof PlayerStateSchema>;
 
@@ -205,7 +206,7 @@ export type InGameHandshakeAgreement = z.infer<
 export const PendingInsiderPeekSchema = z.object({
   cardId: z.string(),
   drawingPlayerId: z.string(),
-  trigger: z.enum(["round_start", "tile"]).optional(),
+  trigger: z.enum(["round_start", "turn_start", "tile"]).optional(),
   tilePosition: z.union([z.number().int(), z.string()]).optional(),
 });
 export type PendingInsiderPeek = z.infer<typeof PendingInsiderPeekSchema>;
@@ -226,6 +227,7 @@ export const TileStateSchema = z.object({
   position: z.union([z.number().int(), z.string()]),
   ownerId: z.string().nullable(),
   mortgaged: z.boolean(),
+  mortgageRate: z.number().nullable().optional(),
   developmentTokens: z.number().int().min(0).max(4),
 });
 export type TileState = z.infer<typeof TileStateSchema>;
@@ -237,6 +239,13 @@ export const RateCardSchema = z.object({
   roundsWithoutLanding: z.number().int().min(0),
 });
 export type RateCard = z.infer<typeof RateCardSchema>;
+
+export const MarketEventModifiersSchema = z.object({
+  utilityRentMultiplier: z.number().optional(),
+  utilityRentMultiplierUntilRound: z.number().int().optional(),
+  syntheticCdoMortgageRound: z.number().int().optional(),
+});
+export type MarketEventModifiers = z.infer<typeof MarketEventModifiersSchema>;
 
 export const PendingAuctionSchema = z.object({
   tilePosition: z.union([z.number().int(), z.string()]),
@@ -268,6 +277,20 @@ export const PendingAuctionSchema = z.object({
 });
 export type PendingAuction = z.infer<typeof PendingAuctionSchema>;
 
+export const GameWinSummarySchema = z.object({
+  winnerId: z.string(),
+  winType: z.enum(["syndicate", "solo", "last_standing"]),
+  reason: z.string(),
+  marketValue: z.number(),
+  totalMarketValue: z.number(),
+  marketShare: z.number(),
+  thresholdMarketValue: z.number().optional(),
+  thresholdShare: z.number().optional(),
+  syndicateId: z.string().optional(),
+  memberIds: z.array(z.string()).optional(),
+});
+export type GameWinSummary = z.infer<typeof GameWinSummarySchema>;
+
 export const GameStateSchema = z.object({
   gameId: z.string(),
   round: z.number().int(),
@@ -288,6 +311,7 @@ export const GameStateSchema = z.object({
     )
     .optional(),
   rateCards: z.array(RateCardSchema).optional(),
+  marketEventModifiers: MarketEventModifiersSchema.optional(),
   turnOrder: z.array(z.string()).optional(),
   aiPlayers: z.array(AiPlayerRuntimeSchema).optional(),
   /** The requesting player's own affinity card (hidden from other players) */
@@ -305,6 +329,8 @@ export const GameStateSchema = z.object({
     .optional(),
   /** ID of the winner (player or syndicate leader) */
   winnerId: z.string().nullable().optional(),
+  /** Durable game-over explanation shown in the banner and action log */
+  winSummary: GameWinSummarySchema.nullable().optional(),
   /** IDs of eliminated players */
   eliminatedPlayerIds: z.array(z.string()).optional(),
   /** Human players permanently replaced by AI after an admin kick */
@@ -312,6 +338,14 @@ export const GameStateSchema = z.object({
   handshakeAgreements: z.array(InGameHandshakeAgreementSchema).optional(),
   negotiationThreads: z.array(GameNegotiationThreadSchema).optional(),
   pendingInsiderPeek: PendingInsiderPeekSchema.nullable().optional(),
+  pendingSyndicateVote: z
+    .object({
+      syndicateId: z.string(),
+      voteType: z.literal("dissolve_syndicate"),
+      votes: z.record(z.string(), z.boolean()),
+    })
+    .nullable()
+    .optional(),
   settings: z
     .object({
       turnTimeout: TurnTimeoutSchema.optional(),

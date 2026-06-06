@@ -234,8 +234,15 @@ export type LeaderboardCompletionsEntry = z.infer<
   typeof LeaderboardCompletionsEntrySchema
 >;
 
+export const LeaderboardSummarySchema = z.object({
+  humanWins: z.number().int().nonnegative(),
+  aiWins: z.number().int().nonnegative(),
+});
+export type LeaderboardSummary = z.infer<typeof LeaderboardSummarySchema>;
+
 export const LeaderboardWinsResponseSchema = z.object({
   entries: z.array(LeaderboardWinsEntrySchema),
+  summary: LeaderboardSummarySchema,
 });
 export type LeaderboardWinsResponse = z.infer<
   typeof LeaderboardWinsResponseSchema
@@ -243,6 +250,7 @@ export type LeaderboardWinsResponse = z.infer<
 
 export const LeaderboardCompletionsResponseSchema = z.object({
   entries: z.array(LeaderboardCompletionsEntrySchema),
+  summary: LeaderboardSummarySchema,
 });
 export type LeaderboardCompletionsResponse = z.infer<
   typeof LeaderboardCompletionsResponseSchema
@@ -386,23 +394,33 @@ export const LobbyAiSlotSchema = z.object({
 });
 export type LobbyAiSlot = z.infer<typeof LobbyAiSlotSchema>;
 
-const LobbyAiSlotsSchema = z
-  .array(LobbyAiSlotSchema)
-  .max(5)
-  .superRefine((slots, ctx) => {
-    const seen = new Set<string>();
-    slots.forEach((slot, index) => {
-      if (seen.has(slot.id)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "AI slot IDs must be unique",
-          path: [index, "id"],
-        });
-        return;
-      }
-      seen.add(slot.id);
-    });
+export const LobbyAiSlotInputSchema = LobbyAiSlotSchema.extend({
+  name: z.string().min(1).max(32).optional(),
+});
+export type LobbyAiSlotInput = z.infer<typeof LobbyAiSlotInputSchema>;
+
+const uniqueLobbyAiSlotIds = <T extends { id: string }>(
+  slots: T[],
+  ctx: z.RefinementCtx,
+) => {
+  const seen = new Set<string>();
+  slots.forEach((slot, index) => {
+    if (seen.has(slot.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "AI slot IDs must be unique",
+        path: [index, "id"],
+      });
+      return;
+    }
+    seen.add(slot.id);
   });
+};
+
+const LobbyAiSlotInputsSchema = z
+  .array(LobbyAiSlotInputSchema)
+  .max(5)
+  .superRefine(uniqueLobbyAiSlotIds);
 
 export const GamePlayerKindSchema = z.enum(["human", "ai"]);
 export type GamePlayerKind = z.infer<typeof GamePlayerKindSchema>;
@@ -434,7 +452,7 @@ export const CreateLobbyInputSchema = z.object({
   maxPlayers: z.number().int().min(2).max(6),
   isPrivate: z.boolean(),
   optionalRuleIds: z.array(z.string()).default([]),
-  aiSlots: LobbyAiSlotsSchema.default([]),
+  aiSlots: LobbyAiSlotInputsSchema.default([]),
   turnTimeout: TurnTimeoutSchema.default("5min"),
   auctionBidWindow: z
     .enum(["30s", "1min", "5min", "10min", "30min"])
@@ -447,7 +465,7 @@ export const CreateLobbyInputSchema = z.object({
   marketEventDeckCardIds: z.array(z.string()).optional(),
   optionalMarketEventCardIds: z.array(z.string()).default([]),
   currencyName: z.string().min(1).max(32).default("Capital"),
-  currencySymbol: z.string().min(1).max(8).default("¤"),
+  currencySymbol: z.string().min(1).max(8).default("$"),
   currencyMultiplier: CurrencyMultiplierSchema.default("1"),
 });
 export type CreateLobbyInput = z.infer<typeof CreateLobbyInputSchema>;
@@ -457,7 +475,7 @@ export const UpdateLobbySettingsInputSchema = z.object({
   maxPlayers: z.number().int().min(2).max(6).optional(),
   isPrivate: z.boolean().optional(),
   optionalRuleIds: z.array(z.string()).optional(),
-  aiSlots: LobbyAiSlotsSchema.optional(),
+  aiSlots: LobbyAiSlotInputsSchema.optional(),
   turnTimeout: TurnTimeoutSchema.optional(),
   auctionBidWindow: z
     .enum(["30s", "1min", "5min", "10min", "30min"])

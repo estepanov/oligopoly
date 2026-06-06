@@ -1,7 +1,14 @@
 import { buildDefaultSyndicateCharter } from "@oligopoly/shared";
 import type { GameAction, GameState } from "@oligopoly/validation";
 import { useState } from "react";
-import { otherHumanPlayers, playerById } from "../lib/gameUi";
+import { playerDisplayName } from "../lib/gameDisplay";
+import {
+  canCallDissolutionVote,
+  canFormSyndicate,
+  canPayDebt,
+  otherHumanPlayers,
+  playerById,
+} from "../lib/gameUi";
 
 type SyndicateActionsPanelProps = {
   state: GameState;
@@ -18,8 +25,17 @@ export function SyndicateActionsPanel({
 }: SyndicateActionsPanelProps) {
   const [syndicateMembers, setSyndicateMembers] = useState<string[]>([]);
   const me = playerById(state, myPlayerId);
-  const others = otherHumanPlayers(state, myPlayerId);
+  const others = otherHumanPlayers(state, myPlayerId).filter(
+    (player) => !player.syndicateId,
+  );
   const debt = me?.outstandingDebt ?? 0;
+  const showPayDebt = canPayDebt(state, myPlayerId);
+  const showFormSyndicate = canFormSyndicate(state, myPlayerId);
+  const showDissolutionVote = canCallDissolutionVote(state, myPlayerId);
+
+  if (!showPayDebt && !showFormSyndicate && !showDissolutionVote) {
+    return null;
+  }
 
   const toggleMember = (playerId: string) => {
     setSyndicateMembers((current) =>
@@ -41,7 +57,7 @@ export function SyndicateActionsPanel({
 
   return (
     <>
-      {debt > 0 && (
+      {showPayDebt && (
         <div className="buttonRow">
           <button
             type="button"
@@ -59,7 +75,7 @@ export function SyndicateActionsPanel({
         </div>
       )}
 
-      {!me?.syndicateId && others.length > 0 && (
+      {showFormSyndicate && (
         <fieldset className="syndicateForm">
           <legend className="muted">Form syndicate</legend>
           {others.map((player) => (
@@ -70,7 +86,7 @@ export function SyndicateActionsPanel({
                 onChange={() => toggleMember(player.playerId)}
                 disabled={busy}
               />{" "}
-              {player.displayName ?? player.playerId}
+              {playerDisplayName(state, player.playerId)}
             </label>
           ))}
           <button
@@ -84,7 +100,7 @@ export function SyndicateActionsPanel({
         </fieldset>
       )}
 
-      {me?.syndicateId && (
+      {showDissolutionVote && (
         <div className="buttonRow">
           <button
             type="button"

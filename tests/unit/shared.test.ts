@@ -1632,6 +1632,65 @@ describe("applyAction — buy_tile / decline_tile", () => {
     expect(p.ownedTilePositions).toContain(3);
     const tile = result.state.tiles.find((t) => t.position === 3);
     expect(tile?.ownerId).toBe("player-1");
+    expect(result.logEntries).toContainEqual({
+      playerId: "player-1",
+      actionType: "player_state_changed",
+      payload: {
+        playerId: "player-1",
+        changes: {
+          capital: { before: 1500, after: 1420, delta: -80 },
+          ownedTilePositions: { added: ["3"], removed: [] },
+        },
+      },
+    });
+  });
+
+  it("logs why and how a solo win was reached", () => {
+    const state = makeTestGameState({
+      phase: "waiting_for_buy",
+      pendingBuyTilePosition: 3,
+    });
+    state.players[0].position = 3;
+    let seededMarketValue = 0;
+    state.players[0].ownedTilePositions = [];
+    for (const tileState of state.tiles) {
+      if (String(tileState.position) === "3") continue;
+      const tile = getTileByPosition(tileState.position);
+      if (!tile?.cost) continue;
+      tileState.ownerId = "player-1";
+      state.players[0].ownedTilePositions.push(tileState.position);
+      seededMarketValue += tile.cost;
+      if (seededMarketValue >= TOTAL_BOARD_MARKET_VALUE * SOLO_WIN_THRESHOLD) {
+        break;
+      }
+    }
+    for (const position of state.players[0].ownedTilePositions) {
+      const tile = state.tiles.find((entry) => entry.position === position);
+      if (tile) tile.ownerId = "player-1";
+    }
+
+    const result = applyAction(state, "player-1", {
+      type: "buy_tile",
+      tilePosition: 3,
+    });
+
+    expect(result.state.phase).toBe("game_over");
+    expect(result.state.winSummary).toMatchObject({
+      winnerId: "player-1",
+      winType: "solo",
+      thresholdShare: SOLO_WIN_THRESHOLD,
+    });
+    expect(result.state.winSummary?.reason).toContain("solo threshold");
+    expect(result.logEntries).toContainEqual({
+      playerId: "player-1",
+      actionType: "game_won",
+      payload: expect.objectContaining({
+        winnerId: "player-1",
+        winType: "solo",
+        thresholdShare: SOLO_WIN_THRESHOLD,
+        reason: expect.stringContaining("solo threshold"),
+      }),
+    });
   });
 
   it("throws when insufficient capital", () => {
@@ -2479,14 +2538,14 @@ describe("applyAction — regulation penalty persists through next turn", () => 
     result = applyAction(result.state, "player-2", {
       type: "end_coordination",
     });
-    expect(result.state.phase).toBe("waiting_for_market_event");
-
-    result = applyAction(result.state, "player-1", {
-      type: "draw_market_event",
-    });
+    expect(result.state.phase).toBe("waiting_for_roll");
     const p1 = result.state.players.find((p) => p.playerId === "player-1")!;
     expect(p1.actionPointsRemaining).toBe(0);
-    expect(result.state.phase).toBe("waiting_for_roll");
+    expect(
+      result.logEntries.some(
+        (entry) => entry.actionType === "market_event_drawn",
+      ),
+    ).toBe(true);
   });
 
   it("clears regulation after the regulated player completes their penalty turn", () => {

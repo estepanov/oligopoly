@@ -1,4 +1,5 @@
 import type { AiPersonality } from "@oligopoly/validation";
+import { generateFriendlyAiName } from "./aiNames.js";
 import type {
   InternalAiPlayerState,
   InternalGameState,
@@ -13,6 +14,15 @@ function aiRuntimeForActor(
   return state.aiPlayers?.find(
     (ai) => ai.playerId === actorId || ai.takeoverForPlayerId === actorId,
   );
+}
+
+function reservedAiNames(state: InternalGameState): string[] {
+  return [
+    ...(state.aiPlayers ?? []).map((ai) => ai.name),
+    ...state.players
+      .map((player) => player.displayName)
+      .filter((name): name is string => Boolean(name)),
+  ];
 }
 
 export function isAiControlledActor(
@@ -47,7 +57,10 @@ export function applyTimeoutTakeover(
     ...aiPlayers,
     {
       playerId: runtimeId,
-      name: "Auto",
+      name: generateFriendlyAiName(
+        `${state.gameId}:${runtimeId}`,
+        reservedAiNames(state),
+      ),
       personality,
       takeoverForPlayerId: humanId,
     },
@@ -66,8 +79,14 @@ export function replaceKickedPlayerWithAi(
   if (!player) return next;
 
   const personality = options?.personality ?? defaultKickPersonality;
+  const displayName =
+    options?.displayName ??
+    generateFriendlyAiName(
+      `${state.gameId}:replacement:${humanId}`,
+      reservedAiNames(state),
+    );
   player.kind = "ai";
-  player.displayName = options?.displayName ?? "AI replacement";
+  player.displayName = displayName;
   player.aiPersonality = personality;
 
   const aiPlayers = (next.aiPlayers ?? []).filter(
@@ -76,9 +95,16 @@ export function replaceKickedPlayerWithAi(
   if (!aiPlayers.some((ai) => ai.playerId === humanId)) {
     aiPlayers.push({
       playerId: humanId,
-      name: player.displayName,
+      name: displayName,
       personality,
     });
+  } else {
+    for (const ai of aiPlayers) {
+      if (ai.playerId === humanId) {
+        ai.name = displayName;
+        ai.personality = personality;
+      }
+    }
   }
   next.aiPlayers = aiPlayers;
 

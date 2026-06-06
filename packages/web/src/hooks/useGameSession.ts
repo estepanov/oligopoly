@@ -13,9 +13,14 @@ import {
   submitGameAction,
 } from "../api/games";
 import { ApiError } from "../api/http";
-import { buildTileNameMap } from "../lib/boardDisplay";
+import {
+  type BoardTileDetails,
+  buildTileDetailsMap,
+  buildTileNameMap,
+} from "../lib/boardDisplay";
 import {
   currentActorId,
+  isAiControlledActor,
   isMyTurn,
   mergeAuctionClientView,
 } from "../lib/gameUi";
@@ -54,6 +59,9 @@ export function useGameSession(
   const [state, setState] = useState<GameState | null>(null);
   const [logEntries, setLogEntries] = useState<GameLogEntry[]>([]);
   const [tileNames, setTileNames] = useState<Map<string, string>>(new Map());
+  const [tileDetails, setTileDetails] = useState<Map<string, BoardTileDetails>>(
+    new Map(),
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState(false);
@@ -75,10 +83,16 @@ export function useGameSession(
     let cancelled = false;
     void fetchGameConfig()
       .then((config) => {
-        if (!cancelled) setTileNames(buildTileNameMap(config));
+        if (!cancelled) {
+          setTileNames(buildTileNameMap(config));
+          setTileDetails(buildTileDetailsMap(config));
+        }
       })
       .catch(() => {
-        if (!cancelled) setTileNames(new Map());
+        if (!cancelled) {
+          setTileNames(new Map());
+          setTileDetails(new Map());
+        }
       });
     return () => {
       cancelled = true;
@@ -173,11 +187,26 @@ export function useGameSession(
     setStatusLine(null);
   }, [gameId]);
 
+  useEffect(() => {
+    if (!gameId || state?.phase === "game_over") return;
+    const actorId = state ? currentActorId(state) : null;
+    const shouldPoll =
+      wsStatus !== "connected" ||
+      (state ? isAiControlledActor(state, actorId) : false);
+    if (!shouldPoll) return;
+
+    const interval = window.setInterval(() => {
+      void refresh();
+    }, 2500);
+    return () => window.clearInterval(interval);
+  }, [gameId, refresh, state, wsStatus]);
+
   return {
     game,
     state,
     logEntries,
     tileNames,
+    tileDetails,
     error,
     loading,
     busyAction,

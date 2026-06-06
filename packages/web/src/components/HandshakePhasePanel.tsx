@@ -1,5 +1,6 @@
 import type { GameAction, GameState } from "@oligopoly/validation";
 import { useState } from "react";
+import { playerDisplayName } from "../lib/gameDisplay";
 
 type HandshakeRow = NonNullable<GameState["handshakeAgreements"]>[number];
 
@@ -13,7 +14,7 @@ type HandshakePhasePanelProps = {
 };
 
 export function HandshakePhasePanel({
-  state: _state,
+  state,
   myPlayerId,
   others,
   handshakes,
@@ -41,7 +42,7 @@ export function HandshakePhasePanel({
               <option value="">Player</option>
               {others.map((p) => (
                 <option key={p.playerId} value={p.playerId}>
-                  {p.displayName ?? p.playerId}
+                  {playerDisplayName(state, p.playerId)}
                 </option>
               ))}
             </select>
@@ -74,7 +75,9 @@ export function HandshakePhasePanel({
         <ul className="contractList muted">
           {handshakes.map((handshake) => (
             <li key={handshake.id}>
-              {handshake.summary} ({handshake.partyA} ↔ {handshake.partyB}) —{" "}
+              {handshake.summary} (
+              {playerDisplayName(state, handshake.partyA, { myPlayerId })} ↔{" "}
+              {playerDisplayName(state, handshake.partyB, { myPlayerId })}) —{" "}
               {handshake.status}
               {handshake.status === "pending" &&
                 (handshake.partyA === myPlayerId ||

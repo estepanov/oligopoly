@@ -88,7 +88,7 @@ export function createWorkerD1Stub(): WorkerD1Stub {
         market_event_deck_json: market_event_deck_json ?? null,
         optional_event_card_ids_json: optional_event_card_ids_json ?? null,
         currency_name: currency_name ?? "Capital",
-        currency_symbol: currency_symbol ?? "¤",
+        currency_symbol: currency_symbol ?? "$",
         currency_multiplier: currency_multiplier ?? "1",
         ai_slots_json: ai_slots_json ?? "[]",
       });

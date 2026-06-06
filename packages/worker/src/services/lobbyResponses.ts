@@ -80,7 +80,7 @@ export const toLobbyResponse = (
     ? JSON.parse(row.optional_event_card_ids_json)
     : [],
   currencyName: row.currency_name ?? "Capital",
-  currencySymbol: row.currency_symbol ?? "¤",
+  currencySymbol: row.currency_symbol ?? "$",
   currencyMultiplier: row.currency_multiplier ?? "1",
   aiSlots: parseAiSlots(row.ai_slots_json),
   ...(gameId ? { gameId } : {}),

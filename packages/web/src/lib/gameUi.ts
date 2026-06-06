@@ -1,3 +1,11 @@
+import {
+  ACTION_COSTS,
+  AFFINITY_IDS,
+  canCreateBindingContract,
+  getTileByPosition,
+  isActionBlockedByContracts,
+  MAX_DEVELOPMENT_TOKENS,
+} from "@oligopoly/shared";
 import type { GameState, PlayerState } from "@oligopoly/validation";
 
 export function currentActorId(state: GameState): string | null {
@@ -24,6 +32,18 @@ export function playerById(
 export function isMyTurn(state: GameState, myPlayerId: string | null): boolean {
   if (!myPlayerId || state.phase === "game_over") return false;
   return currentActorId(state) === myPlayerId;
+}
+
+export function isAiControlledActor(
+  state: GameState,
+  actorId: string | null,
+): boolean {
+  if (!actorId) return false;
+  const player = playerById(state, actorId);
+  if (player?.kind === "ai") return true;
+  return (state.aiPlayers ?? []).some(
+    (ai) => ai.playerId === actorId || ai.takeoverForPlayerId === actorId,
+  );
 }
 
 type PhaseUiCapabilities = {
@@ -245,6 +265,216 @@ export function otherHumanPlayers(
 ): PlayerState[] {
   if (!myPlayerId) return [];
   return (state.players ?? []).filter((p) => p.playerId !== myPlayerId);
+}
+
+function isActionTurn(state: GameState, myPlayerId: string | null): boolean {
+  return state.phase === "action" && isMyTurn(state, myPlayerId);
+}
+
+function tileStateByPosition(
+  state: GameState,
+  position: number | string | null | undefined,
+) {
+  if (position === null || position === undefined) return undefined;
+  return state.tiles?.find(
+    (tile) => String(tile.position) === String(position),
+  );
+}
+
+function acquisitionCostForPlayer(
+  state: GameState,
+  position: number | string,
+): number | null {
+  const tile = getTileByPosition(position);
+  if (!tile || tile.cost === null) return null;
+  if (
+    state.myAffinityCardId === AFFINITY_IDS.ai_pioneer &&
+    (tile.sectorId === "big_tech" || tile.sectorId === "emerging_tech")
+  ) {
+    return Math.floor(tile.cost * 0.85);
+  }
+  return tile.cost;
+}
+
+export function canBuyPendingTile(
+  state: GameState,
+  myPlayerId: string | null,
+): boolean {
+  if (!isMyTurn(state, myPlayerId) || state.phase !== "waiting_for_buy") {
+    return false;
+  }
+  if (
+    !myPlayerId ||
+    state.pendingBuyTilePosition === null ||
+    state.pendingBuyTilePosition === undefined
+  ) {
+    return false;
+  }
+  const player = playerById(state, myPlayerId);
+  const cost = acquisitionCostForPlayer(state, state.pendingBuyTilePosition);
+  return Boolean(player && cost !== null && player.capital >= cost);
+}
+
+export function isTileDevelopableByPlayer(
+  state: GameState,
+  playerId: string,
+  position: number | string,
+): boolean {
+  if (!isActionTurn(state, playerId)) return false;
+  const player = playerById(state, playerId);
+  const tile = getTileByPosition(position);
+  const tileState = tileStateByPosition(state, position);
+  return Boolean(
+    player &&
+      tile?.type === "sector_tile" &&
+      tileState?.ownerId === playerId &&
+      !tileState.mortgaged &&
+      tileState.developmentTokens < MAX_DEVELOPMENT_TOKENS &&
+      player.actionPointsRemaining >= ACTION_COSTS.DEVELOP_TILE,
+  );
+}
+
+export function canMortgageTile(
+  state: GameState,
+  playerId: string,
+  position: number | string,
+): boolean {
+  if (!isActionTurn(state, playerId)) return false;
+  const tile = getTileByPosition(position);
+  const tileState = tileStateByPosition(state, position);
+  return Boolean(
+    tile?.cost !== null &&
+      tile?.cost !== undefined &&
+      tileState?.ownerId === playerId &&
+      !tileState.mortgaged,
+  );
+}
+
+export function canRedeemTile(
+  state: GameState,
+  playerId: string,
+  position: number | string,
+): boolean {
+  if (!isActionTurn(state, playerId)) return false;
+  const tileState = tileStateByPosition(state, position);
+  return tileState?.ownerId === playerId && tileState.mortgaged === true;
+}
+
+export function canPayDebt(state: GameState, playerId: string): boolean {
+  const player = playerById(state, playerId);
+  return Boolean(
+    player && (player.outstandingDebt ?? 0) > 0 && player.capital > 0,
+  );
+}
+
+function formSyndicateApCost(state: GameState): number {
+  return state.myAffinityCardId === AFFINITY_IDS.founding_partner ? 0 : 1;
+}
+
+export function canFormSyndicate(state: GameState, playerId: string): boolean {
+  const player = playerById(state, playerId);
+  return Boolean(
+    isActionTurn(state, playerId) &&
+      player &&
+      !player.syndicateId &&
+      player.actionPointsRemaining >= formSyndicateApCost(state) &&
+      otherHumanPlayers(state, playerId).some((other) => !other.syndicateId),
+  );
+}
+
+export function canCallDissolutionVote(
+  state: GameState,
+  playerId: string,
+): boolean {
+  const player = playerById(state, playerId);
+  const vote = state.pendingSyndicateVote;
+  return Boolean(
+    isActionTurn(state, playerId) &&
+      player?.syndicateId &&
+      player.actionPointsRemaining >= ACTION_COSTS.CALL_SYNDICATE_VOTE &&
+      !(
+        vote?.syndicateId === player.syndicateId &&
+        vote.votes[playerId] === true
+      ),
+  );
+}
+
+export function canStartNegotiation(
+  state: GameState,
+  playerId: string,
+): boolean {
+  const player = playerById(state, playerId);
+  return Boolean(
+    isActionTurn(state, playerId) &&
+      player &&
+      player.actionPointsRemaining >= ACTION_COSTS.INITIATE_NEGOTIATION &&
+      otherHumanPlayers(state, playerId).length > 0,
+  );
+}
+
+export function contractEligibleTilesForPlayer(
+  state: GameState,
+  playerId: string,
+) {
+  return ownedTilesForPlayer(state, playerId).filter((tile) => {
+    const tileState = tileStateByPosition(state, tile.position);
+    return tileState?.ownerId === playerId && !tileState.mortgaged;
+  });
+}
+
+export function canProposeBindingContract(
+  state: GameState,
+  playerId: string,
+): boolean {
+  const player = playerById(state, playerId);
+  return Boolean(
+    isActionTurn(state, playerId) &&
+      player &&
+      canCreateBindingContract(player.trustworthiness) &&
+      otherHumanPlayers(state, playerId).length > 0 &&
+      contractEligibleTilesForPlayer(state, playerId).length > 0,
+  );
+}
+
+export function auctionEligibleTilesForPlayer(
+  state: GameState,
+  playerId: string,
+) {
+  if (!isActionTurn(state, playerId)) return [];
+  const player = playerById(state, playerId);
+  if (!player || player.actionPointsRemaining < ACTION_COSTS.INITIATE_AUCTION) {
+    return [];
+  }
+  return ownedTilesForPlayer(state, playerId).filter((tile) => {
+    const boardTile = getTileByPosition(tile.position);
+    const tileState = tileStateByPosition(state, tile.position);
+    if (
+      !boardTile ||
+      boardTile.cost === null ||
+      tileState?.ownerId !== playerId ||
+      tileState.mortgaged
+    ) {
+      return false;
+    }
+    return !isActionBlockedByContracts(state.activeContracts ?? [], {
+      type: "initiate_auction",
+      playerId,
+      tileId: String(tile.position),
+    }).blocked;
+  });
+}
+
+export function canUseConsumerInsights(
+  state: GameState,
+  playerId: string,
+): boolean {
+  const player = playerById(state, playerId);
+  return Boolean(
+    isActionTurn(state, playerId) &&
+      state.myAffinityCardId === AFFINITY_IDS.consumer_insights &&
+      !player?.usedAffinityIds?.includes(AFFINITY_IDS.consumer_insights) &&
+      otherHumanPlayers(state, playerId).length > 0,
+  );
 }
 
 export function isDisruptionNullifyPhase(state: GameState): boolean {

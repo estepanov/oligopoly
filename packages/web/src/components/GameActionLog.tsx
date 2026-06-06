@@ -1,12 +1,22 @@
 import type { GameLogEntry } from "@oligopoly/validation";
+import type { CurrencyDisplaySettings } from "../lib/gameDisplay";
 import { formatGameLogEntry } from "../lib/gameLogDisplay";
 
 type GameActionLogProps = {
   entries: GameLogEntry[];
   tileNames: Map<string, string>;
+  currencySymbol?: string;
+  currencySettings?: CurrencyDisplaySettings;
+  playerNames?: Map<string, string>;
 };
 
-export function GameActionLog({ entries, tileNames }: GameActionLogProps) {
+export function GameActionLog({
+  entries,
+  tileNames,
+  currencySymbol = "$",
+  currencySettings,
+  playerNames,
+}: GameActionLogProps) {
   if (entries.length === 0) {
     return <p className="muted">No actions logged yet.</p>;
   }
@@ -18,11 +28,18 @@ export function GameActionLog({ entries, tileNames }: GameActionLogProps) {
           <span className="gameActionLogMeta">
             {new Date(entry.createdAt).toLocaleTimeString()} · R{entry.round}
           </span>
-          <strong>{formatGameLogEntry(entry, tileNames)}</strong>
+          <strong>
+            {formatGameLogEntry(
+              entry,
+              tileNames,
+              currencySettings ?? currencySymbol,
+              playerNames,
+            )}
+          </strong>
           {entry.playerId && (
             <span className="muted">
               {" "}
-              · <code className="inline">{entry.playerId}</code>
+              · {playerNames?.get(entry.playerId) ?? entry.playerId}
             </span>
           )}
         </li>

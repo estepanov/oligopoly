@@ -1,7 +1,12 @@
 import type { GameAction, GameState } from "@oligopoly/validation";
 import { useState } from "react";
 import { parseTilePosition, tileLabel } from "../lib/boardDisplay";
-import { otherHumanPlayers, ownedTilesForPlayer } from "../lib/gameUi";
+import { playerDisplayName } from "../lib/gameDisplay";
+import {
+  auctionEligibleTilesForPlayer,
+  canUseConsumerInsights,
+  otherHumanPlayers,
+} from "../lib/gameUi";
 
 type AuctionAffinityActionsPanelProps = {
   state: GameState;
@@ -22,14 +27,16 @@ export function AuctionAffinityActionsPanel({
   const [affinityTarget, setAffinityTarget] = useState("");
 
   const others = otherHumanPlayers(state, myPlayerId);
-  const affinityId = state.myAffinityCardId ?? null;
-  const unmortgaged = ownedTilesForPlayer(state, myPlayerId).filter(
-    (tile) => !tile.mortgaged,
-  );
+  const auctionableTiles = auctionEligibleTilesForPlayer(state, myPlayerId);
+  const showConsumerInsights = canUseConsumerInsights(state, myPlayerId);
+
+  if (auctionableTiles.length === 0 && !showConsumerInsights) {
+    return null;
+  }
 
   return (
     <>
-      {unmortgaged.length > 0 && (
+      {auctionableTiles.length > 0 && (
         <div className="playerAuctionForm">
           <label className="muted">
             Auction tile{" "}
@@ -39,7 +46,7 @@ export function AuctionAffinityActionsPanel({
               disabled={busy}
             >
               <option value="">Select</option>
-              {unmortgaged.map((tile) => (
+              {auctionableTiles.map((tile) => (
                 <option
                   key={String(tile.position)}
                   value={String(tile.position)}
@@ -65,7 +72,7 @@ export function AuctionAffinityActionsPanel({
         </div>
       )}
 
-      {affinityId === "consumer_insights" && others.length > 0 && (
+      {showConsumerInsights && (
         <div className="affinityForm">
           <label className="muted">
             Reveal capital of{" "}
@@ -77,7 +84,7 @@ export function AuctionAffinityActionsPanel({
               <option value="">Opponent</option>
               {others.map((player) => (
                 <option key={player.playerId} value={player.playerId}>
-                  {player.displayName ?? player.playerId}
+                  {playerDisplayName(state, player.playerId)}
                 </option>
               ))}
             </select>

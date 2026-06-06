@@ -82,7 +82,7 @@ CREATE TABLE `lobbies` (
 	`market_event_deck_json` text,
 	`optional_event_card_ids_json` text,
 	`currency_name` text DEFAULT 'Capital' NOT NULL,
-	`currency_symbol` text DEFAULT '¤' NOT NULL,
+	`currency_symbol` text DEFAULT '$' NOT NULL,
 	`currency_multiplier` text DEFAULT '1' NOT NULL
 );
 --> statement-breakpoint

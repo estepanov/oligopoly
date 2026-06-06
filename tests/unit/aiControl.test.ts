@@ -68,6 +68,8 @@ describe("aiControl", () => {
   it("detects temporary timeout takeover seats", () => {
     const state = applyTimeoutTakeover(baseState(), "human-a");
     expect(isAiControlledActor(state, "human-a")).toBe(true);
+    expect(state.aiPlayers?.[1]?.name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
+    expect(state.aiPlayers?.[1]?.name).not.toBe("Auto");
     const decision = chooseAiAction({
       ...state,
       currentPlayerIndex: 0,
@@ -104,6 +106,11 @@ describe("aiControl", () => {
     const state = replaceKickedPlayerWithAi(baseState(), "human-a");
     expect(state.kickedPlayerIds).toEqual(["human-a"]);
     expect(state.players[0]?.kind).toBe("ai");
+    expect(state.players[0]?.displayName).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
+    expect(state.players[0]?.displayName).not.toBe("AI replacement");
+    expect(state.aiPlayers?.find((ai) => ai.playerId === "human-a")?.name).toBe(
+      state.players[0]?.displayName,
+    );
     expect(isAiControlledActor(state, "human-a")).toBe(true);
   });
 });
