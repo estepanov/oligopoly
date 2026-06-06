@@ -14,16 +14,17 @@ export function isNotifyRequest(url: URL): boolean {
   return url.pathname === NOTIFY_PATH;
 }
 
-export async function broadcastGameEvent(
-  gameRoom: DurableObjectNamespace | undefined,
-  gameId: string,
+async function broadcastRoomNotify(
+  room: DurableObjectNamespace | undefined,
+  roomId: string,
+  queryKey: "gameId" | "lobbyId",
   event: Record<string, unknown>,
 ): Promise<void> {
-  if (!gameRoom) return;
-  const stub = gameRoom.get(gameRoom.idFromName(gameId));
+  if (!room) return;
+  const stub = room.get(room.idFromName(roomId));
   await stub.fetch(
     new Request(
-      `${INTERNAL_ORIGIN}${NOTIFY_PATH}?gameId=${encodeURIComponent(gameId)}`,
+      `${INTERNAL_ORIGIN}${NOTIFY_PATH}?${queryKey}=${encodeURIComponent(roomId)}`,
       {
         method: "POST",
         body: JSON.stringify(event),
@@ -33,21 +34,18 @@ export async function broadcastGameEvent(
   );
 }
 
+export async function broadcastGameEvent(
+  gameRoom: DurableObjectNamespace | undefined,
+  gameId: string,
+  event: Record<string, unknown>,
+): Promise<void> {
+  await broadcastRoomNotify(gameRoom, gameId, "gameId", event);
+}
+
 export async function broadcastLobbyEvent(
   lobbyRoom: DurableObjectNamespace | undefined,
   lobbyId: string,
   event: Record<string, unknown>,
 ): Promise<void> {
-  if (!lobbyRoom) return;
-  const stub = lobbyRoom.get(lobbyRoom.idFromName(lobbyId));
-  await stub.fetch(
-    new Request(
-      `${INTERNAL_ORIGIN}${NOTIFY_PATH}?lobbyId=${encodeURIComponent(lobbyId)}`,
-      {
-        method: "POST",
-        body: JSON.stringify(event),
-        headers: { "Content-Type": "application/json" },
-      },
-    ),
-  );
+  await broadcastRoomNotify(lobbyRoom, lobbyId, "lobbyId", event);
 }

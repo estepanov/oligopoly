@@ -251,7 +251,7 @@ Auth consistency rule:
 - Session tokens are issued after successful registration or login and sent via `Authorization: Bearer <token>` header for HTTP requests.
 - Browser WebSocket clients cannot set custom `Authorization` headers, so authenticated game/lobby WebSocket upgrades may carry the same session token in an `access_token` query parameter. This exception is upgrade-only, must flow through the shared auth middleware before rate-limit/ban checks, and deployment logs/traces must scrub `access_token` values as secrets.
 - The legacy `x-subject` header is still supported for backwards compatibility with integration tests.
-- `POST /api/auth/dev-login` is a **local-development-only** passwordless sign-in (issues a session for a username with no passkey). It is strictly gated to `localhost`/`127.0.0.1` (mirroring the local-only `ai/step` endpoint) and is never reachable from deployed origins; it exists to make local multiplayer testing practical.
+- `POST /api/auth/dev-login` is a **local-development-only** passwordless sign-in (issues a session for a username with no passkey). It is strictly gated to `localhost`/`127.0.0.1`/`::1` (mirroring the local-only `ai/step` endpoint) and is never reachable from deployed origins; it exists to make local multiplayer testing practical.
 - Challenges are stored in KV with a 5-minute TTL.
 - Sessions are stored in D1 `auth_sessions` table with a 30-day TTL.
 - Passkey credentials are stored in D1 `passkey_credentials` table.

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   authoritativeRollDice,
   buildEngineActionInput,
+  withPathChoiceDie,
 } from "../../packages/worker/src/lib/dice";
 
 const inRange = (d: number) => Number.isInteger(d) && d >= 1 && d <= 6;
@@ -58,5 +59,22 @@ describe("buildEngineActionInput", () => {
     expect(buildEngineActionInput(action, "http://localhost/api/x")).toEqual(
       action,
     );
+  });
+});
+
+describe("withPathChoiceDie", () => {
+  it("adds only path-choice dice to AI roll actions", () => {
+    const out = withPathChoiceDie({ type: "roll_dice", result: [2, 5] }) as {
+      result: [number, number];
+      pathChoiceDie: number;
+    };
+
+    expect(out.result).toEqual([2, 5]);
+    expect(inRange(out.pathChoiceDie)).toBe(true);
+  });
+
+  it("passes non-roll actions through unchanged", () => {
+    const action = { type: "end_turn" } as const;
+    expect(withPathChoiceDie(action)).toEqual(action);
   });
 });

@@ -5,6 +5,8 @@ import {
 } from "@oligopoly/shared";
 import type { GameAction } from "@oligopoly/validation";
 
+type RollDiceAction = Extract<GameAction, { type: "roll_dice" }>;
+
 /**
  * Resolve the dice for a `roll_dice` action submitted over the public HTTP
  * route. This is a PRODUCTION security boundary: real (deployed) players ALWAYS
@@ -23,6 +25,18 @@ export function authoritativeRollDice(
   return rollFairDice();
 }
 
+function pathChoiceDieForRollAction(action: GameAction):
+  | {
+      action: RollDiceAction;
+      pathChoiceDie: number;
+    }
+  | undefined {
+  if (action.type !== "roll_dice") {
+    return undefined;
+  }
+  return { action, pathChoiceDie: rollPathChoiceDie() };
+}
+
 /**
  * Inject the server-generated path-choice die for rolls that may pass through
  * START. Shared by the HTTP route enrichment and the AI runtime — the AI
@@ -30,10 +44,11 @@ export function authoritativeRollDice(
  * so path-choice injection is factored out here to avoid drift.
  */
 export function withPathChoiceDie(action: GameAction) {
-  if (action.type !== "roll_dice") {
+  const pathChoice = pathChoiceDieForRollAction(action);
+  if (!pathChoice) {
     return action;
   }
-  return { ...action, pathChoiceDie: rollPathChoiceDie() };
+  return { ...pathChoice.action, pathChoiceDie: pathChoice.pathChoiceDie };
 }
 
 /**
@@ -43,11 +58,13 @@ export function withPathChoiceDie(action: GameAction) {
  * in one place. Only `roll_dice` needs enrichment today.
  */
 export function buildEngineActionInput(action: GameAction, requestUrl: string) {
-  if (action.type !== "roll_dice") {
+  const pathChoice = pathChoiceDieForRollAction(action);
+  if (!pathChoice) {
     return action;
   }
   return {
-    ...withPathChoiceDie(action),
-    result: authoritativeRollDice(requestUrl, action.result),
+    ...pathChoice.action,
+    pathChoiceDie: pathChoice.pathChoiceDie,
+    result: authoritativeRollDice(requestUrl, pathChoice.action.result),
   };
 }

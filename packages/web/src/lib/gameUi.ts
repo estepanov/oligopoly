@@ -26,38 +26,75 @@ export function isMyTurn(state: GameState, myPlayerId: string | null): boolean {
   return currentActorId(state) === myPlayerId;
 }
 
+type PhaseUiCapabilities = {
+  canDrawMarketEvent?: boolean;
+  canRollDice?: boolean;
+  canResolvePurchase?: boolean;
+  canChoosePath?: boolean;
+  canEndTurn?: boolean;
+};
+
+export type PhaseUiDescriptor = PhaseUiCapabilities & {
+  guidance: string | null;
+};
+
+const DEFAULT_PHASE_UI_DESCRIPTOR: PhaseUiDescriptor = {
+  guidance: null,
+};
+
+const PHASE_UI_DESCRIPTORS: Partial<
+  Record<NonNullable<GameState["phase"]>, PhaseUiDescriptor>
+> = {
+  waiting_for_market_event: {
+    guidance: "Draw the market event to start the round.",
+    canDrawMarketEvent: true,
+  },
+  waiting_for_roll: {
+    guidance: "Roll the dice to move.",
+    canRollDice: true,
+  },
+  rolling_doubles: {
+    guidance: "You rolled doubles — roll again!",
+    canRollDice: true,
+  },
+  waiting_for_buy: {
+    guidance: "Buy this tile or decline it (declining starts an auction).",
+    canResolvePurchase: true,
+  },
+  waiting_for_path_choice: {
+    guidance: "Choose the perimeter or diagonal path.",
+    canChoosePath: true,
+  },
+  action: {
+    guidance:
+      "Develop or mortgage your tiles, make a deal, then end your turn.",
+    canEndTurn: true,
+  },
+};
+
+export function phaseUiDescriptor(
+  phase: GameState["phase"],
+): PhaseUiDescriptor {
+  return phase
+    ? (PHASE_UI_DESCRIPTORS[phase] ?? DEFAULT_PHASE_UI_DESCRIPTOR)
+    : DEFAULT_PHASE_UI_DESCRIPTOR;
+}
+
 /**
  * Short, action-oriented guidance for the player whose turn it is, based on the
  * current phase. Returns null when there is no specific prompt (e.g. it is not
  * the player's turn, or a dedicated panel already covers the phase).
  *
- * This is intentionally a small, standalone phase→message map. It is kept
- * separate from the per-button enable/disable logic in GamePlayControls (which
- * also depends on non-phase state like pending purchases, owned tiles and busy
- * flags); folding both into one capability table would add indirection without
- * removing real duplication.
+ * Phase-level turn button capabilities live in `phaseUiDescriptor`; non-phase
+ * checks such as pending purchases, auctions, owned tiles, and busy flags remain
+ * with the controls that need them.
  */
 export function turnGuidance(
   state: GameState,
   myPlayerId: string | null,
 ): string | null {
   if (!isMyTurn(state, myPlayerId)) return null;
-  switch (state.phase) {
-    case "waiting_for_market_event":
-      return "Draw the market event to start the round.";
-    case "waiting_for_roll":
-      return "Roll the dice to move.";
-    case "rolling_doubles":
-      return "You rolled doubles — roll again!";
-    case "waiting_for_buy":
-      return "Buy this tile or decline it (declining starts an auction).";
-    case "waiting_for_path_choice":
-      return "Choose the perimeter or diagonal path.";
-    case "action":
-      return "Develop or mortgage your tiles, make a deal, then end your turn.";
-    default:
-      return null;
-  }
+  return phaseUiDescriptor(state.phase).guidance;
 }
 
 export function isAuctionPhase(state: GameState): boolean {

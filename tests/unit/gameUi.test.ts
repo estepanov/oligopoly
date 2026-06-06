@@ -2,6 +2,7 @@ import type { GameState } from "@oligopoly/validation";
 import { describe, expect, it } from "vitest";
 import {
   mergeAuctionClientView,
+  phaseUiDescriptor,
   turnGuidance,
 } from "../../packages/web/src/lib/gameUi";
 
@@ -151,5 +152,28 @@ describe("turnGuidance", () => {
 
   it("returns null when it is not the player's turn", () => {
     expect(turnGuidance(stateAt("waiting_for_roll"), "you")).toBeNull();
+  });
+});
+
+describe("phaseUiDescriptor", () => {
+  it("centralizes basic phase-level turn capabilities", () => {
+    expect(phaseUiDescriptor("waiting_for_market_event")).toMatchObject({
+      canDrawMarketEvent: true,
+    });
+    expect(phaseUiDescriptor("waiting_for_roll")).toMatchObject({
+      canRollDice: true,
+    });
+    expect(phaseUiDescriptor("rolling_doubles")).toMatchObject({
+      canRollDice: true,
+    });
+    expect(phaseUiDescriptor("waiting_for_buy")).toMatchObject({
+      canResolvePurchase: true,
+    });
+    expect(phaseUiDescriptor("waiting_for_path_choice")).toMatchObject({
+      canChoosePath: true,
+    });
+    expect(phaseUiDescriptor("action")).toMatchObject({
+      canEndTurn: true,
+    });
   });
 });
