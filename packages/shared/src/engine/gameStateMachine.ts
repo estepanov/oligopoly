@@ -54,7 +54,11 @@ import {
   handleMarketManipulation,
 } from "./optionalRuleActions.js";
 import { handleInitiateAuction } from "./playerAuctionActions.js";
-import { handleEndCoordination, handleSetRateCard } from "./rateCardActions.js";
+import {
+  snapshotPlayerChanges,
+  withPlayerChangeLogs,
+} from "./playerChangeLogs.js";
+import { handleSetRateCard } from "./rateCardActions.js";
 import { handleFormSyndicate } from "./syndicateActions.js";
 import { handleCallVote } from "./syndicateVoteActions.js";
 
@@ -96,6 +100,9 @@ export function normalizeGameState(raw: unknown): InternalGameState {
   if (!state.winnerId) {
     state.winnerId = null;
   }
+  if (!state.winSummary) {
+    state.winSummary = null;
+  }
   if (!state.eliminatedPlayerIds) {
     state.eliminatedPlayerIds = [];
   }
@@ -129,6 +136,16 @@ export function normalizeGameState(raw: unknown): InternalGameState {
   if (state.phase === "market_event") {
     state.phase = "waiting_for_market_event";
   }
+  // Legacy: older saves used a dedicated syndicate_coordination phase before
+  // the first turn of the new round. Resume at turn-start market draw.
+  if ((state.phase as string) === "syndicate_coordination") {
+    const firstActiveIndex = state.turnOrder.findIndex(
+      (id) => !state.eliminatedPlayerIds.includes(id),
+    );
+    state.currentPlayerIndex =
+      firstActiveIndex >= 0 ? firstActiveIndex : state.currentPlayerIndex;
+    state.phase = "waiting_for_market_event";
+  }
   return state;
 }
 
@@ -142,10 +159,8 @@ type NonTurnActionType =
   | "accept_disruption"
   | "auction_bid"
   | "auction_pass"
-  | "end_coordination"
   | "insider_discard_market_event"
-  | "insider_keep_market_event"
-  | "set_rate_card";
+  | "insider_keep_market_event";
 type TurnActionType = Exclude<GameActionType, NonTurnActionType>;
 
 const PHASE_ACTION_ROUTES: Partial<
@@ -162,12 +177,6 @@ const PHASE_ACTION_ROUTES: Partial<
       handleInsiderKeepMarketEvent(state, playerId),
     insider_discard_market_event: (state, playerId) =>
       handleInsiderDiscardMarketEvent(state, playerId),
-  },
-  syndicate_coordination: {
-    set_rate_card: (state, playerId, action) =>
-      handleSetRateCard(state, playerId, action),
-    end_coordination: (state, playerId) =>
-      handleEndCoordination(state, playerId),
   },
 };
 
@@ -223,6 +232,8 @@ const TURN_ACTION_ROUTES = {
   initiate_auction: (state, playerId, action) =>
     handleInitiateAuction(state, playerId, action),
   pay_debt: (state, playerId, action) => handlePayDebt(state, playerId, action),
+  set_rate_card: (state, playerId, action) =>
+    handleSetRateCard(state, playerId, action),
 } satisfies Record<TurnActionType, PhaseActionHandler>;
 const TURN_ACTION_ROUTES_BY_TYPE: Partial<
   Record<GameActionType, PhaseActionHandler>
@@ -268,9 +279,10 @@ export function applyAction(
     throw "game.completed";
   }
 
+  const before = snapshotPlayerChanges(state);
   const specialResult = applySpecialActionRoute(state, playerId, action);
   if (specialResult !== null) {
-    return finalizePrimaryLogIndex(specialResult);
+    return withPlayerChangeLogs(before, finalizePrimaryLogIndex(specialResult));
   }
 
   const currentPid = state.turnOrder[state.currentPlayerIndex];
@@ -283,5 +295,5 @@ export function applyAction(
     throw "game.invalid_action";
   }
   const turnResult = turnHandler(state, playerId, action);
-  return finalizePrimaryLogIndex(turnResult);
+  return withPlayerChangeLogs(before, finalizePrimaryLogIndex(turnResult));
 }

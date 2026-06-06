@@ -1,5 +1,6 @@
 import { isOptionalRuleEnabled } from "@oligopoly/shared";
 import type { GameAction, GameState } from "@oligopoly/validation";
+import { formatCurrencyAmount } from "../lib/gameDisplay";
 import {
   isDisruptionNullifyPhase,
   isMyTurn,
@@ -32,6 +33,7 @@ export function ActionPhaseExtras({
   const others = otherHumanPlayers(state, myPlayerId);
   const affinityId = state.myAffinityCardId ?? null;
   const handshakes = state.handshakeAgreements ?? [];
+  const marketManipulationCost = formatCurrencyAmount(50, state.settings);
 
   if (isDisruptionNullifyPhase(state) && myPlayerId) {
     return (
@@ -135,7 +137,7 @@ export function ActionPhaseExtras({
             busy={busy}
             targetLabel="Freeze tile owned by"
             tileLabelText="Tile"
-            submitLabel="Freeze tile (¤50)"
+            submitLabel={`Freeze tile (${marketManipulationCost})`}
             onSubmit={(targetPlayerId, tilePosition) =>
               onAction("Market manipulation", {
                 type: "market_manipulation",

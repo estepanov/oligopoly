@@ -6,6 +6,7 @@ import {
   getRankForPoints,
   hasSectorControl,
   type InternalGameState,
+  isAiControlledActor,
   playerWonGame,
   type RecentGameSummary,
   SECTORS,
@@ -23,6 +24,11 @@ type LeaderboardCompletionsEntry = {
   userId: string;
   username: string;
   completions: number;
+};
+
+type LeaderboardSummary = {
+  humanWins: number;
+  aiWins: number;
 };
 
 function countSectorsControlled(
@@ -92,6 +98,46 @@ async function upsertLeaderboardEntry(
   await kv.put(key, JSON.stringify(entries.slice(0, 100)));
 }
 
+async function incrementLeaderboardSummary(
+  kv: KVNamespace,
+  increment: LeaderboardSummary,
+): Promise<void> {
+  const raw = await kv.get("leaderboard:summary");
+  const existing: LeaderboardSummary = raw
+    ? (JSON.parse(raw) as LeaderboardSummary)
+    : { humanWins: 0, aiWins: 0 };
+  await kv.put(
+    "leaderboard:summary",
+    JSON.stringify({
+      humanWins: Math.max(0, (existing.humanWins ?? 0) + increment.humanWins),
+      aiWins: Math.max(0, (existing.aiWins ?? 0) + increment.aiWins),
+    }),
+  );
+}
+
+function isAiSeat(playerId: string): boolean {
+  return playerId.startsWith("ai:");
+}
+
+function leaderboardOutcomeForGame(
+  state: InternalGameState,
+  winnerId: string,
+): LeaderboardSummary {
+  const winners = state.players.filter((player) =>
+    playerWonGame(state, player.playerId, winnerId),
+  );
+  if (winners.length === 0) {
+    return { humanWins: 0, aiWins: 0 };
+  }
+
+  const hasHumanWinner = winners.some(
+    (player) => !isAiControlledActor(state, player.playerId),
+  );
+  return hasHumanWinner
+    ? { humanWins: 1, aiWins: 0 }
+    : { humanWins: 0, aiWins: 1 };
+}
+
 async function unlockAchievementIfNew(
   db: D1Database,
   userId: string,
@@ -138,21 +184,44 @@ export async function processGameCompletion(
   }
 
   const playerIds = JSON.parse(gameRow.player_ids_json) as string[];
-  const alreadyProcessed = await db
-    .prepare(
-      "SELECT recent_games_json FROM user_stats WHERE user_id = ? LIMIT 1",
-    )
-    .bind(playerIds[0])
-    .first<{ recent_games_json: string }>();
-  if (alreadyProcessed?.recent_games_json.includes(`"gameId":"${gameId}"`)) {
-    return;
+  const humanPlayerIds = playerIds.filter((playerId) => !isAiSeat(playerId));
+  const idempotencyCandidates =
+    humanPlayerIds.length > 0 ? humanPlayerIds : playerIds.slice(0, 1);
+
+  for (const userId of idempotencyCandidates) {
+    const row = await db
+      .prepare(
+        "SELECT recent_games_json FROM user_stats WHERE user_id = ? LIMIT 1",
+      )
+      .bind(userId)
+      .first<{ recent_games_json: string }>();
+    if (!row?.recent_games_json) continue;
+    let recent: RecentGameSummary[] = [];
+    try {
+      const parsed = JSON.parse(row.recent_games_json) as unknown;
+      if (Array.isArray(parsed)) {
+        recent = parsed as RecentGameSummary[];
+      }
+    } catch {
+      recent = [];
+    }
+    if (recent.some((entry) => entry?.gameId === gameId)) {
+      return;
+    }
   }
 
   const statements: D1PreparedStatement[] = [];
   const achievementStatements: D1PreparedStatement[] = [];
+  const leaderboardSummary = leaderboardOutcomeForGame(state, winnerId);
 
   for (const playerId of playerIds) {
     const isKicked = state.kickedPlayerIds?.includes(playerId) ?? false;
+    const aiSeat = isAiSeat(playerId);
+    const won = playerWonGame(state, playerId, winnerId);
+
+    if (aiSeat) {
+      continue;
+    }
 
     const statsRow = await db
       .prepare(
@@ -208,7 +277,6 @@ export async function processGameCompletion(
     }
 
     const gamesPlayed = (statsRow?.games_played ?? 0) + 1;
-    const won = playerWonGame(state, playerId, winnerId);
     const wins = (statsRow?.wins ?? 0) + (won ? 1 : 0);
     const tradesCompleted = statsRow?.trades_completed ?? 0;
     const auctionsWon = statsRow?.auctions_won ?? 0;
@@ -329,5 +397,12 @@ export async function processGameCompletion(
 
   if (achievementStatements.length > 0 || statements.length > 0) {
     await db.batch([...achievementStatements, ...statements]);
+  }
+
+  if (
+    kv &&
+    (leaderboardSummary.humanWins > 0 || leaderboardSummary.aiWins > 0)
+  ) {
+    await incrementLeaderboardSummary(kv, leaderboardSummary);
   }
 }

@@ -54,7 +54,7 @@ describe("GET /api/leaderboard/wins", () => {
     const res = await requestWithEnv("/api/leaderboard/wins");
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ entries: [] });
+    expect(body).toEqual({ entries: [], summary: { humanWins: 0, aiWins: 0 } });
   });
 
   it("returns empty entries array when KV key is not set", async () => {
@@ -62,16 +62,21 @@ describe("GET /api/leaderboard/wins", () => {
     const res = await requestWithEnv("/api/leaderboard/wins", { kv });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ entries: [] });
+    expect(body).toEqual({ entries: [], summary: { humanWins: 0, aiWins: 0 } });
   });
 
   it("returns entries from KV when populated", async () => {
     const kv = createKvStub();
     const entries = [
       { userId: "user-1", username: "Alice", wins: 10 },
+      { userId: "ai:lobby:slot", username: "Copper Scout", wins: 8 },
       { userId: "user-2", username: "Bob", wins: 7 },
     ];
     await kv.put("leaderboard:wins", JSON.stringify(entries));
+    await kv.put(
+      "leaderboard:summary",
+      JSON.stringify({ humanWins: 17, aiWins: 8 }),
+    );
 
     const res = await requestWithEnv("/api/leaderboard/wins", { kv });
     expect(res.status).toBe(200);
@@ -82,6 +87,7 @@ describe("GET /api/leaderboard/wins", () => {
     expect(body.entries[0].wins).toBe(10);
     expect(body.entries[1].userId).toBe("user-2");
     expect(body.entries[1].wins).toBe(7);
+    expect(body.summary).toEqual({ humanWins: 17, aiWins: 8 });
   });
 
   it("returns 500 with typed error when KV value is malformed JSON", async () => {
@@ -118,7 +124,7 @@ describe("GET /api/leaderboard/completions", () => {
     const res = await requestWithEnv("/api/leaderboard/completions");
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ entries: [] });
+    expect(body).toEqual({ entries: [], summary: { humanWins: 0, aiWins: 0 } });
   });
 
   it("returns empty entries array when KV key is not set", async () => {
@@ -126,16 +132,21 @@ describe("GET /api/leaderboard/completions", () => {
     const res = await requestWithEnv("/api/leaderboard/completions", { kv });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ entries: [] });
+    expect(body).toEqual({ entries: [], summary: { humanWins: 0, aiWins: 0 } });
   });
 
   it("returns entries from KV when populated", async () => {
     const kv = createKvStub();
     const entries = [
       { userId: "user-3", username: "Carol", completions: 25 },
+      { userId: "ai:lobby:slot", username: "Copper Scout", completions: 20 },
       { userId: "user-4", username: "Dave", completions: 18 },
     ];
     await kv.put("leaderboard:completions", JSON.stringify(entries));
+    await kv.put(
+      "leaderboard:summary",
+      JSON.stringify({ humanWins: 3, aiWins: 2 }),
+    );
 
     const res = await requestWithEnv("/api/leaderboard/completions", { kv });
     expect(res.status).toBe(200);
@@ -145,6 +156,7 @@ describe("GET /api/leaderboard/completions", () => {
     expect(body.entries[0].username).toBe("Carol");
     expect(body.entries[0].completions).toBe(25);
     expect(body.entries[1].completions).toBe(18);
+    expect(body.summary).toEqual({ humanWins: 3, aiWins: 2 });
   });
 
   it("returns 500 with typed error when KV value is malformed JSON", async () => {

@@ -4,16 +4,19 @@ import type {
   InternalGameState,
   LogEntry,
 } from "./gameStateTypes.js";
+import { drawTurnStartMarketEvent } from "./marketEvents.js";
 import { syndicateQualifiesForRateCard, upsertRateCard } from "./rateCards.js";
-import { deepClone, getPlayer } from "./stateUtils.js";
+import { deepClone } from "./stateUtils.js";
 import { getSyndicateForPlayer } from "./syndicate.js";
+
+const RATE_CARD_PHASES = new Set(["action", "rolling_doubles"]);
 
 export function handleSetRateCard(
   state: InternalGameState,
   playerId: string,
   action: GameActionInput,
 ): ApplyActionResult {
-  if (state.phase !== "syndicate_coordination") {
+  if (!RATE_CARD_PHASES.has(state.phase)) {
     throw "game.invalid_phase";
   }
 
@@ -51,44 +54,28 @@ export function handleSetRateCard(
   return { state: newState, logEntries: logs };
 }
 
-export function handleEndCoordination(
+/** After a full player round, advance to the first surviving seat and run turn-start market event. */
+export function advanceToFirstPlayerOfNewRound(
   state: InternalGameState,
-  playerId: string,
+  logs: LogEntry[],
 ): ApplyActionResult {
-  if (state.phase !== "syndicate_coordination") {
-    throw "game.invalid_phase";
-  }
-
   const newState = deepClone(state);
-  const player = getPlayer(newState, playerId);
-  if (!player) throw "game.invalid_action";
-  player.coordinationAcknowledged = true;
-
-  const activePlayers = newState.turnOrder.filter(
+  const firstActiveIndex = newState.turnOrder.findIndex(
     (id) => !newState.eliminatedPlayerIds.includes(id),
   );
-  const allAcked = activePlayers.every((id) => {
-    const entry = getPlayer(newState, id);
-    return entry?.coordinationAcknowledged;
-  });
-
-  const logs: LogEntry[] = [
-    {
-      playerId,
-      actionType: "coordination_acknowledged",
-      payload: null,
-    },
-  ];
-
-  if (allAcked) {
-    newState.phase = "waiting_for_market_event";
-    newState.currentPlayerIndex = 0;
-    logs.push({
-      playerId: null,
-      actionType: "round_phase_advanced",
-      payload: { phase: "waiting_for_market_event", round: newState.round },
-    });
+  if (firstActiveIndex < 0) {
+    return { state: newState, logEntries: logs };
   }
-
-  return { state: newState, logEntries: logs };
+  newState.currentPlayerIndex = firstActiveIndex;
+  newState.lastDiceRoll = null;
+  newState.pendingBuyTilePosition = null;
+  logs.push({
+    playerId: null,
+    actionType: "round_phase_advanced",
+    payload: { phase: "waiting_for_market_event", round: newState.round },
+  });
+  const firstPlayerId = newState.turnOrder[firstActiveIndex];
+  const drawResult = drawTurnStartMarketEvent(newState, firstPlayerId);
+  logs.push(...drawResult.logEntries);
+  return { state: drawResult.state, logEntries: logs };
 }

@@ -219,7 +219,7 @@ export const lobbies = sqliteTable("lobbies", {
   marketEventDeckJson: text("market_event_deck_json"),
   optionalEventCardIdsJson: text("optional_event_card_ids_json"),
   currencyName: text("currency_name").notNull().default("Capital"),
-  currencySymbol: text("currency_symbol").notNull().default("¤"),
+  currencySymbol: text("currency_symbol").notNull().default("$"),
   currencyMultiplier: text("currency_multiplier").notNull().default("1"),
   aiSlotsJson: text("ai_slots_json").notNull().default("[]"),
 });

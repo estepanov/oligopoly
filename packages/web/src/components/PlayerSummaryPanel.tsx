@@ -1,16 +1,26 @@
 import type { GameState } from "@oligopoly/validation";
+import { tileLabel } from "../lib/boardDisplay";
+import { formatCurrencyAmount, playerDisplayName } from "../lib/gameDisplay";
+import {
+  getTileEconomics,
+  mortgageEconomicsLabels,
+} from "../lib/tileEconomics";
+import { InfoDialog } from "./InfoDialog";
+import { TileEconomicsExplainContent } from "./TileEconomicsExplainContent";
 
 type PlayerSummaryPanelProps = {
   state: GameState;
   myPlayerId: string | null;
+  tileNames: Map<string, string>;
 };
 
 export function PlayerSummaryPanel({
   state,
   myPlayerId,
+  tileNames,
 }: PlayerSummaryPanelProps) {
   const players = state.players ?? [];
-  const currency = state.settings?.currencySymbol ?? "¤";
+  const currencySettings = state.settings;
 
   return (
     <div className="card">
@@ -27,14 +37,13 @@ export function PlayerSummaryPanel({
           return (
             <li key={player.playerId} className="playerSummaryItem">
               <strong>
-                {player.displayName ?? player.playerId}
+                {playerDisplayName(state, player.playerId)}
                 {isMe ? " (you)" : ""}
               </strong>
               <dl className="detailsGrid">
                 <dt className="muted">Capital</dt>
                 <dd>
-                  {currency}
-                  {player.capital}
+                  {formatCurrencyAmount(player.capital, currencySettings)}
                 </dd>
                 <dt className="muted">Tiles owned</dt>
                 <dd>{player.ownedTilePositions.length}</dd>
@@ -56,8 +65,10 @@ export function PlayerSummaryPanel({
                   <>
                     <dt className="muted">Debt</dt>
                     <dd>
-                      {currency}
-                      {player.outstandingDebt}
+                      {formatCurrencyAmount(
+                        player.outstandingDebt ?? 0,
+                        currencySettings,
+                      )}
                     </dd>
                   </>
                 )}
@@ -68,6 +79,76 @@ export function PlayerSummaryPanel({
                   </>
                 )}
               </dl>
+              {player.ownedTilePositions.length > 0 && (
+                <ul className="propertyList" aria-label="Owned properties">
+                  {player.ownedTilePositions.map((position) => {
+                    const economics = getTileEconomics(
+                      state,
+                      player.playerId,
+                      position,
+                      myPlayerId,
+                    );
+                    const developmentTokens =
+                      economics.developmentTokens ??
+                      player.developmentTokens[String(position)] ??
+                      0;
+                    const mortgaged =
+                      economics.mortgaged ??
+                      player.mortgagedTilePositions.some(
+                        (tilePosition) =>
+                          String(tilePosition) === String(position),
+                      );
+                    const propertyName = tileLabel(position, tileNames);
+                    const {
+                      label: mortgageLabel,
+                      formattedValue: formattedMortgageValue,
+                    } = mortgageEconomicsLabels({
+                      mortgaged,
+                      formattedStoredMortgageValue:
+                        economics.formattedStoredMortgageValue,
+                      formattedAvailableMortgageValue:
+                        economics.formattedAvailableMortgageValue,
+                    });
+
+                    return (
+                      <li key={String(position)} className="propertyListItem">
+                        <div>
+                          <strong>{propertyName}</strong>
+                          <span className="propertyMeta">
+                            {mortgaged ? "Mortgaged" : "Active"}
+                            {developmentTokens > 0
+                              ? ` · ${developmentTokens} development token${developmentTokens === 1 ? "" : "s"}`
+                              : ""}
+                          </span>
+                        </div>
+                        <div className="propertyEconomics">
+                          <span>
+                            Develop:{" "}
+                            {economics.formattedDevelopmentCost ??
+                              "not available"}
+                          </span>
+                          <span>
+                            {mortgageLabel}:{" "}
+                            {formattedMortgageValue ?? "not available"}
+                          </span>
+                          <InfoDialog
+                            title={`${propertyName} economics`}
+                            triggerLabel={`Explain develop and mortgage numbers for ${propertyName}`}
+                          >
+                            <TileEconomicsExplainContent
+                              mode="property_overview"
+                              economics={economics}
+                              currencySettings={currencySettings}
+                              developmentTokens={developmentTokens}
+                              mortgaged={mortgaged}
+                            />
+                          </InfoDialog>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </li>
           );
         })}

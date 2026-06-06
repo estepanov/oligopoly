@@ -4,7 +4,9 @@ import {
   AFFINITY_CARD_IDS,
   buildDisruptionDeck,
   buildMarketEventDeck,
+  drawTurnStartMarketEvent,
   getStartingCapital,
+  type InternalGameState,
   initTileStates,
   OPTIONAL_MARKET_EVENT_CARDS_REGISTRY,
   OPTIONAL_RULES_REGISTRY,
@@ -21,6 +23,7 @@ import { upgradeWebSocket } from "../realtime/upgrade.js";
 import { notifyGameSchedule } from "../services/gameAi.js";
 import { kickInGamePlayerToAi } from "../services/gameKick.js";
 import {
+  assignAiSlotNames,
   buildAiPlayersFromSlots,
   countTotalSeats,
   MAX_TOTAL_PLAYERS,
@@ -49,6 +52,22 @@ type Variables = {
 
 const generateId = () => crypto.randomUUID();
 const MAX_WAITING_LOBBIES_PER_USER = 2;
+
+async function fetchUsernames(
+  db: D1Database,
+  userIds: string[],
+): Promise<Map<string, string>> {
+  const entries = await Promise.all(
+    userIds.map(async (userId) => {
+      const row = await db
+        .prepare("SELECT username FROM users WHERE id = ?")
+        .bind(userId)
+        .first<{ username: string }>();
+      return [userId, row?.username ?? userId] as const;
+    }),
+  );
+  return new Map(entries);
+}
 
 /**
  * Return the minimum rank tier required by a set of optional rule IDs and
@@ -370,6 +389,7 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
 
   const id = generateId();
   const now = Date.now();
+  const aiSlots = assignAiSlotNames(id, body.aiSlots);
 
   await db.batch([
     db
@@ -403,7 +423,7 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
         body.currencyName,
         body.currencySymbol,
         body.currencyMultiplier,
-        JSON.stringify(body.aiSlots),
+        JSON.stringify(aiSlots),
       ),
     db
       .prepare(
@@ -437,7 +457,7 @@ lobbyRoutes.post("/", zValidator("json", CreateLobbyInputSchema), async (c) => {
     currency_name: body.currencyName,
     currency_symbol: body.currencySymbol,
     currency_multiplier: body.currencyMultiplier,
-    ai_slots_json: JSON.stringify(body.aiSlots),
+    ai_slots_json: JSON.stringify(aiSlots),
   };
 
   const players: LobbyPlayerRow[] = [
@@ -952,8 +972,9 @@ lobbyRoutes.put(
       values.push(body.currencyMultiplier);
     }
     if (body.aiSlots !== undefined) {
+      const aiSlots = assignAiSlotNames(id, body.aiSlots);
       updates.push("ai_slots_json = ?");
-      values.push(JSON.stringify(body.aiSlots));
+      values.push(JSON.stringify(aiSlots));
     }
 
     if (updates.length > 0) {
@@ -1221,6 +1242,10 @@ lobbyRoutes.post("/:id/start", async (c) => {
   const gameStartedLogId = generateId();
   const now = Date.now();
   const aiPlayers = buildAiPlayersFromSlots(id, aiSlots);
+  const humanDisplayNames = await fetchUsernames(
+    db,
+    lobbyPlayers.map((p) => p.user_id),
+  );
 
   // Randomize turn order
   const playerIds = mergePlayerIdsWithAi(
@@ -1267,11 +1292,11 @@ lobbyRoutes.post("/:id/start", async (c) => {
       ? JSON.parse(lobby.market_event_deck_json)
       : null,
     currencyName: lobby.currency_name ?? "Capital",
-    currencySymbol: lobby.currency_symbol ?? "¤",
+    currencySymbol: lobby.currency_symbol ?? "$",
     currencyMultiplier: lobby.currency_multiplier ?? "1",
     spectatorMode: lobby.spectator_mode ?? "disabled",
   };
-  const initialState = {
+  const initialState: InternalGameState = {
     gameId,
     round: 1,
     phase: "waiting_for_market_event",
@@ -1290,7 +1315,7 @@ lobbyRoutes.post("/:id/start", async (c) => {
       return {
         playerId: pid,
         kind: aiPlayer ? "ai" : "human",
-        displayName: aiPlayer?.name,
+        displayName: aiPlayer?.name ?? humanDisplayNames.get(pid) ?? pid,
         aiPersonality: aiPlayer?.personality,
         position: 0,
         capital: startingCapital,
@@ -1310,6 +1335,28 @@ lobbyRoutes.post("/:id/start", async (c) => {
     disruptionDiscard: [] as string[],
     settings: gameSettings,
   };
+  const firstPlayerId = playerIds[0];
+  const initialDrawResult = firstPlayerId
+    ? drawTurnStartMarketEvent(initialState, firstPlayerId)
+    : { state: initialState, logEntries: [] };
+  const stateToPersist = initialDrawResult.state;
+  const initialDrawLogStatements = initialDrawResult.logEntries.map(
+    (entry, index) =>
+      db
+        .prepare(
+          `INSERT INTO game_log (id, game_id, round, player_id, action_type, payload_json, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          generateId(),
+          gameId,
+          stateToPersist.round,
+          entry.playerId ?? null,
+          entry.actionType,
+          entry.payload ? JSON.stringify(entry.payload) : null,
+          now + index + 1,
+        ),
+  );
 
   await db.batch([
     db
@@ -1322,7 +1369,7 @@ lobbyRoutes.post("/:id/start", async (c) => {
         id,
         now,
         JSON.stringify(playerIds),
-        JSON.stringify(initialState),
+        JSON.stringify(stateToPersist),
       ),
     db
       .prepare(
@@ -1341,6 +1388,7 @@ lobbyRoutes.post("/:id/start", async (c) => {
         }),
         now,
       ),
+    ...initialDrawLogStatements,
     db.prepare("UPDATE lobbies SET status = 'in_game' WHERE id = ?").bind(id),
   ]);
 
@@ -1352,8 +1400,11 @@ lobbyRoutes.post("/:id/start", async (c) => {
   const startResponse = await buildLobbyResponse(db, updated, lobbyPlayers);
   await publishLobbyUpdate(c.env, id, startResponse);
 
-  const { affinityAssignments: _affinity, ...publicInitialState } =
-    initialState;
+  const {
+    affinityAssignments: _affinity,
+    pendingInsiderPeek: _pendingInsiderPeek,
+    ...publicInitialState
+  } = stateToPersist;
   await notifyGameSchedule(c.env?.GAME_ROOM, gameId, publicInitialState);
 
   return c.json(startResponse);

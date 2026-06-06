@@ -31,21 +31,6 @@ const requestWithEnv = (
   });
 };
 
-export async function completeCoordinationPhase(
-  db: D1Database,
-  gameId: string,
-  playerIds: string[],
-) {
-  for (const playerId of playerIds) {
-    await requestWithEnv(`/api/games/${gameId}/action`, {
-      method: "POST",
-      headers: { "x-subject": playerId },
-      body: { type: "end_coordination" },
-      db,
-    });
-  }
-}
-
 export async function markLobbyPlayersReady(
   db: D1Database,
   lobbyId: string,

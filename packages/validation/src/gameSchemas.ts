@@ -109,9 +109,6 @@ export const GameActionSchema = z.discriminatedUnion("type", [
     multiplier: z.number().min(0.5).max(2.0),
   }),
   z.object({
-    type: z.literal("end_coordination"),
-  }),
-  z.object({
     type: z.literal("initiate_auction"),
     tilePosition: z.union([z.number().int(), z.string()]),
     amount: z.number().int().min(1).optional(),
@@ -151,7 +148,6 @@ export type GameAction = z.infer<typeof GameActionSchema>;
 export const GamePhaseSchema = z.enum([
   "market_event",
   "action",
-  "syndicate_coordination",
   "waiting_for_market_event",
   "waiting_for_roll",
   "waiting_for_buy",
@@ -182,9 +178,9 @@ export const PlayerStateSchema = z.object({
   isOnDiagonal: z.boolean(),
   syndicateId: z.string().nullable().optional(),
   outstandingDebt: z.number().int().min(0).optional(),
-  coordinationAcknowledged: z.boolean().optional(),
   hostileTakeoverUsed: z.boolean().optional(),
   marketManipulationUsedThisRound: z.boolean().optional(),
+  usedAffinityIds: z.array(z.string()).optional(),
 });
 export type PlayerState = z.infer<typeof PlayerStateSchema>;
 
@@ -205,7 +201,7 @@ export type InGameHandshakeAgreement = z.infer<
 export const PendingInsiderPeekSchema = z.object({
   cardId: z.string(),
   drawingPlayerId: z.string(),
-  trigger: z.enum(["round_start", "tile"]).optional(),
+  trigger: z.enum(["round_start", "turn_start", "tile"]).optional(),
   tilePosition: z.union([z.number().int(), z.string()]).optional(),
 });
 export type PendingInsiderPeek = z.infer<typeof PendingInsiderPeekSchema>;
@@ -226,6 +222,7 @@ export const TileStateSchema = z.object({
   position: z.union([z.number().int(), z.string()]),
   ownerId: z.string().nullable(),
   mortgaged: z.boolean(),
+  mortgageRate: z.number().nullable().optional(),
   developmentTokens: z.number().int().min(0).max(4),
 });
 export type TileState = z.infer<typeof TileStateSchema>;
@@ -237,6 +234,13 @@ export const RateCardSchema = z.object({
   roundsWithoutLanding: z.number().int().min(0),
 });
 export type RateCard = z.infer<typeof RateCardSchema>;
+
+export const MarketEventModifiersSchema = z.object({
+  utilityRentMultiplier: z.number().optional(),
+  utilityRentMultiplierUntilRound: z.number().int().optional(),
+  syntheticCdoMortgageRound: z.number().int().optional(),
+});
+export type MarketEventModifiers = z.infer<typeof MarketEventModifiersSchema>;
 
 export const PendingAuctionSchema = z.object({
   tilePosition: z.union([z.number().int(), z.string()]),
@@ -268,6 +272,20 @@ export const PendingAuctionSchema = z.object({
 });
 export type PendingAuction = z.infer<typeof PendingAuctionSchema>;
 
+export const GameWinSummarySchema = z.object({
+  winnerId: z.string(),
+  winType: z.enum(["syndicate", "solo", "last_standing"]),
+  reason: z.string(),
+  marketValue: z.number(),
+  totalMarketValue: z.number(),
+  marketShare: z.number(),
+  thresholdMarketValue: z.number().optional(),
+  thresholdShare: z.number().optional(),
+  syndicateId: z.string().optional(),
+  memberIds: z.array(z.string()).optional(),
+});
+export type GameWinSummary = z.infer<typeof GameWinSummarySchema>;
+
 export const GameStateSchema = z.object({
   gameId: z.string(),
   round: z.number().int(),
@@ -288,10 +306,17 @@ export const GameStateSchema = z.object({
     )
     .optional(),
   rateCards: z.array(RateCardSchema).optional(),
+  marketEventModifiers: MarketEventModifiersSchema.optional(),
   turnOrder: z.array(z.string()).optional(),
   aiPlayers: z.array(AiPlayerRuntimeSchema).optional(),
   /** The requesting player's own affinity card (hidden from other players) */
   myAffinityCardId: z.string().nullable().optional(),
+  /**
+   * Server-side affinity map (often omitted on per-player views; see
+   * `toClientGameState`). When present, it is the source of truth over
+   * `myAffinityCardId` for listed players.
+   */
+  affinityAssignments: z.record(z.string(), z.string()).optional(),
   /** Position of tile awaiting purchase decision */
   pendingBuyTilePosition: z
     .union([z.number().int(), z.string()])
@@ -305,6 +330,8 @@ export const GameStateSchema = z.object({
     .optional(),
   /** ID of the winner (player or syndicate leader) */
   winnerId: z.string().nullable().optional(),
+  /** Durable game-over explanation shown in the banner and action log */
+  winSummary: GameWinSummarySchema.nullable().optional(),
   /** IDs of eliminated players */
   eliminatedPlayerIds: z.array(z.string()).optional(),
   /** Human players permanently replaced by AI after an admin kick */
@@ -312,6 +339,14 @@ export const GameStateSchema = z.object({
   handshakeAgreements: z.array(InGameHandshakeAgreementSchema).optional(),
   negotiationThreads: z.array(GameNegotiationThreadSchema).optional(),
   pendingInsiderPeek: PendingInsiderPeekSchema.nullable().optional(),
+  pendingSyndicateVote: z
+    .object({
+      syndicateId: z.string(),
+      voteType: z.literal("dissolve_syndicate"),
+      votes: z.record(z.string(), z.boolean()),
+    })
+    .nullable()
+    .optional(),
   settings: z
     .object({
       turnTimeout: TurnTimeoutSchema.optional(),

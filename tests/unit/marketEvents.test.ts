@@ -2,6 +2,7 @@ import {
   applyAction,
   buildMarketEventDeck,
   drawAndResolveMarketEvent,
+  drawTurnStartMarketEvent,
   type InternalGameState,
   initTileStates,
   type LogEntry,
@@ -256,6 +257,56 @@ describe("drawAndResolveMarketEvent", () => {
     ).toBe(2);
   });
 
+  it("settles turn-start leveraged-buyout auctions back to waiting_for_roll", () => {
+    const state = makeMarketEventState({
+      settings: { auctionType: "open_bids" },
+      phase: "action",
+      marketEventDeckRemaining: ["optional_leveraged_buyout", "market_crash"],
+      players: [
+        {
+          playerId: "player-1",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [1, 3],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 0,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+        {
+          playerId: "player-2",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [6],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 0,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+      ],
+    });
+    state.tiles.find((tile) => tile.position === 1)!.ownerId = "player-1";
+    state.tiles.find((tile) => tile.position === 3)!.ownerId = "player-1";
+    state.tiles.find((tile) => tile.position === 6)!.ownerId = "player-2";
+
+    const drawn = drawTurnStartMarketEvent(state, "player-1");
+    expect(drawn.state.phase).toBe("waiting_for_auction_bids");
+    expect(drawn.state.pendingAuction?.resumePhase).toBe("waiting_for_roll");
+
+    const settled = recordAuctionSubmission(drawn.state, "player-1", 1);
+    expect(settled.state.phase).toBe("waiting_for_roll");
+    expect(
+      settled.state.players.find((player) => player.playerId === "player-1")
+        ?.actionPointsRemaining,
+    ).toBe(2);
+  });
+
   it("pays the seller and removes ownership when leveraged-buyout auctions settle", () => {
     const state = makeMarketEventState({
       settings: { auctionType: "open_bids" },
@@ -490,6 +541,28 @@ describe("drawAndResolveMarketEvent", () => {
       redeemed.state.players.find((player) => player.playerId === "player-1")
         ?.capital,
     ).toBe(1495);
+  });
+});
+
+describe("automatic turn-start market events", () => {
+  it("draws a market event when ending a turn hands off to the next player", () => {
+    const state = makeMarketEventState({
+      phase: "action",
+      marketEventDeckRemaining: ["stimulus_package", "market_crash"],
+    });
+
+    const result = applyAction(state, "player-1", { type: "end_turn" });
+
+    expect(result.state.currentPlayerIndex).toBe(1);
+    expect(result.state.phase).toBe("waiting_for_roll");
+    expect(result.state.marketEventDeckRemaining).toEqual(["market_crash"]);
+    expect(
+      result.logEntries.some(
+        (entry) =>
+          entry.actionType === "market_event_drawn" &&
+          entry.playerId === "player-2",
+      ),
+    ).toBe(true);
   });
 });
 

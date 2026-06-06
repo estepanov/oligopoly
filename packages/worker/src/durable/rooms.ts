@@ -363,6 +363,12 @@ export class GameRoom extends RealtimeRoom {
         const latest = normalizeGameState(
           JSON.parse(row.state_json) as Record<string, unknown>,
         );
+        this.broadcast(
+          jsonEvent("game.schedule", {
+            gameId,
+            state: latest,
+          }),
+        );
         await syncGameRoomTimer(this.state.storage, gameId, latest, (message) =>
           this.broadcast(message),
         );

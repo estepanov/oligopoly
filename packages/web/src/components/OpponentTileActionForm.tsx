@@ -1,6 +1,7 @@
 import type { GameState } from "@oligopoly/validation";
 import { useState } from "react";
 import { parseTilePosition, tileLabel } from "../lib/boardDisplay";
+import { playerDisplayName } from "../lib/gameDisplay";
 
 type OpponentTileActionFormProps = {
   state: GameState;
@@ -52,7 +53,7 @@ export function OpponentTileActionForm({
           <option value="">Player</option>
           {opponents.map((p) => (
             <option key={p.playerId} value={p.playerId}>
-              {p.displayName ?? p.playerId}
+              {playerDisplayName(state, p.playerId)}
             </option>
           ))}
         </select>

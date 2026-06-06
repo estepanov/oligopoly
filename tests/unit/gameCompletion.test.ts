@@ -4,6 +4,17 @@ import { describe, expect, it } from "vitest";
 import { processGameCompletion } from "../../packages/worker/src/services/gameCompletion.js";
 import { createWorkerD1Stub } from "../helpers/workerD1Stub.js";
 
+const createKvStub = () => {
+  const store = new Map<string, string>();
+  return {
+    get: async (key: string) => store.get(key) ?? null,
+    put: async (key: string, value: string, _opts?: unknown) => {
+      store.set(key, value);
+    },
+    _store: store,
+  } as unknown as KVNamespace & { _store: Map<string, string> };
+};
+
 function makeCompletedState(
   overrides?: Partial<InternalGameState>,
 ): InternalGameState {
@@ -96,5 +107,153 @@ describe("processGameCompletion", () => {
     );
     expect(winnerStats?.games_played).toBe(1);
     expect(winnerStats?.wins).toBe(1);
+  });
+
+  it("omits AI seats from user stats and leaderboard rows while counting AI wins", async () => {
+    const db = createWorkerD1Stub();
+    const kv = createKvStub();
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      status: "completed",
+      started_at: 1,
+      ended_at: 2,
+      winner_id: "ai:lobby:one",
+      player_ids_json: JSON.stringify(["user-1", "ai:lobby:one"]),
+      state_json: null,
+    });
+
+    await processGameCompletion(
+      db,
+      kv,
+      "game-1",
+      makeCompletedState({
+        winnerId: "ai:lobby:one",
+        turnOrder: ["user-1", "ai:lobby:one"],
+        kickedPlayerIds: [],
+        players: [
+          makeCompletedState().players[0],
+          {
+            ...makeCompletedState().players[1],
+            playerId: "ai:lobby:one",
+            kind: "ai",
+            displayName: "Copper Scout",
+          },
+        ],
+        aiPlayers: [
+          {
+            playerId: "ai:lobby:one",
+            name: "Copper Scout",
+            personality: "opportunist",
+          },
+        ],
+      }),
+      1000,
+    );
+
+    expect(
+      db._tables.user_stats.some((row) => row.user_id === "ai:lobby:one"),
+    ).toBe(false);
+    expect(JSON.parse(kv._store.get("leaderboard:wins") ?? "[]")).toEqual([]);
+    expect(JSON.parse(kv._store.get("leaderboard:summary") ?? "{}")).toEqual({
+      humanWins: 0,
+      aiWins: 1,
+    });
+  });
+
+  it("counts a kicked human replaced by AI as one AI aggregate win", async () => {
+    const db = createWorkerD1Stub();
+    const kv = createKvStub();
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      status: "completed",
+      started_at: 1,
+      ended_at: 2,
+      winner_id: "user-2",
+      player_ids_json: JSON.stringify(["user-1", "user-2"]),
+      state_json: null,
+    });
+
+    // user-2 was kicked and replaced by AI (same seat id, kind "ai"). They
+    // must not earn human completion stats; aggregate wins still count as AI.
+    await processGameCompletion(
+      db,
+      kv,
+      "game-1",
+      makeCompletedState({
+        winnerId: "user-2",
+        kickedPlayerIds: ["user-2"],
+        players: [
+          makeCompletedState().players[0],
+          {
+            ...makeCompletedState().players[1],
+            kind: "ai",
+            displayName: "Copper Scout",
+            aiPersonality: "opportunist",
+          },
+        ],
+        aiPlayers: [
+          {
+            playerId: "user-2",
+            name: "Copper Scout",
+            personality: "opportunist",
+          },
+        ],
+      }),
+      1000,
+    );
+
+    expect(JSON.parse(kv._store.get("leaderboard:summary") ?? "{}")).toEqual({
+      humanWins: 0,
+      aiWins: 1,
+    });
+    expect(JSON.parse(kv._store.get("leaderboard:wins") ?? "[]")).toEqual([]);
+    const kickedStats = db._tables.user_stats.find(
+      (row) => row.user_id === "user-2",
+    );
+    expect(kickedStats?.wins).toBe(0);
+    expect(kickedStats?.games_played).toBe(0);
+  });
+
+  it("counts a syndicate win once in aggregate summary", async () => {
+    const db = createWorkerD1Stub();
+    const kv = createKvStub();
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      status: "completed",
+      started_at: 1,
+      ended_at: 2,
+      winner_id: "user-1",
+      player_ids_json: JSON.stringify(["user-1", "user-2"]),
+      state_json: null,
+    });
+
+    await processGameCompletion(
+      db,
+      kv,
+      "game-1",
+      makeCompletedState({
+        kickedPlayerIds: [],
+        players: makeCompletedState().players.map((player) => ({
+          ...player,
+          syndicateId: "syn-1",
+        })),
+        syndicates: {
+          "syn-1": {
+            syndicateId: "syn-1",
+            adminId: "user-1",
+            memberIds: ["user-1", "user-2"],
+          },
+        },
+      }),
+      1000,
+    );
+
+    expect(JSON.parse(kv._store.get("leaderboard:summary") ?? "{}")).toEqual({
+      humanWins: 1,
+      aiWins: 0,
+    });
   });
 });

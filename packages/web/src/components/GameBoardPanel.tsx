@@ -1,5 +1,6 @@
 import type { GameState } from "@oligopoly/validation";
 import { tileLabel } from "../lib/boardDisplay";
+import { formatCurrencyAmount, playerDisplayName } from "../lib/gameDisplay";
 import { playerById } from "../lib/gameUi";
 
 type GameBoardPanelProps = {
@@ -16,7 +17,6 @@ export function GameBoardPanel({
   actorId,
 }: GameBoardPanelProps) {
   const me = myPlayerId ? playerById(state, myPlayerId) : undefined;
-  const currency = state.settings?.currencySymbol ?? "¤";
 
   return (
     <div className="gameBoardPanel">
@@ -42,8 +42,8 @@ export function GameBoardPanel({
       {me && (
         <p className="muted">
           You are at <strong>{tileLabel(me.position, tileNames)}</strong> with{" "}
-          {currency}
-          {me.capital} capital and {me.ownedTilePositions.length} owned tile
+          {formatCurrencyAmount(me.capital, state.settings)} capital and{" "}
+          {me.ownedTilePositions.length} owned tile
           {me.ownedTilePositions.length === 1 ? "" : "s"}.
         </p>
       )}
@@ -69,15 +69,12 @@ export function GameBoardPanel({
                 }
               >
                 <td>
-                  {player.displayName ?? player.playerId}
+                  {playerDisplayName(state, player.playerId)}
                   {player.kind === "ai" ? " (AI)" : ""}
                   {player.playerId === myPlayerId ? " (you)" : ""}
                 </td>
                 <td>{tileLabel(player.position, tileNames)}</td>
-                <td>
-                  {currency}
-                  {player.capital}
-                </td>
+                <td>{formatCurrencyAmount(player.capital, state.settings)}</td>
                 <td>{player.ownedTilePositions.length}</td>
               </tr>
             ))}

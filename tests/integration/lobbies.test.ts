@@ -608,12 +608,13 @@ describe("POST /api/lobbies/:id/start", () => {
         maxPlayers: 2,
         isPrivate: false,
         optionalRuleIds: [],
-        aiSlots: [{ id: "ai-1", name: "OpBot", personality: "opportunist" }],
+        aiSlots: [{ id: "ai-1", personality: "opportunist" }],
       },
       db,
     });
     const lobby = await createRes.json();
     expect(lobby.aiSlots).toHaveLength(1);
+    expect(lobby.aiSlots[0].name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
 
     await markLobbyPlayersReady(db, lobby.id, ["user-1"]);
 
@@ -629,6 +630,58 @@ describe("POST /api/lobbies/:id/start", () => {
     expect(db._tables.games[0].player_ids_json).toContain("ai:");
     const state = JSON.parse(db._tables.games[0].state_json as string);
     expect(state.aiPlayers).toHaveLength(1);
+    expect(state.aiPlayers[0].name).toBe(lobby.aiSlots[0].name);
+    const aiSeat = state.players.find(
+      (player: { kind?: string }) => player.kind === "ai",
+    );
+    expect(aiSeat.displayName).toBe(state.aiPlayers[0].name);
+    const humanSeat = state.players.find(
+      (player: { playerId: string }) => player.playerId === "user-1",
+    );
+    expect(humanSeat.displayName).toBe("user-1");
+  });
+
+  it("persists unique AI names when updating lobby slots", async () => {
+    const db = createD1Stub();
+    const createRes = await requestWithEnv("/api/lobbies", {
+      method: "POST",
+      headers: { "x-subject": "user-1" },
+      body: {
+        name: "Update AI Lobby",
+        maxPlayers: 4,
+        isPrivate: false,
+        optionalRuleIds: [],
+      },
+      db,
+    });
+    const lobby = await createRes.json();
+
+    const updateRes = await requestWithEnv(
+      `/api/lobbies/${lobby.id}/settings`,
+      {
+        method: "PUT",
+        headers: { "x-subject": "user-1" },
+        body: {
+          aiSlots: [
+            { id: "ai-1", personality: "opportunist" },
+            { id: "ai-2", personality: "opportunist" },
+          ],
+        },
+        db,
+      },
+    );
+
+    expect(updateRes.status).toBe(200);
+    const updated = await updateRes.json();
+    const names = updated.aiSlots.map((slot: { name: string }) => slot.name);
+    expect(updated.aiSlots).toHaveLength(2);
+    expect(new Set(names).size).toBe(2);
+    expect(names[0]).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
+
+    const persistedSlots = JSON.parse(
+      db._tables.lobbies[0].ai_slots_json as string,
+    ) as Array<{ name: string }>;
+    expect(persistedSlots.map((slot) => slot.name)).toEqual(names);
   });
 });
 
@@ -756,7 +809,7 @@ describe("Enhanced lobby settings", () => {
     expect(body.voiceVideoEnabled).toBe(false);
     expect(body.spectatorMode).toBe("disabled");
     expect(body.currencyName).toBe("Capital");
-    expect(body.currencySymbol).toBe("¤");
+    expect(body.currencySymbol).toBe("$");
     expect(body.currencyMultiplier).toBe("1");
     expect(body.optionalMarketEventCardIds).toEqual([]);
     expect(body.marketEventDeckCardIds).toBeNull();
@@ -856,7 +909,21 @@ describe("Enhanced game start — proper initial state", () => {
     );
     expect(stateRes.status).toBe(200);
     const state = await stateRes.json();
-    expect(state.phase).toBe("waiting_for_market_event");
+    expect(state.phase).toBe("waiting_for_roll");
+
+    const logRes = await requestWithEnv(`/api/games/${startBody.gameId}/log`, {
+      method: "GET",
+      headers: { "x-subject": "user-1" },
+      db,
+    });
+    expect(logRes.status).toBe(200);
+    const { log } = await logRes.json();
+    expect(
+      log.some(
+        (entry: { actionType: string }) =>
+          entry.actionType === "market_event_drawn",
+      ),
+    ).toBe(true);
   });
 
   it("stores enriched game_started log with affinity assignments", async () => {

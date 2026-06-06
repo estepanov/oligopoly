@@ -6,6 +6,7 @@ import { GameBoardPanel } from "../components/GameBoardPanel";
 import { GamePlayControls } from "../components/GamePlayControls";
 import { PlayerSummaryPanel } from "../components/PlayerSummaryPanel";
 import { useGameSession } from "../hooks/useGameSession";
+import { playerDisplayName, playerNameMap } from "../lib/gameDisplay";
 import { currentActorId } from "../lib/gameUi";
 
 export function GameDetailPage() {
@@ -16,6 +17,7 @@ export function GameDetailPage() {
     state,
     logEntries,
     tileNames,
+    tileDetails,
     error,
     loading,
     busyAction,
@@ -29,6 +31,7 @@ export function GameDetailPage() {
     refresh,
   } = useGameSession(id, user?.userId ?? null);
   const actorId = state ? currentActorId(state) : null;
+  const namesByPlayerId = state ? playerNameMap(state) : undefined;
 
   if (!id) {
     return (
@@ -76,20 +79,29 @@ export function GameDetailPage() {
                 : "—"}
             </dd>
             <dt className="muted">Winner</dt>
-            <dd>{game.winnerId ?? "—"}</dd>
+            <dd>
+              {state && game.winnerId
+                ? playerDisplayName(state, game.winnerId, { myPlayerId })
+                : (game.winnerId ?? "—")}
+            </dd>
           </dl>
         )}
       </div>
 
       {state && (
         <>
-          <PlayerSummaryPanel state={state} myPlayerId={myPlayerId} />
+          <PlayerSummaryPanel
+            state={state}
+            myPlayerId={myPlayerId}
+            tileNames={tileNames}
+          />
 
           <div className="card">
             <h2>Board</h2>
             <BoardGrid
               state={state}
               tileNames={tileNames}
+              tileDetails={tileDetails}
               myPlayerId={myPlayerId}
               actorId={actorId}
             />
@@ -103,7 +115,12 @@ export function GameDetailPage() {
 
           <div className="card">
             <h2>Action log</h2>
-            <GameActionLog entries={logEntries} tileNames={tileNames} />
+            <GameActionLog
+              entries={logEntries}
+              tileNames={tileNames}
+              currencySettings={state.settings}
+              playerNames={namesByPlayerId}
+            />
           </div>
         </>
       )}

@@ -1,6 +1,7 @@
 import type { GameAction, GameState } from "@oligopoly/validation";
 import { useState } from "react";
 import { tileLabel } from "../lib/boardDisplay";
+import { formatCurrencyAmount, playerDisplayName } from "../lib/gameDisplay";
 import {
   activeEligibleAuctionPlayers,
   canParticipateInAuction,
@@ -11,7 +12,6 @@ import {
   isLiveAuctionPhase,
   isOpenAuctionPhase,
   isSealedAuctionPhase,
-  playerById,
 } from "../lib/gameUi";
 
 type AuctionPanelProps = {
@@ -42,7 +42,7 @@ export function AuctionPanel({
   const sealedAuction = isSealedAuctionPhase(state);
   const visibleBids = openAuction || liveAuction;
 
-  const currency = state.settings?.currencySymbol ?? "¤";
+  const currencySettings = state.settings;
   const tileName = tileLabel(auction.tilePosition, tileNames);
   const highBid = currentAuctionHighBid(state);
   const minBid = liveAuction
@@ -75,16 +75,14 @@ export function AuctionPanel({
           <>
             {liveAuction ? (
               <>
-                High bid: {currency}
-                {highBid > 0 ? highBid.toLocaleString() : "none"}. Next bid ≥
-                {currency}
-                {minBid}
+                High bid:{" "}
+                {highBid > 0
+                  ? formatCurrencyAmount(highBid, currencySettings)
+                  : "none"}
+                . Next bid ≥ {formatCurrencyAmount(minBid, currencySettings)}
               </>
             ) : (
-              <>
-                Minimum bid: {currency}
-                {minBid}
-              </>
+              <>Minimum bid: {formatCurrencyAmount(minBid, currencySettings)}</>
             )}
             {!liveAuction &&
               `. Submissions: ${submissionCount}/${eligibleCount}`}
@@ -106,12 +104,11 @@ export function AuctionPanel({
       {visibleBids && bidding && (
         <ul className="auctionBidList">
           {Object.entries(auction.submissions).map(([playerId, value]) => {
-            const player = playerById(state, playerId);
-            const label = player?.displayName ?? playerId;
+            const label = playerDisplayName(state, playerId, { myPlayerId });
             const amount =
               value === "pass"
                 ? "passed"
-                : `${currency}${value.toLocaleString()}`;
+                : formatCurrencyAmount(value, currencySettings);
             return (
               <li key={playerId}>
                 {label}: {amount}
@@ -158,11 +155,14 @@ export function AuctionPanel({
               onClick={() => {
                 const amount = Number.parseInt(bidAmount, 10);
                 if (!Number.isFinite(amount)) return;
-                void onAction(`Bid ${currency}${amount} on ${tileName}`, {
-                  type: "auction_bid",
-                  tilePosition: auction.tilePosition,
-                  amount,
-                });
+                void onAction(
+                  `Bid ${formatCurrencyAmount(amount, currencySettings)} on ${tileName}`,
+                  {
+                    type: "auction_bid",
+                    tilePosition: auction.tilePosition,
+                    amount,
+                  },
+                );
               }}
             >
               {liveAuction ? "Place bid" : "Submit bid"}

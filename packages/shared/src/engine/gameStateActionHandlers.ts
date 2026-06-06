@@ -35,7 +35,10 @@ import type {
   LogEntry,
 } from "./gameStateTypes.js";
 import { syntheticCdoMortgageBoostActive } from "./marketEventModifiers.js";
-import { drawAndResolveMarketEvent } from "./marketEvents.js";
+import {
+  drawAndResolveMarketEvent,
+  drawTurnStartMarketEvent,
+} from "./marketEvents.js";
 import {
   calculateMortgageValueForState,
   calculateRedemptionCost,
@@ -46,6 +49,7 @@ import {
   regulationPenaltiesEnabled,
 } from "./optionalRulesEngine.js";
 import { resolvePostMovePhase } from "./phaseHelpers.js";
+import { advanceToFirstPlayerOfNewRound } from "./rateCardActions.js";
 import {
   recordOpposingSectorLanding,
   revokeRateCardsForMortgage,
@@ -679,6 +683,13 @@ export function handleEndTurn(
     newState = markFinalRoundTurnComplete(newState, playerId, logs);
   }
 
+  if (newState.phase === "game_over") {
+    newState.aiPlayers = (newState.aiPlayers ?? []).filter(
+      (ai) => ai.takeoverForPlayerId !== playerId,
+    );
+    return { state: newState, logEntries: logs };
+  }
+
   if (roundWrapped && nextIndex === 0) {
     newState.round += 1;
     logs.push({
@@ -687,10 +698,17 @@ export function handleEndTurn(
       payload: { round: newState.round },
     });
     newState = processCoordinationPhase(newState, logs);
-    newState.phase = "syndicate_coordination";
-    newState.currentPlayerIndex = 0;
-    newState.lastDiceRoll = null;
-    newState.pendingBuyTilePosition = null;
+    if (newState.phase === "game_over") {
+      newState.aiPlayers = (newState.aiPlayers ?? []).filter(
+        (ai) => ai.takeoverForPlayerId !== playerId,
+      );
+      return { state: newState, logEntries: logs };
+    }
+    const roundStart = advanceToFirstPlayerOfNewRound(newState, logs);
+    newState = roundStart.state;
+    newState.aiPlayers = (newState.aiPlayers ?? []).filter(
+      (ai) => ai.takeoverForPlayerId !== playerId,
+    );
     return { state: newState, logEntries: logs };
   }
 
@@ -701,9 +719,11 @@ export function handleEndTurn(
   nextPlayer.actionPointsRemaining = nextPlayer.inRegulation
     ? 0
     : ACTION_POINTS_PER_TURN;
-  newState.phase = "waiting_for_roll";
   newState.lastDiceRoll = null;
   newState.pendingBuyTilePosition = null;
+  const drawResult = drawTurnStartMarketEvent(newState, nextPlayerId);
+  logs.push(...drawResult.logEntries);
+  newState = drawResult.state;
 
   newState.aiPlayers = (newState.aiPlayers ?? []).filter(
     (ai) => ai.takeoverForPlayerId !== playerId,

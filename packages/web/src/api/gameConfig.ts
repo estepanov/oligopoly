@@ -6,6 +6,8 @@ const BoardTileSchema = z.object({
   position: z.union([z.number(), z.string()]),
   name: z.string(),
   cost: z.number().nullable(),
+  baseRent: z.number().nullable(),
+  sectorId: z.string().nullable(),
   type: z.string(),
 });
 

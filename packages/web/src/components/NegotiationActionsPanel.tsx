@@ -1,7 +1,13 @@
 import type { GameAction, GameState } from "@oligopoly/validation";
 import { useState } from "react";
 import { tileLabel } from "../lib/boardDisplay";
-import { otherHumanPlayers, ownedTilesForPlayer } from "../lib/gameUi";
+import { playerDisplayName } from "../lib/gameDisplay";
+import {
+  canProposeBindingContract,
+  canStartNegotiation,
+  contractEligibleTilesForPlayer,
+  otherHumanPlayers,
+} from "../lib/gameUi";
 
 type NegotiationActionsPanelProps = {
   state: GameState;
@@ -23,13 +29,22 @@ export function NegotiationActionsPanel({
   const [contractTile, setContractTile] = useState("");
 
   const others = otherHumanPlayers(state, myPlayerId);
-  const unmortgaged = ownedTilesForPlayer(state, myPlayerId).filter(
-    (tile) => !tile.mortgaged,
-  );
+  const canNegotiate = canStartNegotiation(state, myPlayerId);
+  const canProposeContract = canProposeBindingContract(state, myPlayerId);
+  const unmortgaged = contractEligibleTilesForPlayer(state, myPlayerId);
+  const myContracts =
+    state.activeContracts?.filter(
+      (contract) =>
+        contract.partyA === myPlayerId || contract.partyB === myPlayerId,
+    ) ?? [];
+
+  if (!canNegotiate && !canProposeContract && myContracts.length === 0) {
+    return null;
+  }
 
   return (
     <>
-      {others.length > 0 && (
+      {canNegotiate && (
         <div className="negotiationForm">
           <label className="muted">
             Negotiate with{" "}
@@ -41,7 +56,7 @@ export function NegotiationActionsPanel({
               <option value="">Select player</option>
               {others.map((player) => (
                 <option key={player.playerId} value={player.playerId}>
-                  {player.displayName ?? player.playerId}
+                  {playerDisplayName(state, player.playerId)}
                 </option>
               ))}
             </select>
@@ -62,7 +77,7 @@ export function NegotiationActionsPanel({
         </div>
       )}
 
-      {others.length > 0 && unmortgaged.length > 0 && (
+      {canProposeContract && (
         <div className="contractForm">
           <label className="muted">
             Propose no-sell contract with{" "}
@@ -74,7 +89,7 @@ export function NegotiationActionsPanel({
               <option value="">Player</option>
               {others.map((player) => (
                 <option key={player.playerId} value={player.playerId}>
-                  {player.displayName ?? player.playerId}
+                  {playerDisplayName(state, player.playerId)}
                 </option>
               ))}
             </select>
@@ -120,30 +135,33 @@ export function NegotiationActionsPanel({
         </div>
       )}
 
-      {state.activeContracts && state.activeContracts.length > 0 && (
+      {myContracts.length > 0 && (
         <ul className="contractList muted">
-          {state.activeContracts.map((contract) => (
+          {myContracts.map((contract) => (
             <li key={contract.id}>
-              {contract.id}: {contract.partyA} ↔ {contract.partyB}
-              {contract.partySignatures?.[myPlayerId] ? " (you signed)" : ""}
-              {!contract.partySignatures?.[myPlayerId] &&
-                (contract.partyA === myPlayerId ||
-                  contract.partyB === myPlayerId) && (
-                  <button
-                    type="button"
-                    className="button buttonSecondary"
-                    style={{ marginLeft: "0.5rem" }}
-                    disabled={busy}
-                    onClick={() =>
-                      void onAction("Signed contract", {
-                        type: "sign_contract",
-                        contractId: contract.id,
-                      })
-                    }
-                  >
-                    Sign
-                  </button>
-                )}
+              {contract.id}:{" "}
+              {playerDisplayName(state, contract.partyA, {
+                myPlayerId,
+              })}{" "}
+              ↔ {playerDisplayName(state, contract.partyB, { myPlayerId })}
+              {contract.partySignatures?.[myPlayerId] ? (
+                " (you signed)"
+              ) : (
+                <button
+                  type="button"
+                  className="button buttonSecondary"
+                  style={{ marginLeft: "0.5rem" }}
+                  disabled={busy}
+                  onClick={() =>
+                    void onAction("Signed contract", {
+                      type: "sign_contract",
+                      contractId: contract.id,
+                    })
+                  }
+                >
+                  Sign
+                </button>
+              )}
             </li>
           ))}
         </ul>

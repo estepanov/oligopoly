@@ -13,9 +13,10 @@ import {
   submitGameAction,
 } from "../api/games";
 import { ApiError } from "../api/http";
-import { buildTileNameMap } from "../lib/boardDisplay";
+import { type BoardTileDetails, buildTileMaps } from "../lib/boardDisplay";
 import {
   currentActorId,
+  isAiControlledActor,
   isMyTurn,
   mergeAuctionClientView,
 } from "../lib/gameUi";
@@ -54,6 +55,9 @@ export function useGameSession(
   const [state, setState] = useState<GameState | null>(null);
   const [logEntries, setLogEntries] = useState<GameLogEntry[]>([]);
   const [tileNames, setTileNames] = useState<Map<string, string>>(new Map());
+  const [tileDetails, setTileDetails] = useState<Map<string, BoardTileDetails>>(
+    new Map(),
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState(false);
@@ -75,10 +79,17 @@ export function useGameSession(
     let cancelled = false;
     void fetchGameConfig()
       .then((config) => {
-        if (!cancelled) setTileNames(buildTileNameMap(config));
+        if (!cancelled) {
+          const { names, details } = buildTileMaps(config);
+          setTileNames(names);
+          setTileDetails(details);
+        }
       })
       .catch(() => {
-        if (!cancelled) setTileNames(new Map());
+        if (!cancelled) {
+          setTileNames(new Map());
+          setTileDetails(new Map());
+        }
       });
     return () => {
       cancelled = true;
@@ -107,7 +118,7 @@ export function useGameSession(
         ]);
         if (!cancelled) {
           setGame(summary);
-          setState(gameState);
+          setState((current) => mergeAuctionClientView(current, gameState));
           setLogEntries(log);
         }
       } catch (e) {
@@ -146,7 +157,7 @@ export function useGameSession(
       setError(null);
       try {
         const next = await submitGameAction(gameId, action);
-        setState(next);
+        setState((current) => mergeAuctionClientView(current, next));
         setStatusLine(label);
         if (next.logEntries?.length) {
           setLogEntries((current) =>
@@ -168,16 +179,31 @@ export function useGameSession(
       fetchGameState(gameId),
       loadGameLog(gameId),
     ]);
-    setState(gameState);
+    setState((current) => mergeAuctionClientView(current, gameState));
     setLogEntries(log);
     setStatusLine(null);
   }, [gameId]);
+
+  useEffect(() => {
+    if (!gameId || state?.phase === "game_over") return;
+    const actorId = state ? currentActorId(state) : null;
+    const shouldPoll =
+      wsStatus !== "connected" ||
+      (state ? isAiControlledActor(state, actorId) : false);
+    if (!shouldPoll) return;
+
+    const interval = window.setInterval(() => {
+      void refresh();
+    }, 2500);
+    return () => window.clearInterval(interval);
+  }, [gameId, refresh, state, wsStatus]);
 
   return {
     game,
     state,
     logEntries,
     tileNames,
+    tileDetails,
     error,
     loading,
     busyAction,

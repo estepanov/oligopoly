@@ -82,7 +82,7 @@ describe("AI and realtime schemas", () => {
       maxPlayers: 2,
       isPrivate: false,
       optionalRuleIds: [],
-      aiSlots: [{ id: "ai-1", name: "Bot", personality: "opportunist" }],
+      aiSlots: [{ id: "ai-1", personality: "opportunist" }],
     });
 
     expect(result.success).toBe(true);
@@ -705,7 +705,7 @@ describe("CreateLobbyInputSchema (enhanced)", () => {
       expect(result.data.voiceVideoEnabled).toBe(false);
       expect(result.data.spectatorMode).toBe("disabled");
       expect(result.data.currencyName).toBe("Capital");
-      expect(result.data.currencySymbol).toBe("¤");
+      expect(result.data.currencySymbol).toBe("$");
       expect(result.data.currencyMultiplier).toBe("1");
     }
   });
@@ -880,7 +880,7 @@ describe("GameActionSchema", () => {
 
 describe("GamePhaseSchema", () => {
   it("accepts all valid phases", () => {
-    for (const p of ["market_event", "action", "syndicate_coordination"]) {
+    for (const p of ["market_event", "action", "waiting_for_roll"]) {
       expect(GamePhaseSchema.safeParse(p).success).toBe(true);
     }
   });
@@ -944,6 +944,20 @@ describe("TileStateSchema", () => {
       developmentTokens: 0,
     });
     expect(result.success).toBe(true);
+  });
+
+  it("preserves the mortgage rate for client redemption economics", () => {
+    const result = TileStateSchema.safeParse({
+      position: 6,
+      ownerId: "p1",
+      mortgaged: true,
+      mortgageRate: 0.6,
+      developmentTokens: 0,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.mortgageRate).toBe(0.6);
+    }
   });
 });
 

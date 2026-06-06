@@ -12,7 +12,7 @@
     "dev:worker": "pnpm run --filter @oligopoly/worker dev",
     "dev:web": "pnpm run --filter @oligopoly/web dev",
     "ci:build": "pnpm run --filter @oligopoly/validation build && pnpm run --filter @oligopoly/shared build",
-    "ci:verify": "pnpm run typecheck && pnpm run lint && pnpm run test:unit --coverage && pnpm run test:integration",
+    "ci:verify": "pnpm run typecheck && pnpm run lint && pnpm run test:unit --coverage && pnpm run test:integration && pnpm run test:web",
     "ci:local": "pnpm run ci:build && pnpm run ci:verify",
     "db:reset:dev": "bash ./scripts/db-reset-dev.sh",
     "docs:check": "./scripts/docs-safety-check.sh",

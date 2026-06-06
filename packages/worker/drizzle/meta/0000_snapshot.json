@@ -161,7 +161,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'¤'"
+          "default": "'$'"
         },
         "currency_multiplier": {
           "name": "currency_multiplier",

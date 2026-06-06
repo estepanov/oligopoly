@@ -69,7 +69,7 @@ Players join via direct invite (username or email), a shareable invite link, or 
 | Lobby visibility | Public / Private (default: Private) |
 | Auction type | Open bids / Sealed bids / Live bidding (default: Sealed) |
 | Currency name | Customizable text field (default: Capital) |
-| Currency symbol | Customizable symbol (default: ¤) |
+| Currency symbol | Customizable symbol (default: $) |
 | Optional rules | Toggle individual optional rules on/off (all off by default; some require minimum rank) |
 | Optional event cards | Toggle individual optional market event cards on/off (all off by default; some require minimum rank) |
 
@@ -81,15 +81,17 @@ Solo vs AI is a standard lobby configuration, not a separate rule set. The lobby
 
 Mixed games may include any combination of human and AI seats up to the lobby maximum. AI seats are configured before start and become server-controlled players for the entire game unless they are temporary timeout takeovers for a disconnected human.
 
+When a game starts, each AI seat receives a friendly generated display name that remains stable for that game. If a kicked human seat is replaced by AI control, the replacement also receives a friendly display name for all in-game UI and action logs.
+
 ---
 
 ## Capital Currency
 
-The in-game currency is called **Capital** by default and is displayed with the symbol **¤** (universal currency symbol).
+The in-game currency is called **Capital** by default and is displayed with the symbol **$**.
 
 **Currency Customization:** Game admins can customize the currency name, symbol, and display multiplier in the lobby settings before the game starts. For example, a lobby might rename Capital to "Credits" with the symbol "$", or "Coins" with "🪙".
 
-**Cosmetic Only:** All customisation is purely cosmetic — it does not affect any game mechanics, rent calculations, or monetary values. All rules, tables, and effects in this document use the default notation of "Capital" / ¤.
+**Cosmetic Only:** All customisation is purely cosmetic — it does not affect any game mechanics, rent calculations, or monetary values. All rules, tables, and effects in this document use the default notation of "Capital" / $.
 
 **Display Multiplier:** Admins may also choose a display multiplier via a dropdown:
 
@@ -394,14 +396,14 @@ Tile acquisition costs reflect current market conditions. Market Event cards for
 When a Syndicate controls **all tiles in a sector AND owns that sector's Sector Hub**, it may post a **Rate Card** — overriding the calculated rent on every tile in that sector with a custom multiplier.
 
 #### When Rate Cards Become Available
-A Rate Card becomes available to a Syndicate during the **Syndicate Coordination Phase** of any round in which the Syndicate meets both conditions:
+A Rate Card becomes available in any round where the Syndicate meets both conditions:
 1. Owns all sector tiles (full perimeter + diagonal tiles in that sector)
 2. Owns the Sector Hub for that sector
 
-If the Syndicate loses either condition (tile traded away, mortgaged, or taken by Hostile Takeover), the Rate Card is immediately revoked and rent returns to the standard calculated rate. **If any single tile in the qualifying sector or its Sector Hub becomes mortgaged, the Rate Card is revoked in its entirety** — even if the other tiles remain owned and unmortgaged. The Rate Card can only be reinstated once all disqualifying conditions are resolved and the Syndicate re-activates it during a subsequent Syndicate Coordination Phase.
+If the Syndicate loses either condition (tile traded away, mortgaged, or taken by Hostile Takeover), the Rate Card is immediately revoked and rent returns to the standard calculated rate. **If any single tile in the qualifying sector or its Sector Hub becomes mortgaged, the Rate Card is revoked in its entirety** — even if the other tiles remain owned and unmortgaged. The Rate Card can only be reinstated once all disqualifying conditions are resolved and the Syndicate admin posts a new Rate Card again while qualified (see below).
 
 #### Setting a Rate
-During the Syndicate Coordination Phase, the Syndicate admin may set or adjust the Rate Card multiplier for any sector in which they qualify. The multiplier is a percentage of the **fully calculated rent** (base × all applicable multipliers before the Rate Card is applied):
+While you are the **active player** on your own turn (**Action Phase**, including between doubles when you are still rolling), the **Syndicate admin** may set or adjust the Rate Card multiplier for any sector in which the Syndicate currently qualifies. The change applies **immediately** to the next rent resolution in that sector. The multiplier is a percentage of the **fully calculated rent** (base × all applicable multipliers before the Rate Card is applied):
 
 | Multiplier | Effect |
 |---|---|
@@ -431,17 +433,17 @@ Aggressive monopolisation imposes costs on all players. Some Market Event cards 
 
 ## Turn Structure
 
-Each full round has three sequential phases.
+Each full round has two player-facing phases. **Between rounds** (after the last player ends their turn and before the next turn-start market event), the server applies bookkeeping automatically (debt interest when enabled, negotiation expiry, rate-card market-pressure ticks, and similar) — there is no separate pause for table acknowledgement.
 
 ---
 
-### Phase 1: Market Event
+### Turn-Start Market Event
 
-The first player draws one Market Event card and reads it aloud. The effect applies immediately before anyone acts.
+At the start of each player's turn, the server automatically draws and resolves one Market Event card before the player rolls. The drawn card and its outcome are shown in the game log. Players do not manually draw this mandatory turn-start card.
 
 ---
 
-### Phase 2: Action Phase
+### Action phase
 
 Each player takes their turn in order. A turn consists of a mandatory **Movement Step** followed by optional **Action Points**.
 
@@ -494,14 +496,17 @@ After resolving tile effects, spend **2 Action Points:**
 
 ---
 
-### Phase 3: Syndicate Coordination Phase
+### Between-round housekeeping (automatic)
 
-- Joint sector acquisitions resolve
-- Syndicate revenue distributes per charter
-- Oligopoly pricing decisions take effect
-- Market Control tracker updates
-- Winning threshold check
+At the end of each full lap of turns, before the next player’s turn-start market draw, the server resolves bookkeeping that does not require player input:
+
+- Joint sector acquisitions from the prior round are fully reflected on the board state
+- Syndicate revenue and charter obligations continue to apply as written elsewhere
+- **Oligopoly pricing (Rate Cards)** set during turns remain in force unless revoked by loss of control, mortgage, or market-pressure reset
+- Market Control tracker updates and winning-threshold checks run as implemented in the live ruleset
 - Regulation effects reset for players who completed their Regulation turn
+
+Players do not wait on a separate “coordination” step; syndicate admins adjust Rate Cards on **their own** turns when qualified.
 
 ---
 
@@ -554,7 +559,7 @@ At formation, all members agree on:
 
 ## Market Events
 
-30 cards total. Admin can include/exclude any card in the lobby. Four Market Event spaces (positions 2, 17, 26, 36) trigger additional draws mid-turn on top of the Phase 1 draw.
+30 cards total. Admin can include/exclude any card in the lobby. Four Market Event spaces (positions 2, 17, 26, 36) trigger additional draws mid-turn on top of the automatic turn-start draw.
 
 *(Full list of all 30 cards with effects is defined in the game configuration served from the backend. The canonical card text is the server-authoritative version.)*
 
@@ -581,6 +586,8 @@ At formation, all members agree on:
 The in-game chat supports **three communication scopes**:
 
 **Global Chat** — Messages visible to all players and all spectators in the game. Use this for public coordination, jokes, or general conversation. Global messages are logged in the action log.
+
+The Action Log also records the visible consequences of game actions, including changes to a player's Capital, owned tiles, mortgaged tiles, development tokens, Action Points, trustworthiness, debt, board position, regulation status, and Syndicate membership. When a game ends, the log records why the win was reached and how it was calculated, and the same explanation is shown in the in-game game-over message.
 
 **Syndicate Chat** — Messages visible only to members of your Syndicate. Use this for private syndicate strategy and decision-making. Spectators cannot see syndicate chat. Non-members see only that a syndicate message was sent, not its content.
 
@@ -617,6 +624,7 @@ These timestamps help other players assess whether a disconnect is temporary net
 ### Thresholds
 - **Syndicate win**: 60% of total market value (the sum of acquisition costs of all board tiles, fixed at game start). Coalition required.
 - **Solo win**: 35% of total market value (the sum of acquisition costs of all board tiles, fixed at game start) individually.
+- **Last standing win**: if only one non-eliminated player remains, that player wins. The game-over message and Action Log explain the exact winning condition.
 
 ### The Final Round
 When a Syndicate crosses 60%, every other player and Syndicate gets one last full turn to disrupt it below the threshold.
@@ -719,7 +727,7 @@ Game admins may enable any of the following **optional house rules** in the lobb
 
 **Open Negotiation** — All negotiation proposals, counter-proposals, and agreements are visible to all players in the game (not just the parties involved). Transparency may encourage or discourage negotiation; use with caution.
 
-**Debt Spiral** — If a player cannot pay rent immediately and has no available Capital, they owe the debt as an interest-bearing obligation. The debt accrues **10% simple interest per round** until fully paid (applied to the original debt amount only — not compounding). Interest is calculated on the principal at the end of each Round 3 (Syndicate Coordination Phase). A player may pay off debt at any time.
+**Debt Spiral** — If a player cannot pay rent immediately and has no available Capital, they owe the debt as an interest-bearing obligation. The debt accrues **10% simple interest per round** until fully paid (applied to the original debt amount only — not compounding). Interest is calculated on the principal at the **end of each full player round** (immediately before the next round’s first turn-start market event). A player may pay off debt at any time.
 
 ### Rank-Gated Optional Rules (Requires Capital Baron Rank or Above)
 
@@ -727,9 +735,9 @@ These rules may only be enabled if the game admin has achieved **Capital Baron**
 
 **Hostile Takeover** — Once per game, a player may forcibly purchase one sector tile from another player who is **not** in their Syndicate. The purchase price is **150% of the tile's acquisition cost**. The target player cannot refuse or negotiate—the transaction is forced through immediately. This rule is powerful and should be used strategically.
 
-**Market Manipulation** — Once per round (during the admin's turn in Phase 2), a player may pay ¤50 to **freeze one opponent's tile** for the remainder of that round. A frozen tile cannot collect rent from any player landing on it this round, regardless of the owner's game state. The freeze affects only one round.
+**Market Manipulation** — Once per round (during the admin's turn in Phase 2), a player may pay $50 to **freeze one opponent's tile** for the remainder of that round. A frozen tile cannot collect rent from any player landing on it this round, regardless of the owner's game state. The freeze affects only one round.
 
-**Insider Trading** — Before each Market Event card is drawn in Phase 1, the player designated to draw (rotated each round through all players) may **peek** at the top card of the Market Event deck without revealing it to others. They may then choose to discard that card and draw the next card instead. The peeked card (if not drawn) is returned to the bottom of the deck face-down.
+**Insider Trading** — Before each automatic turn-start Market Event card is drawn, the player whose turn is starting may **peek** at the top card of the Market Event deck without revealing it to others. They may then choose to discard that card and draw the next card instead. The peeked card (if not drawn) is returned to the bottom of the deck face-down.
 
 ---
 
@@ -741,17 +749,17 @@ Game admins may add any of the following optional Market Event cards to the acti
 
 **Leveraged Buyout** — The player currently controlling the fewest tiles must immediately place one of their most expensive tiles up for auction. All players may bid. Minimum bid: 1 Capital. Auction proceeds go to the auctioned player (not the bank).
 
-**Corporate Espionage** — Each player pays ¤10 for every development token on tiles currently owned by opponents. Total cost = (sum of opponents' development tokens) × 10. This models industrial espionage overhead.
+**Corporate Espionage** — Each player pays $10 for every development token on tiles currently owned by opponents. Total cost = (sum of opponents' development tokens) × 10. This models industrial espionage overhead.
 
-**Short Squeeze** — The player controlling the most tiles in any single sector immediately collects ¤30 per tile in that sector from all other players. Example: if a player controls 4 tiles in the Healthcare sector, they collect 4 × 30 = 120 Capital from each other player.
+**Short Squeeze** — The player controlling the most tiles in any single sector immediately collects $30 per tile in that sector from all other players. Example: if a player controls 4 tiles in the Healthcare sector, they collect 4 × 30 = 120 Capital from each other player.
 
 **Supply Chain Crisis** — All utilities (Oil Pipeline and Clean Water Authority) collect **double rent** for the next **2 rounds** (both opponents' turns and the owner's turns). After 2 complete rounds, rent returns to normal.
 
-**Sovereign Wealth Fund** — The bank distributes ¤200 equally among all players, rounded down. Example: in a 4-player game, each player receives 50 Capital (4 × 50 = 200).
+**Sovereign Wealth Fund** — The bank distributes $200 equally among all players, rounded down. Example: in a 4-player game, each player receives 50 Capital (4 × 50 = 200).
 
-**Venture Capital Boom** — Each player currently controlling **fewer than 3 tiles** receives ¤100 from the bank as startup funding. Only qualifying players receive the boost.
+**Venture Capital Boom** — Each player currently controlling **fewer than 3 tiles** receives $100 from the bank as startup funding. Only qualifying players receive the boost.
 
-**Algorithmic Flash Trade** — All players simultaneously roll a single die. Each player collects that result × ¤10 from the bank. Example: rolling a 4 yields 40 Capital. Different rolls are possible.
+**Algorithmic Flash Trade** — All players simultaneously roll a single die. Each player collects that result × $10 from the bank. Example: rolling a 4 yields 40 Capital. Different rolls are possible.
 
 **Regulatory Amnesty** — All players currently positioned in the Regulation Zone (position 10) are immediately released. They do not lose their next turn's optional actions. Any players not in Regulation are unaffected.
 
@@ -801,7 +809,7 @@ A player's current rank and rank icon are displayed:
 - On their player profile page
 - In-game in player panels (showing name, capital, tiles, rank icon)
 - In the game lobby
-- On the leaderboard
+- On the leaderboard for human players. AI players are not ranked as individual leaderboard entries; leaderboards instead show aggregate human-win and AI-win totals.
 
 ---
 

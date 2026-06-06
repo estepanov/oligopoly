@@ -305,7 +305,6 @@ export async function kickPlayerToAiReplacement(
     JSON.parse(row.state_json) as Record<string, unknown>,
   );
   const nextState = replaceKickedPlayerWithAi(gameState, humanId, {
-    displayName: "AI replacement",
     personality,
   });
 

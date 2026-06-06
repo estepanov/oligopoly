@@ -34,6 +34,19 @@ export interface FinalRoundState {
   remainingTurnPlayerIds: string[];
 }
 
+export interface WinSummaryState {
+  winnerId: string;
+  winType: "syndicate" | "solo" | "last_standing";
+  reason: string;
+  marketValue: number;
+  totalMarketValue: number;
+  marketShare: number;
+  thresholdMarketValue?: number;
+  thresholdShare?: number;
+  syndicateId?: string;
+  memberIds?: string[];
+}
+
 export type HandshakeAgreementState = InGameHandshakeAgreement;
 
 export interface PendingSyndicateVoteState {
@@ -43,7 +56,7 @@ export interface PendingSyndicateVoteState {
 }
 
 export type PendingInsiderPeekState = PendingInsiderPeek & {
-  trigger: "round_start" | "tile";
+  trigger: "round_start" | "turn_start" | "tile";
 };
 
 export interface MarketEventModifiersState {
@@ -87,6 +100,7 @@ export interface InternalGameState {
   /** tile positions frozen from rent collection until end of round */
   frozenTilePositions?: (number | string)[];
   finalRound?: FinalRoundState | null;
+  winSummary?: WinSummaryState | null;
   pendingDisruptionNullify?: {
     cardId: string;
     drawingPlayerId: string;
@@ -137,7 +151,6 @@ export interface InternalPlayerState {
   outstandingDebt?: number;
   rentCollectedTotal?: number;
   dealValueTotal?: number;
-  coordinationAcknowledged?: boolean;
 }
 
 export interface InternalTileState {

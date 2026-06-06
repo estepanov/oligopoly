@@ -65,24 +65,9 @@ describe("e2e solo vs AI gameplay", () => {
     });
     expect(endRes.status).toBe(200);
     const endBody = (await endRes.json()) as Record<string, unknown>;
-    expect([
-      "waiting_for_roll",
-      "waiting_for_market_event",
-      "syndicate_coordination",
-    ]).toContain(endBody.phase);
-
-    if (endBody.phase === "syndicate_coordination") {
-      const coordinationRes = await requestWithEnv(
-        `/api/games/${gameId}/action`,
-        {
-          method: "POST",
-          headers: { "x-subject": humanId },
-          body: { type: "end_coordination" },
-          db,
-        },
-      );
-      expect(coordinationRes.status).toBe(200);
-    }
+    expect(["waiting_for_roll", "waiting_for_market_event"]).toContain(
+      endBody.phase,
+    );
 
     const afterAi = await stepAiUntil(
       db,
@@ -95,7 +80,6 @@ describe("e2e solo vs AI gameplay", () => {
       "waiting_for_roll",
       "rolling_doubles",
       "waiting_for_market_event",
-      "syndicate_coordination",
     ]).toContain(afterAi.phase);
   });
 });

@@ -1,6 +1,7 @@
 import {
   drawAndResolveMarketEvent,
   handleInsiderDiscardMarketEvent,
+  handleInsiderKeepMarketEvent,
   shouldOfferInsiderPeek,
 } from "@oligopoly/shared";
 import { describe, expect, it } from "vitest";
@@ -59,10 +60,22 @@ function marketEventState(): InternalGameState {
 }
 
 describe("insider trading", () => {
-  it("offers peek only on round-start draws", () => {
+  it("offers peek on automatic turn-start draws but not tile draws", () => {
     const state = marketEventState();
     expect(shouldOfferInsiderPeek(state, "p1", "round_start")).toBe(true);
+    expect(shouldOfferInsiderPeek(state, "p1", "turn_start")).toBe(true);
     expect(shouldOfferInsiderPeek(state, "p1", "tile")).toBe(false);
+  });
+
+  it("keeps a turn-start peeked card and advances to waiting_for_roll", () => {
+    const state = marketEventState();
+    const peek = drawAndResolveMarketEvent(state, "p1", "turn_start");
+    expect(peek.state.phase).toBe("waiting_for_insider_peek");
+    expect(peek.state.pendingInsiderPeek?.trigger).toBe("turn_start");
+
+    const kept = handleInsiderKeepMarketEvent(peek.state, "p1");
+    expect(kept.state.pendingInsiderPeek).toBeNull();
+    expect(kept.state.phase).toBe("waiting_for_roll");
   });
 
   it("returns a discarded peeked card to the bottom of the deck", () => {
