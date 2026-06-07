@@ -202,84 +202,74 @@ export const DevelopmentTokenDeltaSchema = z.object({
   after: z.number(),
 });
 
+/** Per-field Zod sub-schemas — single source for body shape and field keys. */
+export const PLAYER_STATE_CHANGE_FIELD_SCHEMAS = {
+  capital: z.object({
+    before: z.number(),
+    after: z.number(),
+    delta: z.number(),
+  }),
+  position: z.object({
+    before: TilePositionValueSchema,
+    after: TilePositionValueSchema,
+  }),
+  actionPointsRemaining: z.object({
+    before: z.number(),
+    after: z.number(),
+    delta: z.number().optional(),
+  }),
+  trustworthiness: z.object({
+    before: z.number(),
+    after: z.number(),
+    delta: z.number().optional(),
+  }),
+  inRegulation: z.object({
+    before: z.boolean(),
+    after: z.boolean(),
+  }),
+  syndicateId: z.object({
+    before: z.string().nullable(),
+    after: z.string().nullable(),
+  }),
+  outstandingDebt: z.object({
+    before: z.number(),
+    after: z.number(),
+    delta: z.number(),
+  }),
+  ownedTilePositions: PlayerStateTileSetDiffSchema,
+  mortgagedTilePositions: PlayerStateTileSetDiffSchema,
+  developmentTokens: z.array(DevelopmentTokenDeltaSchema),
+} as const;
+
+export type PlayerStateChangeFieldKey =
+  keyof typeof PLAYER_STATE_CHANGE_FIELD_SCHEMAS;
+
+/**
+ * Ordered keys derived from {@link PLAYER_STATE_CHANGE_FIELD_SCHEMAS}.
+ * Engine (`playerChangeLogs`) and web log formatter should only emit/consume
+ * fields listed here — add new diffs by extending the schemas object only.
+ */
+export const PLAYER_STATE_CHANGE_FIELD_KEYS = Object.keys(
+  PLAYER_STATE_CHANGE_FIELD_SCHEMAS,
+) as PlayerStateChangeFieldKey[];
+
+const playerStateChangesBodyShape = Object.fromEntries(
+  PLAYER_STATE_CHANGE_FIELD_KEYS.map((key) => [
+    key,
+    PLAYER_STATE_CHANGE_FIELD_SCHEMAS[key].optional(),
+  ]),
+) as {
+  [K in PlayerStateChangeFieldKey]: z.ZodOptional<
+    (typeof PLAYER_STATE_CHANGE_FIELD_SCHEMAS)[K]
+  >;
+};
+
 export const PlayerStateChangesBodySchema = z
-  .object({
-    capital: z
-      .object({
-        before: z.number(),
-        after: z.number(),
-        delta: z.number(),
-      })
-      .optional(),
-    position: z
-      .object({
-        before: TilePositionValueSchema,
-        after: TilePositionValueSchema,
-      })
-      .optional(),
-    actionPointsRemaining: z
-      .object({
-        before: z.number(),
-        after: z.number(),
-        delta: z.number().optional(),
-      })
-      .optional(),
-    trustworthiness: z
-      .object({
-        before: z.number(),
-        after: z.number(),
-        delta: z.number().optional(),
-      })
-      .optional(),
-    inRegulation: z
-      .object({
-        before: z.boolean(),
-        after: z.boolean(),
-      })
-      .optional(),
-    syndicateId: z
-      .object({
-        before: z.string().nullable(),
-        after: z.string().nullable(),
-      })
-      .optional(),
-    outstandingDebt: z
-      .object({
-        before: z.number(),
-        after: z.number(),
-        delta: z.number(),
-      })
-      .optional(),
-    ownedTilePositions: PlayerStateTileSetDiffSchema.optional(),
-    mortgagedTilePositions: PlayerStateTileSetDiffSchema.optional(),
-    developmentTokens: z.array(DevelopmentTokenDeltaSchema).optional(),
-  })
+  .object(playerStateChangesBodyShape)
   .strict();
 export type PlayerStateChangesBody = z.infer<
   typeof PlayerStateChangesBodySchema
 >;
-
-/**
- * Authoritative ordered list of keys allowed on `player_state_changed` payloads.
- * The engine (`playerChangeLogs`), this schema, and the web log formatter should
- * only emit/consume fields listed here — add new diffs by extending this tuple
- * and the Zod object above together.
- */
-export const PLAYER_STATE_CHANGE_FIELD_KEYS = [
-  "capital",
-  "position",
-  "actionPointsRemaining",
-  "trustworthiness",
-  "inRegulation",
-  "syndicateId",
-  "outstandingDebt",
-  "ownedTilePositions",
-  "mortgagedTilePositions",
-  "developmentTokens",
-] as const satisfies ReadonlyArray<keyof PlayerStateChangesBody>;
-
-export type PlayerStateChangeFieldKey =
-  (typeof PLAYER_STATE_CHANGE_FIELD_KEYS)[number];
 
 export const PlayerStateChangedPayloadSchema = z.object({
   playerId: z.string(),

@@ -16,6 +16,7 @@ import {
 import {
   LeaderboardCompletionsEntrySchema,
   type LeaderboardSummary,
+  LeaderboardSummarySchema,
   LeaderboardWinsEntrySchema,
 } from "@oligopoly/validation";
 import { z } from "zod";
@@ -122,7 +123,8 @@ async function incrementLeaderboardSummary(
     humanWins: Math.max(0, (existing.humanWins ?? 0) + increment.humanWins),
     aiWins: Math.max(0, (existing.aiWins ?? 0) + increment.aiWins),
   };
-  const next = parseLeaderboardSummaryFromKv(JSON.stringify(merged));
+  const parsed = LeaderboardSummarySchema.safeParse(merged);
+  const next = parsed.success ? parsed.data : merged;
   await kv.put("leaderboard:summary", JSON.stringify(next));
 }
 

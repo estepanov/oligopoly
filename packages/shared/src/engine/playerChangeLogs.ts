@@ -19,7 +19,7 @@ import type {
  * {@link PLAYER_STATE_CHANGE_FIELD_KEYS} entry (kept explicit so registry
  * `snapshot` functions stay assignable without circular mapped types).
  */
-interface PlayerChangeSnapshot {
+export interface PlayerChangeSnapshot {
   capital: number;
   position: number | string;
   actionPointsRemaining: number;
@@ -203,11 +203,40 @@ const PLAYER_STATE_CHANGE_REGISTRY: {
 };
 
 function buildSnapshot(player: InternalPlayerState): PlayerChangeSnapshot {
-  const row = {} as Record<PlayerStateChangeFieldKey, unknown>;
+  const row = {
+    capital: PLAYER_STATE_CHANGE_REGISTRY.capital.snapshot(player),
+    position: PLAYER_STATE_CHANGE_REGISTRY.position.snapshot(player),
+    actionPointsRemaining:
+      PLAYER_STATE_CHANGE_REGISTRY.actionPointsRemaining.snapshot(player),
+    trustworthiness:
+      PLAYER_STATE_CHANGE_REGISTRY.trustworthiness.snapshot(player),
+    inRegulation: PLAYER_STATE_CHANGE_REGISTRY.inRegulation.snapshot(player),
+    syndicateId: PLAYER_STATE_CHANGE_REGISTRY.syndicateId.snapshot(player),
+    outstandingDebt:
+      PLAYER_STATE_CHANGE_REGISTRY.outstandingDebt.snapshot(player),
+    ownedTilePositions:
+      PLAYER_STATE_CHANGE_REGISTRY.ownedTilePositions.snapshot(player),
+    mortgagedTilePositions:
+      PLAYER_STATE_CHANGE_REGISTRY.mortgagedTilePositions.snapshot(player),
+    developmentTokens:
+      PLAYER_STATE_CHANGE_REGISTRY.developmentTokens.snapshot(player),
+  } satisfies PlayerChangeSnapshot;
+  return row;
+}
+
+/** Emit schema-shaped diff body for one player (contract tests + callers). */
+export function buildPlayerStateChangesBody(
+  previous: PlayerChangeSnapshot,
+  player: InternalPlayerState,
+): PlayerStateChangesBody {
+  const changes: PlayerStateChangesBody = {};
   for (const key of PLAYER_STATE_CHANGE_FIELD_KEYS) {
-    row[key] = PLAYER_STATE_CHANGE_REGISTRY[key].snapshot(player);
+    const partial = PLAYER_STATE_CHANGE_REGISTRY[key].diff(previous, player);
+    if (partial) {
+      Object.assign(changes, partial);
+    }
   }
-  return row as PlayerChangeSnapshot;
+  return changes;
 }
 
 export function snapshotPlayerChanges(
@@ -227,13 +256,7 @@ function buildPlayerChangeLogs(
     const previous = before.get(player.playerId);
     if (!previous) continue;
 
-    const changes: PlayerStateChangesBody = {};
-    for (const key of PLAYER_STATE_CHANGE_FIELD_KEYS) {
-      const partial = PLAYER_STATE_CHANGE_REGISTRY[key].diff(previous, player);
-      if (partial) {
-        Object.assign(changes, partial);
-      }
-    }
+    const changes = buildPlayerStateChangesBody(previous, player);
 
     if (Object.keys(changes).length > 0) {
       logs.push({
