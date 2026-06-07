@@ -260,6 +260,11 @@ export {
   isOptionalRuleEnabled,
   regulationPenaltiesEnabled,
 } from "./engine/optionalRulesEngine.js";
+export type { PlayerChangeSnapshot } from "./engine/playerChangeLogs.js";
+export {
+  buildPlayerStateChangesBody,
+  snapshotPlayerChanges,
+} from "./engine/playerChangeLogs.js";
 export {
   getActiveRateCardMultiplier,
   recordOpposingSectorLanding,

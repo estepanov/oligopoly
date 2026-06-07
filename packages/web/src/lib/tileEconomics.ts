@@ -14,10 +14,8 @@ import {
 import type { GameState } from "@oligopoly/validation";
 import { formatCurrencyAmount } from "./gameDisplay";
 import {
-  canMortgageTile,
-  canRedeemTile,
   effectiveAffinityContext,
-  isTileDevelopableByPlayer,
+  getTileOwnershipActionGates,
   playerById,
   tileStateByPosition,
 } from "./gameUi";
@@ -83,21 +81,26 @@ export function getTileEconomics(
           storedMortgageRate,
         )
       : null;
+  const gates = playerId
+    ? getTileOwnershipActionGates(state, playerId, position)
+    : {
+        canDevelopGate: false,
+        canMortgageGate: false,
+        canRedeemGate: false,
+      };
   const canDevelop = Boolean(
     playerId &&
       developmentCost !== null &&
-      isTileDevelopableByPlayer(state, playerId, position) &&
+      gates.canDevelopGate &&
       (player?.capital ?? 0) >= developmentCost,
   );
   const canMortgage = Boolean(
-    playerId &&
-      availableMortgageValue !== null &&
-      canMortgageTile(state, playerId, position),
+    playerId && availableMortgageValue !== null && gates.canMortgageGate,
   );
   const canRedeem = Boolean(
     playerId &&
       redemptionCost !== null &&
-      canRedeemTile(state, playerId, position) &&
+      gates.canRedeemGate &&
       (player?.capital ?? 0) >= redemptionCost,
   );
   const currencySettings = state.settings;

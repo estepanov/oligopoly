@@ -9,12 +9,11 @@ import {
   phaseUiDescriptor,
   turnGuidance,
 } from "../lib/gameUi";
-import { getTileEconomics } from "../lib/tileEconomics";
 import { ActionPhaseExtras } from "./ActionPhaseExtras";
 import { AuctionPanel } from "./AuctionPanel";
 import { InsiderPeekPanel } from "./InsiderPeekPanel";
+import { OwnedTileEconomicsActions } from "./OwnedTileEconomicsActions";
 import { RateCardPanel } from "./RateCardPanel";
-import { TileEconomicsExplainDialog } from "./TileEconomicsExplainDialog";
 
 type GamePlayControlsProps = {
   state: GameState;
@@ -35,7 +34,6 @@ export function GamePlayControls({
   const pendingTile = state.pendingBuyTilePosition ?? null;
   const auctionActive = isAuctionPhase(state);
   const ownedTiles = myPlayerId ? ownedTilesForPlayer(state, myPlayerId) : [];
-  const currencySettings = state.settings;
   const gameOver = state.phase === "game_over";
   const insiderPeek = state.pendingInsiderPeek ?? undefined;
   const guidance = turnGuidance(state, myPlayerId);
@@ -213,113 +211,39 @@ export function GamePlayControls({
         onAction={onAction}
       />
 
-      {myTurn && ownedTiles.length > 0 && state.phase === "action" && (
-        <div className="ownedTilesPanel">
-          <h3>Your tiles</h3>
-          <ul className="ownedTilesList">
-            {ownedTiles.map((tile) => {
-              const economics = getTileEconomics(
-                state,
-                myPlayerId,
-                tile.position,
-                myPlayerId,
-              );
-              const name = tileLabel(tile.position, tileNames);
+      {myTurn &&
+        myPlayerId &&
+        ownedTiles.length > 0 &&
+        state.phase === "action" && (
+          <div className="ownedTilesPanel">
+            <h3>Your tiles</h3>
+            <ul className="ownedTilesList">
+              {ownedTiles.map((tile) => {
+                const name = tileLabel(tile.position, tileNames);
 
-              return (
-                <li key={String(tile.position)} className="ownedTilesItem">
-                  <span>
-                    <strong>{name}</strong>
-                    {tile.mortgaged ? " (mortgaged)" : ""}
-                    {tile.developmentTokens > 0
-                      ? ` · ${tile.developmentTokens} token${tile.developmentTokens === 1 ? "" : "s"}`
-                      : ""}
-                  </span>
-                  <div className="buttonRow">
-                    {economics.canDevelop &&
-                      economics.developmentCost !== null && (
-                        <span className="actionWithInfo">
-                          <button
-                            type="button"
-                            className="button buttonSecondary"
-                            disabled={busy}
-                            onClick={() =>
-                              void onAction(`Developed ${name}`, {
-                                type: "develop_tile",
-                                tilePosition: tile.position,
-                                tokenNumber: economics.nextDevelopmentToken,
-                              })
-                            }
-                          >
-                            Develop ({economics.formattedDevelopmentCost})
-                          </button>
-                          <TileEconomicsExplainDialog
-                            mode="develop"
-                            tileName={name}
-                            economics={economics}
-                            currencySettings={currencySettings}
-                            developmentTokensOnTile={tile.developmentTokens}
-                          />
-                        </span>
-                      )}
-                    {economics.canMortgage &&
-                      economics.availableMortgageValue !== null && (
-                        <span className="actionWithInfo">
-                          <button
-                            type="button"
-                            className="button buttonSecondary"
-                            disabled={busy}
-                            onClick={() =>
-                              void onAction(`Mortgaged ${name}`, {
-                                type: "mortgage_tile",
-                                tilePosition: tile.position,
-                              })
-                            }
-                          >
-                            Mortgage (+
-                            {economics.formattedAvailableMortgageValue})
-                          </button>
-                          <TileEconomicsExplainDialog
-                            mode="mortgage"
-                            tileName={name}
-                            economics={economics}
-                            currencySettings={currencySettings}
-                            developmentTokensOnTile={tile.developmentTokens}
-                          />
-                        </span>
-                      )}
-                    {economics.canRedeem &&
-                      economics.redemptionCost !== null && (
-                        <span className="actionWithInfo">
-                          <button
-                            type="button"
-                            className="button buttonSecondary"
-                            disabled={busy}
-                            onClick={() =>
-                              void onAction(`Redeemed ${name}`, {
-                                type: "redeem_tile",
-                                tilePosition: tile.position,
-                              })
-                            }
-                          >
-                            Redeem ({economics.formattedRedemptionCost})
-                          </button>
-                          <TileEconomicsExplainDialog
-                            mode="redeem"
-                            tileName={name}
-                            economics={economics}
-                            currencySettings={currencySettings}
-                            developmentTokensOnTile={tile.developmentTokens}
-                          />
-                        </span>
-                      )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+                return (
+                  <li key={String(tile.position)} className="ownedTilesItem">
+                    <span>
+                      <strong>{name}</strong>
+                      {tile.mortgaged ? " (mortgaged)" : ""}
+                      {tile.developmentTokens > 0
+                        ? ` · ${tile.developmentTokens} token${tile.developmentTokens === 1 ? "" : "s"}`
+                        : ""}
+                    </span>
+                    <OwnedTileEconomicsActions
+                      state={state}
+                      tile={tile}
+                      myPlayerId={myPlayerId}
+                      tileName={name}
+                      busy={busy}
+                      onAction={onAction}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
     </>
   );
 }

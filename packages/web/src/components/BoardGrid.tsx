@@ -1,11 +1,9 @@
 import type { GameState } from "@oligopoly/validation";
 import { type BoardTileDetails, tileLabel } from "../lib/boardDisplay";
 import { formatCurrencyAmount, playerDisplayName } from "../lib/gameDisplay";
-import {
-  getTileEconomics,
-  mortgageEconomicsLabels,
-} from "../lib/tileEconomics";
+import { getTileEconomics } from "../lib/tileEconomics";
 import { InfoDialog } from "./InfoDialog";
+import { TileEconomicsExplainContent } from "./TileEconomicsExplainContent";
 
 type BoardGridProps = {
   state: GameState;
@@ -95,10 +93,6 @@ function BoardCell({
     : null;
   const showOwnerActionEconomics =
     isMine && economics !== null && economics.tileCost !== null;
-  const mortgageLine =
-    showOwnerActionEconomics && economics
-      ? mortgageEconomicsLabels(economics)
-      : null;
 
   return (
     <InfoDialog
@@ -159,14 +153,20 @@ function BoardCell({
             <dd>{tileState.developmentTokens} token(s)</dd>
           </>
         )}
-        {showOwnerActionEconomics && economics && mortgageLine && (
+        {showOwnerActionEconomics && economics && (
           <>
-            <dt className="muted">Next development</dt>
-            <dd>{economics.formattedDevelopmentCost ?? "Not available"}</dd>
-            <dt className="muted">{mortgageLine.label}</dt>
-            <dd>{mortgageLine.formattedValue ?? "Not available"}</dd>
-            <dt className="muted">Redeem cost</dt>
-            <dd>{economics.formattedRedemptionCost ?? "Not available"}</dd>
+            <dt className="muted">Your tile economics</dt>
+            <dd>
+              <div className="boardCellEconomicsEmbed">
+                <TileEconomicsExplainContent
+                  mode="property_overview"
+                  economics={economics}
+                  currencySettings={currencySettings}
+                  developmentTokens={tileState?.developmentTokens ?? 0}
+                  mortgaged={tileState?.mortgaged ?? false}
+                />
+              </div>
+            </dd>
           </>
         )}
         <dt className="muted">Occupants</dt>

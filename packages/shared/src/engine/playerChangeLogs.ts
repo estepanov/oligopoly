@@ -2,14 +2,24 @@
 // Player change diff logs — appended after successful applyAction results.
 // ---------------------------------------------------------------------------
 
-import type { PlayerStateChangesBody } from "@oligopoly/validation";
+import {
+  PLAYER_STATE_CHANGE_FIELD_KEYS,
+  type PlayerStateChangeFieldKey,
+  type PlayerStateChangesBody,
+} from "@oligopoly/validation";
 import type {
   ApplyActionResult,
   InternalGameState,
+  InternalPlayerState,
   LogEntry,
 } from "./gameStateTypes.js";
 
-interface PlayerChangeSnapshot {
+/**
+ * Per-turn snapshot for `player_state_changed` diffs — one field per
+ * {@link PLAYER_STATE_CHANGE_FIELD_KEYS} entry (kept explicit so registry
+ * `snapshot` functions stay assignable without circular mapped types).
+ */
+export interface PlayerChangeSnapshot {
   capital: number;
   position: number | string;
   actionPointsRemaining: number;
@@ -22,29 +32,18 @@ interface PlayerChangeSnapshot {
   developmentTokens: Record<string, number>;
 }
 
-export function snapshotPlayerChanges(
-  state: InternalGameState,
-): Map<string, PlayerChangeSnapshot> {
-  return new Map(
-    state.players.map((player) => [
-      player.playerId,
-      {
-        capital: player.capital,
-        position: player.position,
-        actionPointsRemaining: player.actionPointsRemaining,
-        trustworthiness: player.trustworthiness,
-        inRegulation: player.inRegulation,
-        syndicateId: player.syndicateId ?? null,
-        outstandingDebt: player.outstandingDebt ?? 0,
-        ownedTilePositions: player.ownedTilePositions.map(String).sort(),
-        mortgagedTilePositions: player.mortgagedTilePositions
-          .map(String)
-          .sort(),
-        developmentTokens: { ...player.developmentTokens },
-      },
-    ]),
-  );
-}
+type _AssertEqual<A, B> = [A] extends [B]
+  ? [B] extends [A]
+    ? true
+    : false
+  : false;
+
+type _PlayerChangeSnapshotKeysMatchTuple = _AssertEqual<
+  keyof PlayerChangeSnapshot,
+  PlayerStateChangeFieldKey
+>;
+const _enforcePlayerChangeSnapshotKeys: _PlayerChangeSnapshotKeysMatchTuple = true;
+void _enforcePlayerChangeSnapshotKeys;
 
 function diffStringSets(before: string[], after: string[]) {
   const beforeSet = new Set(before);
@@ -69,6 +68,179 @@ function diffDevelopmentTokens(
     .filter((change) => change.before !== change.after);
 }
 
+/**
+ * Single registry per {@link PLAYER_STATE_CHANGE_FIELD_KEYS} entry: normalized
+ * snapshot slice + diff against the prior snapshot. Adding a field extends
+ * this object and TypeScript enforces both halves.
+ */
+const PLAYER_STATE_CHANGE_REGISTRY: {
+  [K in PlayerStateChangeFieldKey]: {
+    snapshot: (player: InternalPlayerState) => PlayerChangeSnapshot[K];
+    diff: (
+      prev: PlayerChangeSnapshot,
+      player: InternalPlayerState,
+    ) => Pick<PlayerStateChangesBody, K> | null;
+  };
+} = {
+  capital: {
+    snapshot: (player) => player.capital,
+    diff(prev, player) {
+      if (player.capital === prev.capital) return null;
+      return {
+        capital: {
+          before: prev.capital,
+          after: player.capital,
+          delta: player.capital - prev.capital,
+        },
+      };
+    },
+  },
+  position: {
+    snapshot: (player) => player.position,
+    diff(prev, player) {
+      if (String(player.position) === String(prev.position)) return null;
+      return {
+        position: { before: prev.position, after: player.position },
+      };
+    },
+  },
+  actionPointsRemaining: {
+    snapshot: (player) => player.actionPointsRemaining,
+    diff(prev, player) {
+      if (player.actionPointsRemaining === prev.actionPointsRemaining)
+        return null;
+      return {
+        actionPointsRemaining: {
+          before: prev.actionPointsRemaining,
+          after: player.actionPointsRemaining,
+          delta: player.actionPointsRemaining - prev.actionPointsRemaining,
+        },
+      };
+    },
+  },
+  trustworthiness: {
+    snapshot: (player) => player.trustworthiness,
+    diff(prev, player) {
+      if (player.trustworthiness === prev.trustworthiness) return null;
+      return {
+        trustworthiness: {
+          before: prev.trustworthiness,
+          after: player.trustworthiness,
+          delta: player.trustworthiness - prev.trustworthiness,
+        },
+      };
+    },
+  },
+  inRegulation: {
+    snapshot: (player) => player.inRegulation,
+    diff(prev, player) {
+      if (player.inRegulation === prev.inRegulation) return null;
+      return {
+        inRegulation: {
+          before: prev.inRegulation,
+          after: player.inRegulation,
+        },
+      };
+    },
+  },
+  syndicateId: {
+    snapshot: (player) => player.syndicateId ?? null,
+    diff(prev, player) {
+      const after = player.syndicateId ?? null;
+      if (after === prev.syndicateId) return null;
+      return {
+        syndicateId: { before: prev.syndicateId, after },
+      };
+    },
+  },
+  outstandingDebt: {
+    snapshot: (player) => player.outstandingDebt ?? 0,
+    diff(prev, player) {
+      const after = player.outstandingDebt ?? 0;
+      if (after === prev.outstandingDebt) return null;
+      return {
+        outstandingDebt: {
+          before: prev.outstandingDebt,
+          after,
+          delta: after - prev.outstandingDebt,
+        },
+      };
+    },
+  },
+  ownedTilePositions: {
+    snapshot: (player) => player.ownedTilePositions.map(String).sort(),
+    diff(prev, player) {
+      const diff = diffStringSets(
+        prev.ownedTilePositions,
+        player.ownedTilePositions.map(String).sort(),
+      );
+      if (diff.added.length === 0 && diff.removed.length === 0) return null;
+      return { ownedTilePositions: diff };
+    },
+  },
+  mortgagedTilePositions: {
+    snapshot: (player) => player.mortgagedTilePositions.map(String).sort(),
+    diff(prev, player) {
+      const diff = diffStringSets(
+        prev.mortgagedTilePositions,
+        player.mortgagedTilePositions.map(String).sort(),
+      );
+      if (diff.added.length === 0 && diff.removed.length === 0) return null;
+      return { mortgagedTilePositions: diff };
+    },
+  },
+  developmentTokens: {
+    snapshot: (player) => ({ ...player.developmentTokens }),
+    diff(prev, player) {
+      const deltas = diffDevelopmentTokens(
+        prev.developmentTokens,
+        player.developmentTokens,
+      );
+      if (deltas.length === 0) return null;
+      return { developmentTokens: deltas };
+    },
+  },
+};
+
+function assignSnapshotField<K extends PlayerStateChangeFieldKey>(
+  row: PlayerChangeSnapshot,
+  key: K,
+  player: InternalPlayerState,
+): void {
+  row[key] = PLAYER_STATE_CHANGE_REGISTRY[key].snapshot(player);
+}
+
+function buildSnapshot(player: InternalPlayerState): PlayerChangeSnapshot {
+  const row = {} as PlayerChangeSnapshot;
+  for (const key of PLAYER_STATE_CHANGE_FIELD_KEYS) {
+    assignSnapshotField(row, key, player);
+  }
+  return row;
+}
+
+/** Emit schema-shaped diff body for one player (contract tests + callers). */
+export function buildPlayerStateChangesBody(
+  previous: PlayerChangeSnapshot,
+  player: InternalPlayerState,
+): PlayerStateChangesBody {
+  const changes: PlayerStateChangesBody = {};
+  for (const key of PLAYER_STATE_CHANGE_FIELD_KEYS) {
+    const partial = PLAYER_STATE_CHANGE_REGISTRY[key].diff(previous, player);
+    if (partial) {
+      Object.assign(changes, partial);
+    }
+  }
+  return changes;
+}
+
+export function snapshotPlayerChanges(
+  state: InternalGameState,
+): Map<string, PlayerChangeSnapshot> {
+  return new Map(
+    state.players.map((player) => [player.playerId, buildSnapshot(player)]),
+  );
+}
+
 function buildPlayerChangeLogs(
   before: Map<string, PlayerChangeSnapshot>,
   state: InternalGameState,
@@ -78,72 +250,7 @@ function buildPlayerChangeLogs(
     const previous = before.get(player.playerId);
     if (!previous) continue;
 
-    const ownedTiles = diffStringSets(
-      previous.ownedTilePositions,
-      player.ownedTilePositions.map(String).sort(),
-    );
-    const mortgagedTiles = diffStringSets(
-      previous.mortgagedTilePositions,
-      player.mortgagedTilePositions.map(String).sort(),
-    );
-    const developmentTokens = diffDevelopmentTokens(
-      previous.developmentTokens,
-      player.developmentTokens,
-    );
-    const changes: PlayerStateChangesBody = {};
-
-    if (player.capital !== previous.capital) {
-      changes.capital = {
-        before: previous.capital,
-        after: player.capital,
-        delta: player.capital - previous.capital,
-      };
-    }
-    if (String(player.position) !== String(previous.position)) {
-      changes.position = { before: previous.position, after: player.position };
-    }
-    if (player.actionPointsRemaining !== previous.actionPointsRemaining) {
-      changes.actionPointsRemaining = {
-        before: previous.actionPointsRemaining,
-        after: player.actionPointsRemaining,
-        delta: player.actionPointsRemaining - previous.actionPointsRemaining,
-      };
-    }
-    if (player.trustworthiness !== previous.trustworthiness) {
-      changes.trustworthiness = {
-        before: previous.trustworthiness,
-        after: player.trustworthiness,
-        delta: player.trustworthiness - previous.trustworthiness,
-      };
-    }
-    if (player.inRegulation !== previous.inRegulation) {
-      changes.inRegulation = {
-        before: previous.inRegulation,
-        after: player.inRegulation,
-      };
-    }
-    if ((player.syndicateId ?? null) !== (previous.syndicateId ?? null)) {
-      changes.syndicateId = {
-        before: previous.syndicateId ?? null,
-        after: player.syndicateId ?? null,
-      };
-    }
-    if ((player.outstandingDebt ?? 0) !== previous.outstandingDebt) {
-      changes.outstandingDebt = {
-        before: previous.outstandingDebt,
-        after: player.outstandingDebt ?? 0,
-        delta: (player.outstandingDebt ?? 0) - previous.outstandingDebt,
-      };
-    }
-    if (ownedTiles.added.length > 0 || ownedTiles.removed.length > 0) {
-      changes.ownedTilePositions = ownedTiles;
-    }
-    if (mortgagedTiles.added.length > 0 || mortgagedTiles.removed.length > 0) {
-      changes.mortgagedTilePositions = mortgagedTiles;
-    }
-    if (developmentTokens.length > 0) {
-      changes.developmentTokens = developmentTokens;
-    }
+    const changes = buildPlayerStateChangesBody(previous, player);
 
     if (Object.keys(changes).length > 0) {
       logs.push({

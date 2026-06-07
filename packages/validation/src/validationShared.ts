@@ -202,57 +202,73 @@ export const DevelopmentTokenDeltaSchema = z.object({
   after: z.number(),
 });
 
-export const PlayerStateChangesBodySchema = z.object({
-  capital: z
-    .object({
-      before: z.number(),
-      after: z.number(),
-      delta: z.number(),
-    })
-    .optional(),
-  position: z
-    .object({
-      before: TilePositionValueSchema,
-      after: TilePositionValueSchema,
-    })
-    .optional(),
-  actionPointsRemaining: z
-    .object({
-      before: z.number(),
-      after: z.number(),
-      delta: z.number().optional(),
-    })
-    .optional(),
-  trustworthiness: z
-    .object({
-      before: z.number(),
-      after: z.number(),
-      delta: z.number().optional(),
-    })
-    .optional(),
-  inRegulation: z
-    .object({
-      before: z.boolean(),
-      after: z.boolean(),
-    })
-    .optional(),
-  syndicateId: z
-    .object({
-      before: z.string().nullable(),
-      after: z.string().nullable(),
-    })
-    .optional(),
-  outstandingDebt: z
-    .object({
-      before: z.number(),
-      after: z.number(),
-      delta: z.number(),
-    })
-    .optional(),
-  ownedTilePositions: PlayerStateTileSetDiffSchema.optional(),
-  mortgagedTilePositions: PlayerStateTileSetDiffSchema.optional(),
-  developmentTokens: z.array(DevelopmentTokenDeltaSchema).optional(),
-});
+/** Per-field Zod sub-schemas — single source for body shape and field keys. */
+export const PLAYER_STATE_CHANGE_FIELD_SCHEMAS = {
+  capital: z.object({
+    before: z.number(),
+    after: z.number(),
+    delta: z.number(),
+  }),
+  position: z.object({
+    before: TilePositionValueSchema,
+    after: TilePositionValueSchema,
+  }),
+  actionPointsRemaining: z.object({
+    before: z.number(),
+    after: z.number(),
+    delta: z.number().optional(),
+  }),
+  trustworthiness: z.object({
+    before: z.number(),
+    after: z.number(),
+    delta: z.number().optional(),
+  }),
+  inRegulation: z.object({
+    before: z.boolean(),
+    after: z.boolean(),
+  }),
+  syndicateId: z.object({
+    before: z.string().nullable(),
+    after: z.string().nullable(),
+  }),
+  outstandingDebt: z.object({
+    before: z.number(),
+    after: z.number(),
+    delta: z.number(),
+  }),
+  ownedTilePositions: PlayerStateTileSetDiffSchema,
+  mortgagedTilePositions: PlayerStateTileSetDiffSchema,
+  developmentTokens: z.array(DevelopmentTokenDeltaSchema),
+} as const;
+
+export type PlayerStateChangeFieldKey =
+  keyof typeof PLAYER_STATE_CHANGE_FIELD_SCHEMAS;
+
+/**
+ * Ordered keys derived from {@link PLAYER_STATE_CHANGE_FIELD_SCHEMAS}.
+ * Adding a field is a coordinated change: extend the schemas object here, then
+ * `PLAYER_STATE_CHANGE_REGISTRY` (shared engine), `PLAYER_STATE_LOG_PARTS`
+ * (web formatter), and fixtures in `playerStateChangeContract.test.ts`.
+ * See `oligopoly_technical_plan.md` (player_state_changed contract).
+ */
+export const PLAYER_STATE_CHANGE_FIELD_KEYS = Object.keys(
+  PLAYER_STATE_CHANGE_FIELD_SCHEMAS,
+) as PlayerStateChangeFieldKey[];
+
+const playerStateChangesBodyShape = Object.fromEntries(
+  PLAYER_STATE_CHANGE_FIELD_KEYS.map((key) => [
+    key,
+    PLAYER_STATE_CHANGE_FIELD_SCHEMAS[key].optional(),
+  ]),
+) as {
+  [K in PlayerStateChangeFieldKey]: z.ZodOptional<
+    (typeof PLAYER_STATE_CHANGE_FIELD_SCHEMAS)[K]
+  >;
+};
+
+export const PlayerStateChangesBodySchema = z
+  .object(playerStateChangesBodyShape)
+  .strict();
 export type PlayerStateChangesBody = z.infer<
   typeof PlayerStateChangesBodySchema
 >;
@@ -309,6 +325,15 @@ export const LeaderboardCompletionsEntrySchema = LeaderboardEntrySchema.extend({
 export type LeaderboardCompletionsEntry = z.infer<
   typeof LeaderboardCompletionsEntrySchema
 >;
+
+/** Stored `user_stats.recent_games_json` rows (matches `@oligopoly/shared` profile shape). */
+export const GameResultSchema = z.enum(["won", "lost", "drew", "kicked"]);
+export const RecentGameSummarySchema = z.object({
+  gameId: z.string(),
+  result: GameResultSchema,
+  endedAt: z.number(),
+});
+export type RecentGameSummaryStored = z.infer<typeof RecentGameSummarySchema>;
 
 export const LeaderboardSummarySchema = z.object({
   humanWins: z.number().int().nonnegative(),

@@ -15,13 +15,17 @@ import {
   joinLobbyWithToken,
   leaveLobby,
   listMyLobbies,
-  listPublicLobbies,
   startLobby,
 } from "../api/lobbies";
 import { useAuth } from "../components/AuthContext";
 import { LobbyAiSettings } from "../components/LobbyAiSettings";
 import { LobbyReadyControls } from "../components/LobbyReadyControls";
 import { useLobbyRealtime } from "../hooks/useLobbyRealtime";
+import {
+  type LobbyBannerMessage,
+  type PublicLobbyList,
+  usePublicLobbiesRefresh,
+} from "../hooks/usePublicLobbiesRefresh";
 import { canStartLobby, lobbySeatCount } from "../lib/lobbySeats";
 
 const DEFAULT_MAX_PLAYERS = 4;
@@ -34,7 +38,7 @@ const normalizeLobby = (
 });
 const MAX_ACTIVE_LOBBIES_PER_USER = 2;
 
-type Message = { kind: "ok" | "error"; text: string } | null;
+type Message = LobbyBannerMessage;
 type InviteShare = {
   lobbyId: string;
   token: string;
@@ -148,9 +152,7 @@ export function LobbiesPage() {
   const [joinToken, setJoinToken] = useState(initialJoinToken);
 
   const [loadingPublicLobbies, setLoadingPublicLobbies] = useState(true);
-  const [publicLobbies, setPublicLobbies] = useState<
-    Awaited<ReturnType<typeof listPublicLobbies>>["lobbies"]
-  >([]);
+  const [publicLobbies, setPublicLobbies] = useState<PublicLobbyList>([]);
   const [loadingMyLobbies, setLoadingMyLobbies] = useState(false);
   const [myLobbies, setMyLobbies] = useState<
     Awaited<ReturnType<typeof listMyLobbies>>["lobbies"]
@@ -183,23 +185,11 @@ export function LobbiesPage() {
     });
   }, []);
 
-  const refreshPublicLobbies = useCallback(async () => {
-    setLoadingPublicLobbies(true);
-    try {
-      const data = await listPublicLobbies();
-      setPublicLobbies(data.lobbies);
-    } catch (error) {
-      setMessage({
-        kind: "error",
-        text:
-          error instanceof ApiError
-            ? `Failed to load public lobbies: ${error.message}`
-            : "Failed to load public lobbies",
-      });
-    } finally {
-      setLoadingPublicLobbies(false);
-    }
-  }, []);
+  const { refreshPublicLobbies } = usePublicLobbiesRefresh(
+    setLoadingPublicLobbies,
+    setPublicLobbies,
+    setMessage,
+  );
 
   const refreshMyLobbies = useCallback(async () => {
     if (!user) {

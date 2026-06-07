@@ -338,49 +338,50 @@ export function canBuyPendingTile(
   return Boolean(player && cost !== null && player.capital >= cost);
 }
 
-export function isTileDevelopableByPlayer(
+export type TileOwnershipActionGates = {
+  canDevelopGate: boolean;
+  canMortgageGate: boolean;
+  canRedeemGate: boolean;
+};
+
+/**
+ * Single evaluation of phase/turn/tile ownership gates for develop / mortgage /
+ * redeem. Callers combine with capital and computed costs (see `getTileEconomics`).
+ */
+export function getTileOwnershipActionGates(
   state: GameState,
   playerId: string,
   position: number | string,
-): boolean {
-  if (!isActionTurn(state, playerId)) return false;
+): TileOwnershipActionGates {
+  if (!isActionTurn(state, playerId)) {
+    return {
+      canDevelopGate: false,
+      canMortgageGate: false,
+      canRedeemGate: false,
+    };
+  }
   const player = playerById(state, playerId);
   const tile = getTileByPosition(position);
   const tileState = tileStateByPosition(state, position);
-  return Boolean(
-    player &&
-      tile?.type === "sector_tile" &&
-      tileState?.ownerId === playerId &&
-      !tileState.mortgaged &&
-      tileState.developmentTokens < MAX_DEVELOPMENT_TOKENS &&
-      player.actionPointsRemaining >= ACTION_COSTS.DEVELOP_TILE,
-  );
-}
-
-export function canMortgageTile(
-  state: GameState,
-  playerId: string,
-  position: number | string,
-): boolean {
-  if (!isActionTurn(state, playerId)) return false;
-  const tile = getTileByPosition(position);
-  const tileState = tileStateByPosition(state, position);
-  return Boolean(
-    tile?.cost !== null &&
-      tile?.cost !== undefined &&
-      tileState?.ownerId === playerId &&
-      !tileState.mortgaged,
-  );
-}
-
-export function canRedeemTile(
-  state: GameState,
-  playerId: string,
-  position: number | string,
-): boolean {
-  if (!isActionTurn(state, playerId)) return false;
-  const tileState = tileStateByPosition(state, position);
-  return tileState?.ownerId === playerId && tileState.mortgaged === true;
+  return {
+    canDevelopGate: Boolean(
+      player &&
+        tile?.type === "sector_tile" &&
+        tileState?.ownerId === playerId &&
+        !tileState.mortgaged &&
+        tileState.developmentTokens < MAX_DEVELOPMENT_TOKENS &&
+        player.actionPointsRemaining >= ACTION_COSTS.DEVELOP_TILE,
+    ),
+    canMortgageGate: Boolean(
+      tile?.cost !== null &&
+        tile?.cost !== undefined &&
+        tileState?.ownerId === playerId &&
+        !tileState.mortgaged,
+    ),
+    canRedeemGate: Boolean(
+      tileState?.ownerId === playerId && tileState.mortgaged === true,
+    ),
+  };
 }
 
 export function canPayDebt(state: GameState, playerId: string): boolean {

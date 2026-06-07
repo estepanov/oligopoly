@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { safeJsonParse, safeParseJson } from "../lib/jsonParse";
 import { requireAdmin } from "../middleware/requireAdmin";
 
 type Bindings = {
@@ -18,30 +19,6 @@ const generateId = () => crypto.randomUUID();
 
 /** Schema for the `player_ids_json` column — must be an array of strings. */
 const playerIdsSchema = z.array(z.string());
-
-/** Safely parse a JSON string with a zod schema, returning a fallback on failure. */
-function safeParseJson<T>(
-  raw: string | null | undefined,
-  schema: z.ZodType<T>,
-  fallback: T,
-): T {
-  if (raw == null) return fallback;
-  try {
-    return schema.parse(JSON.parse(raw));
-  } catch {
-    return fallback;
-  }
-}
-
-/** Safely parse an arbitrary JSON string, returning `null` on failure. */
-function safeJsonParse(raw: string | null | undefined): unknown {
-  if (raw == null) return null;
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
-}
 
 /** Parse and validate the `page` query parameter. Returns 1 for invalid input. */
 function parsePage(raw: string | undefined): number {

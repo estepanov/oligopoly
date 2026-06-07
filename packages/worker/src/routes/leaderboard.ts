@@ -1,11 +1,18 @@
 import {
+  LeaderboardCompletionsEntrySchema,
   LeaderboardCompletionsResponseSchema,
   LeaderboardErrorKeys,
   type LeaderboardSummary,
-  LeaderboardSummarySchema,
+  LeaderboardWinsEntrySchema,
   LeaderboardWinsResponseSchema,
 } from "@oligopoly/validation";
 import { Hono } from "hono";
+import type { z } from "zod";
+import { safeParseJsonArrayElements } from "../lib/jsonParse";
+import {
+  EMPTY_LEADERBOARD_SUMMARY,
+  parseLeaderboardSummaryFromKv,
+} from "../lib/leaderboardKv";
 
 type Bindings = {
   KV?: KVNamespace;
@@ -13,107 +20,89 @@ type Bindings = {
 
 export const leaderboardRoutes = new Hono<{ Bindings: Bindings }>();
 
-const EMPTY_SUMMARY = { humanWins: 0, aiWins: 0 };
-
-async function readLeaderboardSummary(kv: KVNamespace) {
+async function readLeaderboardSummary(
+  kv: KVNamespace,
+): Promise<LeaderboardSummary> {
   const raw = await kv.get("leaderboard:summary");
-  if (!raw) return EMPTY_SUMMARY;
-  const parsed = JSON.parse(raw);
-  return LeaderboardSummarySchema.parse(parsed);
-}
-
-function isAiLeaderboardEntry(entry: unknown): boolean {
-  return (
-    typeof entry === "object" &&
-    entry !== null &&
-    typeof (entry as { userId?: unknown }).userId === "string" &&
-    (entry as { userId: string }).userId.startsWith("ai:")
-  );
+  return parseLeaderboardSummaryFromKv(raw);
 }
 
 type Summary = LeaderboardSummary;
 
-async function readFilteredLeaderboardPayload(
+async function readFilteredLeaderboardPayload<T extends { userId: string }>(
   kv: KVNamespace,
   entriesKey: "leaderboard:wins" | "leaderboard:completions",
-): Promise<
-  | { ok: true; entries: unknown[]; summary: Summary }
-  | {
-      ok: false;
-      error: (typeof LeaderboardErrorKeys)[keyof typeof LeaderboardErrorKeys];
-    }
-> {
+  elementSchema: z.ZodType<T>,
+): Promise<{ entries: T[]; summary: Summary }> {
   const raw = await kv.get(entriesKey);
+  const summary = await readLeaderboardSummary(kv);
   if (!raw) {
-    try {
-      const summary = await readLeaderboardSummary(kv);
-      return { ok: true, entries: [], summary };
-    } catch {
-      return { ok: false, error: LeaderboardErrorKeys.INVALID_DATA };
-    }
+    return { entries: [], summary };
   }
 
-  let parsed: unknown;
-  let summary = EMPTY_SUMMARY;
-  try {
-    parsed = JSON.parse(raw);
-    summary = await readLeaderboardSummary(kv);
-  } catch {
-    return { ok: false, error: LeaderboardErrorKeys.INVALID_DATA };
-  }
+  const entries = safeParseJsonArrayElements(raw, elementSchema).filter(
+    (entry) => !entry.userId.startsWith("ai:"),
+  );
 
-  const entries: unknown[] = Array.isArray(parsed)
-    ? parsed.filter((entry) => !isAiLeaderboardEntry(entry))
-    : [];
-
-  return { ok: true, entries, summary };
+  return { entries, summary };
 }
 
 // GET /wins — Return leaderboard ranked by wins
 leaderboardRoutes.get("/wins", async (c) => {
   const kv = c.env?.KV;
   if (!kv) {
-    return c.json({ entries: [], summary: EMPTY_SUMMARY });
+    const empty = LeaderboardWinsResponseSchema.safeParse({
+      entries: [],
+      summary: EMPTY_LEADERBOARD_SUMMARY,
+    });
+    if (!empty.success) {
+      return c.json({ error: LeaderboardErrorKeys.INVALID_DATA }, 500);
+    }
+    return c.json(empty.data);
   }
 
-  const payload = await readFilteredLeaderboardPayload(kv, "leaderboard:wins");
-  if (!payload.ok) {
-    return c.json({ error: payload.error }, 500);
-  }
+  const payload = await readFilteredLeaderboardPayload(
+    kv,
+    "leaderboard:wins",
+    LeaderboardWinsEntrySchema,
+  );
 
-  const result = LeaderboardWinsResponseSchema.safeParse({
+  const validated = LeaderboardWinsResponseSchema.safeParse({
     entries: payload.entries,
     summary: payload.summary,
   });
-  if (!result.success) {
+  if (!validated.success) {
     return c.json({ error: LeaderboardErrorKeys.INVALID_DATA }, 500);
   }
-
-  return c.json(result.data);
+  return c.json(validated.data);
 });
 
 // GET /completions — Return leaderboard ranked by completions
 leaderboardRoutes.get("/completions", async (c) => {
   const kv = c.env?.KV;
   if (!kv) {
-    return c.json({ entries: [], summary: EMPTY_SUMMARY });
+    const empty = LeaderboardCompletionsResponseSchema.safeParse({
+      entries: [],
+      summary: EMPTY_LEADERBOARD_SUMMARY,
+    });
+    if (!empty.success) {
+      return c.json({ error: LeaderboardErrorKeys.INVALID_DATA }, 500);
+    }
+    return c.json(empty.data);
   }
 
   const payload = await readFilteredLeaderboardPayload(
     kv,
     "leaderboard:completions",
+    LeaderboardCompletionsEntrySchema,
   );
-  if (!payload.ok) {
-    return c.json({ error: payload.error }, 500);
-  }
 
-  const result = LeaderboardCompletionsResponseSchema.safeParse({
+  const validated = LeaderboardCompletionsResponseSchema.safeParse({
     entries: payload.entries,
     summary: payload.summary,
   });
-  if (!result.success) {
+  if (!validated.success) {
     return c.json({ error: LeaderboardErrorKeys.INVALID_DATA }, 500);
   }
-
-  return c.json(result.data);
+  return c.json(validated.data);
 });
