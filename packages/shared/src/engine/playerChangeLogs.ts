@@ -202,25 +202,19 @@ const PLAYER_STATE_CHANGE_REGISTRY: {
   },
 };
 
+function assignSnapshotField<K extends PlayerStateChangeFieldKey>(
+  row: PlayerChangeSnapshot,
+  key: K,
+  player: InternalPlayerState,
+): void {
+  row[key] = PLAYER_STATE_CHANGE_REGISTRY[key].snapshot(player);
+}
+
 function buildSnapshot(player: InternalPlayerState): PlayerChangeSnapshot {
-  const row = {
-    capital: PLAYER_STATE_CHANGE_REGISTRY.capital.snapshot(player),
-    position: PLAYER_STATE_CHANGE_REGISTRY.position.snapshot(player),
-    actionPointsRemaining:
-      PLAYER_STATE_CHANGE_REGISTRY.actionPointsRemaining.snapshot(player),
-    trustworthiness:
-      PLAYER_STATE_CHANGE_REGISTRY.trustworthiness.snapshot(player),
-    inRegulation: PLAYER_STATE_CHANGE_REGISTRY.inRegulation.snapshot(player),
-    syndicateId: PLAYER_STATE_CHANGE_REGISTRY.syndicateId.snapshot(player),
-    outstandingDebt:
-      PLAYER_STATE_CHANGE_REGISTRY.outstandingDebt.snapshot(player),
-    ownedTilePositions:
-      PLAYER_STATE_CHANGE_REGISTRY.ownedTilePositions.snapshot(player),
-    mortgagedTilePositions:
-      PLAYER_STATE_CHANGE_REGISTRY.mortgagedTilePositions.snapshot(player),
-    developmentTokens:
-      PLAYER_STATE_CHANGE_REGISTRY.developmentTokens.snapshot(player),
-  } satisfies PlayerChangeSnapshot;
+  const row = {} as PlayerChangeSnapshot;
+  for (const key of PLAYER_STATE_CHANGE_FIELD_KEYS) {
+    assignSnapshotField(row, key, player);
+  }
   return row;
 }
 

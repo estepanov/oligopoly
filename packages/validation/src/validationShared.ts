@@ -246,8 +246,10 @@ export type PlayerStateChangeFieldKey =
 
 /**
  * Ordered keys derived from {@link PLAYER_STATE_CHANGE_FIELD_SCHEMAS}.
- * Engine (`playerChangeLogs`) and web log formatter should only emit/consume
- * fields listed here — add new diffs by extending the schemas object only.
+ * Adding a field is a coordinated change: extend the schemas object here, then
+ * `PLAYER_STATE_CHANGE_REGISTRY` (shared engine), `PLAYER_STATE_LOG_PARTS`
+ * (web formatter), and fixtures in `playerStateChangeContract.test.ts`.
+ * See `oligopoly_technical_plan.md` (player_state_changed contract).
  */
 export const PLAYER_STATE_CHANGE_FIELD_KEYS = Object.keys(
   PLAYER_STATE_CHANGE_FIELD_SCHEMAS,
