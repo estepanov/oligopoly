@@ -277,6 +277,41 @@ describe("processGameCompletion", () => {
     expect(wins).toEqual([{ userId: "user-1", username: "user-1", wins: 1 }]);
   });
 
+  it("resets leaderboard:wins KV when entries fail schema validation", async () => {
+    const db = createWorkerD1Stub();
+    const kv = createKvStub();
+    kv._store.set(
+      "leaderboard:wins",
+      JSON.stringify([
+        { userId: "user-1", username: "old", wins: 5 },
+        { userId: "user-2", username: "no-wins-field" },
+      ]),
+    );
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      status: "completed",
+      started_at: 1,
+      ended_at: 2,
+      winner_id: "user-1",
+      player_ids_json: JSON.stringify(["user-1", "user-2"]),
+      state_json: null,
+    });
+
+    await processGameCompletion(
+      db,
+      kv,
+      "game-1",
+      makeCompletedState({ kickedPlayerIds: [] }),
+      1000,
+    );
+
+    const wins = JSON.parse(
+      kv._store.get("leaderboard:wins") ?? "[]",
+    ) as Array<{ userId: string; wins: number }>;
+    expect(wins).toEqual([{ userId: "user-1", username: "user-1", wins: 1 }]);
+  });
+
   it("recovers from corrupt recent_games_json when updating stats", async () => {
     const db = createWorkerD1Stub();
     const kv = createKvStub();

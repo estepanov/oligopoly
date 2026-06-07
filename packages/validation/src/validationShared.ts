@@ -334,6 +334,15 @@ export type LeaderboardCompletionsEntry = z.infer<
   typeof LeaderboardCompletionsEntrySchema
 >;
 
+/** Stored `user_stats.recent_games_json` rows (matches `@oligopoly/shared` profile shape). */
+export const GameResultSchema = z.enum(["won", "lost", "drew", "kicked"]);
+export const RecentGameSummarySchema = z.object({
+  gameId: z.string(),
+  result: GameResultSchema,
+  endedAt: z.number(),
+});
+export type RecentGameSummaryStored = z.infer<typeof RecentGameSummarySchema>;
+
 export const LeaderboardSummarySchema = z.object({
   humanWins: z.number().int().nonnegative(),
   aiWins: z.number().int().nonnegative(),

@@ -14,14 +14,18 @@ import {
   SECTORS,
 } from "@oligopoly/shared";
 import {
-  type LeaderboardCompletionsEntry,
+  LeaderboardCompletionsEntrySchema,
   type LeaderboardSummary,
   LeaderboardSummarySchema,
-  type LeaderboardWinsEntry,
+  LeaderboardWinsEntrySchema,
+  RecentGameSummarySchema,
 } from "@oligopoly/validation";
-import { safeParseJsonArray } from "../lib/jsonParse";
+import { z } from "zod";
+import { safeParseJson } from "../lib/jsonParse";
 
 const MAX_RECENT_GAMES = 20;
+
+const recentGamesListSchema = z.array(RecentGameSummarySchema);
 
 const EMPTY_LEADERBOARD_SUMMARY: LeaderboardSummary = {
   humanWins: 0,
@@ -56,39 +60,68 @@ async function fetchUsername(db: D1Database, userId: string): Promise<string> {
   return row?.username ?? userId;
 }
 
-async function upsertLeaderboardEntry(
+async function mergeLeaderboardList<
+  T extends { userId: string; username: string },
+>(
   kv: KVNamespace,
-  key: "leaderboard:wins" | "leaderboard:completions",
+  storageKey: "leaderboard:wins" | "leaderboard:completions",
   userId: string,
   username: string,
-  _metricKey: "wins" | "completions",
+  increment: number,
+  listSchema: z.ZodType<T[]>,
+  sortDesc: (a: T, b: T) => number,
+  bump: (row: T, delta: number) => void,
+  seed: (userId: string, username: string, delta: number) => T,
+): Promise<void> {
+  const raw = await kv.get(storageKey);
+  const rows = safeParseJson(raw, listSchema, []);
+  const found = rows.find((r) => r.userId === userId);
+  if (found) {
+    bump(found, increment);
+    found.username = username;
+  } else {
+    rows.push(seed(userId, username, increment));
+  }
+  rows.sort(sortDesc);
+  await kv.put(storageKey, JSON.stringify(rows.slice(0, 100)));
+}
+
+async function upsertLeaderboardEntry(
+  kv: KVNamespace,
+  metric: "wins" | "completions",
+  userId: string,
+  username: string,
   increment: number,
 ): Promise<void> {
-  const raw = await kv.get(key);
-  if (key === "leaderboard:wins") {
-    const entries = safeParseJsonArray(raw) as LeaderboardWinsEntry[];
-    const existing = entries.find((entry) => entry.userId === userId);
-    if (existing) {
-      existing.wins += increment;
-      existing.username = username;
-    } else {
-      entries.push({ userId, username, wins: increment });
-    }
-    entries.sort((a, b) => b.wins - a.wins);
-    await kv.put(key, JSON.stringify(entries.slice(0, 100)));
+  if (metric === "wins") {
+    await mergeLeaderboardList(
+      kv,
+      "leaderboard:wins",
+      userId,
+      username,
+      increment,
+      z.array(LeaderboardWinsEntrySchema),
+      (a, b) => b.wins - a.wins,
+      (row, d) => {
+        row.wins += d;
+      },
+      (uid, un, d) => ({ userId: uid, username: un, wins: d }),
+    );
     return;
   }
-
-  const entries = safeParseJsonArray(raw) as LeaderboardCompletionsEntry[];
-  const existing = entries.find((entry) => entry.userId === userId);
-  if (existing) {
-    existing.completions += increment;
-    existing.username = username;
-  } else {
-    entries.push({ userId, username, completions: increment });
-  }
-  entries.sort((a, b) => b.completions - a.completions);
-  await kv.put(key, JSON.stringify(entries.slice(0, 100)));
+  await mergeLeaderboardList(
+    kv,
+    "leaderboard:completions",
+    userId,
+    username,
+    increment,
+    z.array(LeaderboardCompletionsEntrySchema),
+    (a, b) => b.completions - a.completions,
+    (row, d) => {
+      row.completions += d;
+    },
+    (uid, un, d) => ({ userId: uid, username: un, completions: d }),
+  );
 }
 
 async function incrementLeaderboardSummary(
@@ -189,8 +222,10 @@ export async function processGameCompletion(
     return;
   }
 
-  const playerIdsFromRow = safeParseJsonArray(gameRow.player_ids_json).filter(
-    (id): id is string => typeof id === "string",
+  const playerIdsFromRow = safeParseJson(
+    gameRow.player_ids_json,
+    z.array(z.string()),
+    [],
   );
   const playerIds =
     playerIdsFromRow.length > 0
@@ -213,9 +248,11 @@ export async function processGameCompletion(
       .bind(userId)
       .first<{ recent_games_json: string | null }>();
     if (!row) continue;
-    const recent = safeParseJsonArray(
+    const recent = safeParseJson(
       row.recent_games_json ?? null,
-    ) as RecentGameSummary[];
+      recentGamesListSchema,
+      [],
+    );
     if (recent.some((entry) => entry?.gameId === gameId)) {
       return;
     }
@@ -247,11 +284,9 @@ export async function processGameCompletion(
         recent_games_json: string;
       }>();
 
-    const recentGames = (
-      statsRow?.recent_games_json
-        ? safeParseJsonArray(statsRow.recent_games_json)
-        : []
-    ) as RecentGameSummary[];
+    const recentGames: RecentGameSummary[] = statsRow?.recent_games_json
+      ? safeParseJson(statsRow.recent_games_json, recentGamesListSchema, [])
+      : [];
     recentGames.unshift({
       gameId,
       result: gameResultForPlayer(state, playerId, winnerId),
@@ -387,23 +422,9 @@ export async function processGameCompletion(
 
     if (kv) {
       const username = await fetchUsername(db, playerId);
-      await upsertLeaderboardEntry(
-        kv,
-        "leaderboard:completions",
-        playerId,
-        username,
-        "completions",
-        1,
-      );
+      await upsertLeaderboardEntry(kv, "completions", playerId, username, 1);
       if (won) {
-        await upsertLeaderboardEntry(
-          kv,
-          "leaderboard:wins",
-          playerId,
-          username,
-          "wins",
-          1,
-        );
+        await upsertLeaderboardEntry(kv, "wins", playerId, username, 1);
       }
     }
   }
