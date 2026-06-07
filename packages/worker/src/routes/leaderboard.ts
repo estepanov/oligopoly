@@ -6,6 +6,7 @@ import {
   LeaderboardWinsResponseSchema,
 } from "@oligopoly/validation";
 import { Hono } from "hono";
+import { safeParseJson } from "../lib/jsonParse";
 
 type Bindings = {
   KV?: KVNamespace;
@@ -19,13 +20,7 @@ async function readLeaderboardSummary(
   kv: KVNamespace,
 ): Promise<LeaderboardSummary> {
   const raw = await kv.get("leaderboard:summary");
-  if (!raw) return EMPTY_SUMMARY;
-  try {
-    const parsed = LeaderboardSummarySchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : EMPTY_SUMMARY;
-  } catch {
-    return EMPTY_SUMMARY;
-  }
+  return safeParseJson(raw, LeaderboardSummarySchema, EMPTY_SUMMARY);
 }
 
 function isAiLeaderboardEntry(entry: unknown): boolean {

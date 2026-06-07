@@ -6,14 +6,26 @@ export type PublicLobbyList = Awaited<
   ReturnType<typeof listPublicLobbies>
 >["lobbies"];
 
-type LobbyBannerMessage = { kind: "ok" | "error"; text: string } | null;
+/** Stable `errorCode` for banner messages — avoids coupling clear logic to copy. */
+export const LOBBY_BANNER_ERROR_CODES = {
+  PUBLIC_LOBBIES_FETCH_FAILED: "public_lobbies_fetch_failed",
+} as const;
+
+export type LobbyBannerMessage =
+  | { kind: "ok"; text: string }
+  | {
+      kind: "error";
+      text: string;
+      errorCode?: (typeof LOBBY_BANNER_ERROR_CODES)[keyof typeof LOBBY_BANNER_ERROR_CODES];
+    }
+  | null;
 
 function clearPublicLobbiesLoadError(
   prev: LobbyBannerMessage,
 ): LobbyBannerMessage {
   if (
     prev?.kind === "error" &&
-    prev.text.startsWith("Failed to load public lobbies")
+    prev.errorCode === LOBBY_BANNER_ERROR_CODES.PUBLIC_LOBBIES_FETCH_FAILED
   ) {
     return null;
   }
@@ -48,9 +60,9 @@ export function usePublicLobbiesRefresh(
       setMessage((prev) => clearPublicLobbiesLoadError(prev));
     } catch (error) {
       if (startedAt !== fetchGeneration.current) return;
-      setPublicLobbies([]);
       setMessage({
         kind: "error",
+        errorCode: LOBBY_BANNER_ERROR_CODES.PUBLIC_LOBBIES_FETCH_FAILED,
         text:
           error instanceof ApiError
             ? `Failed to load public lobbies: ${error.message}`

@@ -312,6 +312,43 @@ describe("processGameCompletion", () => {
     expect(wins).toEqual([{ userId: "user-1", username: "user-1", wins: 1 }]);
   });
 
+  it("does not double-apply when recent_games_json has a non-schema row with the same gameId", async () => {
+    const db = createWorkerD1Stub();
+    const kv = createKvStub();
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      status: "completed",
+      started_at: 1,
+      ended_at: 2,
+      winner_id: "user-1",
+      player_ids_json: JSON.stringify(["user-1", "user-2"]),
+      state_json: null,
+    });
+    db._tables.user_stats.push({
+      user_id: "user-1",
+      games_played: 1,
+      wins: 1,
+      trades_completed: 0,
+      auctions_won: 0,
+      recent_games_json: JSON.stringify([
+        { gameId: "game-1", incompleteLegacyRow: true },
+      ]),
+    });
+
+    await processGameCompletion(
+      db,
+      kv,
+      "game-1",
+      makeCompletedState({ kickedPlayerIds: [] }),
+      1000,
+    );
+
+    const stats = db._tables.user_stats.find((row) => row.user_id === "user-1");
+    expect(stats?.games_played).toBe(1);
+    expect(stats?.wins).toBe(1);
+  });
+
   it("recovers from corrupt recent_games_json when updating stats", async () => {
     const db = createWorkerD1Stub();
     const kv = createKvStub();

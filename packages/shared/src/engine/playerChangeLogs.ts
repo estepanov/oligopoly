@@ -32,6 +32,19 @@ interface PlayerChangeSnapshot {
   developmentTokens: Record<string, number>;
 }
 
+type _AssertEqual<A, B> = [A] extends [B]
+  ? [B] extends [A]
+    ? true
+    : false
+  : false;
+
+type _PlayerChangeSnapshotKeysMatchTuple = _AssertEqual<
+  keyof PlayerChangeSnapshot,
+  PlayerStateChangeFieldKey
+>;
+const _enforcePlayerChangeSnapshotKeys: _PlayerChangeSnapshotKeysMatchTuple = true;
+void _enforcePlayerChangeSnapshotKeys;
+
 function diffStringSets(before: string[], after: string[]) {
   const beforeSet = new Set(before);
   const afterSet = new Set(after);

@@ -18,14 +18,15 @@ import {
   type LeaderboardSummary,
   LeaderboardSummarySchema,
   LeaderboardWinsEntrySchema,
-  RecentGameSummarySchema,
 } from "@oligopoly/validation";
 import { z } from "zod";
 import { safeParseJson } from "../lib/jsonParse";
+import {
+  recentGamesJsonContainsGameId,
+  sanitizeRecentGamesFromStorage,
+} from "../lib/recentGamesJson";
 
 const MAX_RECENT_GAMES = 20;
-
-const recentGamesListSchema = z.array(RecentGameSummarySchema);
 
 const EMPTY_LEADERBOARD_SUMMARY: LeaderboardSummary = {
   humanWins: 0,
@@ -60,67 +61,61 @@ async function fetchUsername(db: D1Database, userId: string): Promise<string> {
   return row?.username ?? userId;
 }
 
-async function mergeLeaderboardList<
-  T extends { userId: string; username: string },
->(
-  kv: KVNamespace,
-  storageKey: "leaderboard:wins" | "leaderboard:completions",
-  userId: string,
-  username: string,
-  increment: number,
-  listSchema: z.ZodType<T[]>,
-  sortDesc: (a: T, b: T) => number,
-  bump: (row: T, delta: number) => void,
-  seed: (userId: string, username: string, delta: number) => T,
-): Promise<void> {
-  const raw = await kv.get(storageKey);
-  const rows = safeParseJson(raw, listSchema, []);
-  const found = rows.find((r) => r.userId === userId);
-  if (found) {
-    bump(found, increment);
-    found.username = username;
-  } else {
-    rows.push(seed(userId, username, increment));
-  }
-  rows.sort(sortDesc);
-  await kv.put(storageKey, JSON.stringify(rows.slice(0, 100)));
-}
+type LeaderboardDelta = { completions: number; wins: number };
 
-async function upsertLeaderboardEntry(
+/** One KV read / merge / write per wins and per completions list (not per player). */
+async function flushLeaderboardKvIncrements(
   kv: KVNamespace,
-  metric: "wins" | "completions",
-  userId: string,
-  username: string,
-  increment: number,
+  deltas: Map<string, LeaderboardDelta>,
+  usernames: Map<string, string>,
 ): Promise<void> {
-  if (metric === "wins") {
-    await mergeLeaderboardList(
-      kv,
-      "leaderboard:wins",
-      userId,
-      username,
-      increment,
-      z.array(LeaderboardWinsEntrySchema),
-      (a, b) => b.wins - a.wins,
-      (row, d) => {
-        row.wins += d;
-      },
-      (uid, un, d) => ({ userId: uid, username: un, wins: d }),
-    );
-    return;
+  if (deltas.size === 0) return;
+
+  const winsRaw = await kv.get("leaderboard:wins");
+  const winsRows = safeParseJson(
+    winsRaw,
+    z.array(LeaderboardWinsEntrySchema),
+    [],
+  );
+  for (const [userId, d] of deltas) {
+    if (d.wins <= 0) continue;
+    const username = usernames.get(userId) ?? userId;
+    const found = winsRows.find((r) => r.userId === userId);
+    if (found) {
+      found.wins += d.wins;
+      found.username = username;
+    } else {
+      winsRows.push({ userId, username, wins: d.wins });
+    }
   }
-  await mergeLeaderboardList(
-    kv,
-    "leaderboard:completions",
-    userId,
-    username,
-    increment,
+  winsRows.sort((a, b) => b.wins - a.wins);
+  await kv.put("leaderboard:wins", JSON.stringify(winsRows.slice(0, 100)));
+
+  const completionsRaw = await kv.get("leaderboard:completions");
+  const completionRows = safeParseJson(
+    completionsRaw,
     z.array(LeaderboardCompletionsEntrySchema),
-    (a, b) => b.completions - a.completions,
-    (row, d) => {
-      row.completions += d;
-    },
-    (uid, un, d) => ({ userId: uid, username: un, completions: d }),
+    [],
+  );
+  for (const [userId, d] of deltas) {
+    if (d.completions <= 0) continue;
+    const username = usernames.get(userId) ?? userId;
+    const found = completionRows.find((r) => r.userId === userId);
+    if (found) {
+      found.completions += d.completions;
+      found.username = username;
+    } else {
+      completionRows.push({
+        userId,
+        username,
+        completions: d.completions,
+      });
+    }
+  }
+  completionRows.sort((a, b) => b.completions - a.completions);
+  await kv.put(
+    "leaderboard:completions",
+    JSON.stringify(completionRows.slice(0, 100)),
   );
 }
 
@@ -129,23 +124,20 @@ async function incrementLeaderboardSummary(
   increment: LeaderboardSummary,
 ): Promise<void> {
   const raw = await kv.get("leaderboard:summary");
-  let existing = EMPTY_LEADERBOARD_SUMMARY;
-  if (raw) {
-    try {
-      const parsed = LeaderboardSummarySchema.safeParse(JSON.parse(raw));
-      if (parsed.success) {
-        existing = parsed.data;
-      }
-    } catch {
-      // Malformed JSON — treat as empty summary.
-    }
-  }
+  const existing = safeParseJson(
+    raw,
+    LeaderboardSummarySchema,
+    EMPTY_LEADERBOARD_SUMMARY,
+  );
   const merged: LeaderboardSummary = {
     humanWins: Math.max(0, (existing.humanWins ?? 0) + increment.humanWins),
     aiWins: Math.max(0, (existing.aiWins ?? 0) + increment.aiWins),
   };
-  const nextParsed = LeaderboardSummarySchema.safeParse(merged);
-  const next = nextParsed.success ? nextParsed.data : merged;
+  const next = safeParseJson(
+    JSON.stringify(merged),
+    LeaderboardSummarySchema,
+    merged,
+  );
   await kv.put("leaderboard:summary", JSON.stringify(next));
 }
 
@@ -248,12 +240,7 @@ export async function processGameCompletion(
       .bind(userId)
       .first<{ recent_games_json: string | null }>();
     if (!row) continue;
-    const recent = safeParseJson(
-      row.recent_games_json ?? null,
-      recentGamesListSchema,
-      [],
-    );
-    if (recent.some((entry) => entry?.gameId === gameId)) {
+    if (recentGamesJsonContainsGameId(row.recent_games_json, gameId)) {
       return;
     }
   }
@@ -261,6 +248,8 @@ export async function processGameCompletion(
   const statements: D1PreparedStatement[] = [];
   const achievementStatements: D1PreparedStatement[] = [];
   const leaderboardSummary = leaderboardOutcomeForGame(state, winnerId);
+  const leaderboardDeltas = new Map<string, LeaderboardDelta>();
+  const leaderboardUsernames = new Map<string, string>();
 
   for (const playerId of playerIds) {
     const isKicked = state.kickedPlayerIds?.includes(playerId) ?? false;
@@ -284,9 +273,9 @@ export async function processGameCompletion(
         recent_games_json: string;
       }>();
 
-    const recentGames: RecentGameSummary[] = statsRow?.recent_games_json
-      ? safeParseJson(statsRow.recent_games_json, recentGamesListSchema, [])
-      : [];
+    const recentGames: RecentGameSummary[] = sanitizeRecentGamesFromStorage(
+      statsRow?.recent_games_json ?? null,
+    );
     recentGames.unshift({
       gameId,
       result: gameResultForPlayer(state, playerId, winnerId),
@@ -422,15 +411,27 @@ export async function processGameCompletion(
 
     if (kv) {
       const username = await fetchUsername(db, playerId);
-      await upsertLeaderboardEntry(kv, "completions", playerId, username, 1);
-      if (won) {
-        await upsertLeaderboardEntry(kv, "wins", playerId, username, 1);
-      }
+      leaderboardUsernames.set(playerId, username);
+      const cur = leaderboardDeltas.get(playerId) ?? {
+        completions: 0,
+        wins: 0,
+      };
+      cur.completions += 1;
+      if (won) cur.wins += 1;
+      leaderboardDeltas.set(playerId, cur);
     }
   }
 
   if (achievementStatements.length > 0 || statements.length > 0) {
     await db.batch([...achievementStatements, ...statements]);
+  }
+
+  if (kv && leaderboardDeltas.size > 0) {
+    await flushLeaderboardKvIncrements(
+      kv,
+      leaderboardDeltas,
+      leaderboardUsernames,
+    );
   }
 
   if (

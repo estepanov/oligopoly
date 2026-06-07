@@ -22,6 +22,7 @@ import { LobbyAiSettings } from "../components/LobbyAiSettings";
 import { LobbyReadyControls } from "../components/LobbyReadyControls";
 import { useLobbyRealtime } from "../hooks/useLobbyRealtime";
 import {
+  type LobbyBannerMessage,
   type PublicLobbyList,
   usePublicLobbiesRefresh,
 } from "../hooks/usePublicLobbiesRefresh";
@@ -37,7 +38,7 @@ const normalizeLobby = (
 });
 const MAX_ACTIVE_LOBBIES_PER_USER = 2;
 
-type Message = { kind: "ok" | "error"; text: string } | null;
+type Message = LobbyBannerMessage;
 type InviteShare = {
   lobbyId: string;
   token: string;
