@@ -111,28 +111,44 @@ describe("GET /api/leaderboard/wins", () => {
     expect(body.summary).toEqual({ humanWins: 17, aiWins: 8 });
   });
 
-  it("returns 500 with typed error when KV value is malformed JSON", async () => {
+  it("returns empty entries when KV value is malformed JSON", async () => {
     const kv = createKvStub();
     await kv.put("leaderboard:wins", "this is not json{{{");
 
     const res = await requestWithEnv("/api/leaderboard/wins", { kv });
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.error).toBe("leaderboard.invalid_data");
+    expect(body.entries).toEqual([]);
+    expect(body.summary).toEqual({ humanWins: 0, aiWins: 0 });
   });
 
-  it("returns 500 with typed error when KV value has wrong shape", async () => {
+  it("drops invalid rows and returns valid ones", async () => {
     const kv = createKvStub();
-    // Array of objects missing required fields
     await kv.put(
       "leaderboard:wins",
-      JSON.stringify([{ userId: "u1", wins: "not-a-number" }]),
+      JSON.stringify([
+        { userId: "user-1", username: "Alice", wins: 10 },
+        { userId: "u1", wins: "not-a-number" },
+        { userId: "user-2", username: "Bob", wins: 7 },
+      ]),
     );
 
     const res = await requestWithEnv("/api/leaderboard/wins", { kv });
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.error).toBe("leaderboard.invalid_data");
+    expect(body.entries).toHaveLength(2);
+    expect(body.entries[0].userId).toBe("user-1");
+    expect(body.entries[1].userId).toBe("user-2");
+  });
+
+  it("returns empty entries when KV value is not an array", async () => {
+    const kv = createKvStub();
+    await kv.put("leaderboard:wins", JSON.stringify({ userId: "u1", wins: 1 }));
+
+    const res = await requestWithEnv("/api/leaderboard/wins", { kv });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.entries).toEqual([]);
   });
 });
 
@@ -201,27 +217,47 @@ describe("GET /api/leaderboard/completions", () => {
     expect(body.summary).toEqual({ humanWins: 3, aiWins: 2 });
   });
 
-  it("returns 500 with typed error when KV value is malformed JSON", async () => {
+  it("returns empty entries when KV value is malformed JSON", async () => {
     const kv = createKvStub();
     await kv.put("leaderboard:completions", "<<<bad json>>>");
 
     const res = await requestWithEnv("/api/leaderboard/completions", { kv });
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.error).toBe("leaderboard.invalid_data");
+    expect(body.entries).toEqual([]);
+    expect(body.summary).toEqual({ humanWins: 0, aiWins: 0 });
   });
 
-  it("returns 500 with typed error when KV value has wrong shape", async () => {
+  it("drops invalid rows and returns valid ones", async () => {
     const kv = createKvStub();
     await kv.put(
       "leaderboard:completions",
-      JSON.stringify([{ userId: "u1", completions: "oops" }]),
+      JSON.stringify([
+        { userId: "user-3", username: "Carol", completions: 25 },
+        { userId: "u1", completions: "oops" },
+        { userId: "user-4", username: "Dave", completions: 18 },
+      ]),
     );
 
     const res = await requestWithEnv("/api/leaderboard/completions", { kv });
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.error).toBe("leaderboard.invalid_data");
+    expect(body.entries).toHaveLength(2);
+    expect(body.entries[0].userId).toBe("user-3");
+    expect(body.entries[1].userId).toBe("user-4");
+  });
+
+  it("returns empty entries when KV value is not an array", async () => {
+    const kv = createKvStub();
+    await kv.put(
+      "leaderboard:completions",
+      JSON.stringify({ userId: "u1", completions: 1 }),
+    );
+
+    const res = await requestWithEnv("/api/leaderboard/completions", { kv });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.entries).toEqual([]);
   });
 });
 

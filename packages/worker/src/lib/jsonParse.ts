@@ -40,3 +40,22 @@ export function safeJsonParse(raw: string | null | undefined): unknown {
 export function safeParseJsonArray(raw: string | null | undefined): unknown[] {
   return safeParseJson(raw, jsonArrayUnknownSchema, []);
 }
+
+/**
+ * Parse JSON as an array, validate each element with `elementSchema`, and keep
+ * only valid rows. Corrupt JSON or non-arrays become `[]` (never throws).
+ */
+export function safeParseJsonArrayElements<T>(
+  raw: string | null | undefined,
+  elementSchema: z.ZodType<T>,
+): T[] {
+  const items = safeParseJsonArray(raw);
+  const result: T[] = [];
+  for (const item of items) {
+    const parsed = elementSchema.safeParse(item);
+    if (parsed.success) {
+      result.push(parsed.data);
+    }
+  }
+  return result;
+}

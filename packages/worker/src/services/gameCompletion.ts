@@ -16,22 +16,17 @@ import {
 import {
   LeaderboardCompletionsEntrySchema,
   type LeaderboardSummary,
-  LeaderboardSummarySchema,
   LeaderboardWinsEntrySchema,
 } from "@oligopoly/validation";
 import { z } from "zod";
-import { safeParseJson } from "../lib/jsonParse";
+import { safeParseJson, safeParseJsonArrayElements } from "../lib/jsonParse";
+import { parseLeaderboardSummaryFromKv } from "../lib/leaderboardKv";
 import {
   recentGamesJsonContainsGameId,
   sanitizeRecentGamesFromStorage,
 } from "../lib/recentGamesJson";
 
 const MAX_RECENT_GAMES = 20;
-
-const EMPTY_LEADERBOARD_SUMMARY: LeaderboardSummary = {
-  humanWins: 0,
-  aiWins: 0,
-};
 
 function countSectorsControlled(
   state: CompletedGameSnapshot,
@@ -72,10 +67,9 @@ async function flushLeaderboardKvIncrements(
   if (deltas.size === 0) return;
 
   const winsRaw = await kv.get("leaderboard:wins");
-  const winsRows = safeParseJson(
+  const winsRows = safeParseJsonArrayElements(
     winsRaw,
-    z.array(LeaderboardWinsEntrySchema),
-    [],
+    LeaderboardWinsEntrySchema,
   );
   for (const [userId, d] of deltas) {
     if (d.wins <= 0) continue;
@@ -92,10 +86,9 @@ async function flushLeaderboardKvIncrements(
   await kv.put("leaderboard:wins", JSON.stringify(winsRows.slice(0, 100)));
 
   const completionsRaw = await kv.get("leaderboard:completions");
-  const completionRows = safeParseJson(
+  const completionRows = safeParseJsonArrayElements(
     completionsRaw,
-    z.array(LeaderboardCompletionsEntrySchema),
-    [],
+    LeaderboardCompletionsEntrySchema,
   );
   for (const [userId, d] of deltas) {
     if (d.completions <= 0) continue;
@@ -124,20 +117,12 @@ async function incrementLeaderboardSummary(
   increment: LeaderboardSummary,
 ): Promise<void> {
   const raw = await kv.get("leaderboard:summary");
-  const existing = safeParseJson(
-    raw,
-    LeaderboardSummarySchema,
-    EMPTY_LEADERBOARD_SUMMARY,
-  );
+  const existing = parseLeaderboardSummaryFromKv(raw);
   const merged: LeaderboardSummary = {
     humanWins: Math.max(0, (existing.humanWins ?? 0) + increment.humanWins),
     aiWins: Math.max(0, (existing.aiWins ?? 0) + increment.aiWins),
   };
-  const next = safeParseJson(
-    JSON.stringify(merged),
-    LeaderboardSummarySchema,
-    merged,
-  );
+  const next = parseLeaderboardSummaryFromKv(JSON.stringify(merged));
   await kv.put("leaderboard:summary", JSON.stringify(next));
 }
 

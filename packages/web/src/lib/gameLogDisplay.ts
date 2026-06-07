@@ -236,6 +236,19 @@ const PLAYER_STATE_LOG_PARTS: {
   },
 };
 
+type _AssertEqual<A, B> = [A] extends [B]
+  ? [B] extends [A]
+    ? true
+    : false
+  : false;
+
+type _PlayerStateLogPartKeysMatchTuple = _AssertEqual<
+  keyof typeof PLAYER_STATE_LOG_PARTS,
+  PlayerStateChangeFieldKey
+>;
+const _enforcePlayerStateLogPartKeys: _PlayerStateLogPartKeysMatchTuple = true;
+void _enforcePlayerStateLogPartKeys;
+
 function formatPlayerStateChange(
   payload: unknown,
   tileNames: Map<string, string>,

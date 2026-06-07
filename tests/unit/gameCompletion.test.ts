@@ -277,7 +277,7 @@ describe("processGameCompletion", () => {
     expect(wins).toEqual([{ userId: "user-1", username: "user-1", wins: 1 }]);
   });
 
-  it("resets leaderboard:wins KV when entries fail schema validation", async () => {
+  it("keeps valid leaderboard:wins rows when some entries fail schema validation", async () => {
     const db = createWorkerD1Stub();
     const kv = createKvStub();
     kv._store.set(
@@ -309,7 +309,7 @@ describe("processGameCompletion", () => {
     const wins = JSON.parse(
       kv._store.get("leaderboard:wins") ?? "[]",
     ) as Array<{ userId: string; wins: number }>;
-    expect(wins).toEqual([{ userId: "user-1", username: "user-1", wins: 1 }]);
+    expect(wins).toEqual([{ userId: "user-1", username: "user-1", wins: 6 }]);
   });
 
   it("does not double-apply when recent_games_json has a non-schema row with the same gameId", async () => {
