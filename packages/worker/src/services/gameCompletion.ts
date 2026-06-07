@@ -21,7 +21,11 @@ import {
 } from "@oligopoly/validation";
 import { z } from "zod";
 import { safeParseJson, safeParseJsonArrayElements } from "../lib/jsonParse";
-import { parseLeaderboardSummaryFromKv } from "../lib/leaderboardKv";
+import {
+  isLeaderboardCompletionKvStepApplied,
+  markLeaderboardCompletionKvStepApplied,
+  parseLeaderboardSummaryFromKv,
+} from "../lib/leaderboardKv";
 import {
   recentGamesJsonContainsGameId,
   sanitizeRecentGamesFromStorage,
@@ -62,61 +66,78 @@ type LeaderboardDelta = { completions: number; wins: number };
 /** One KV read / merge / write per wins and per completions list (not per player). */
 async function flushLeaderboardKvIncrements(
   kv: KVNamespace,
+  gameId: string,
   deltas: Map<string, LeaderboardDelta>,
   usernames: Map<string, string>,
 ): Promise<void> {
   if (deltas.size === 0) return;
 
-  const winsRaw = await kv.get("leaderboard:wins");
-  const winsRows = safeParseJsonArrayElements(
-    winsRaw,
-    LeaderboardWinsEntrySchema,
-  );
-  for (const [userId, d] of deltas) {
-    if (d.wins <= 0) continue;
-    const username = usernames.get(userId) ?? userId;
-    const found = winsRows.find((r) => r.userId === userId);
-    if (found) {
-      found.wins += d.wins;
-      found.username = username;
-    } else {
-      winsRows.push({ userId, username, wins: d.wins });
+  if (!(await isLeaderboardCompletionKvStepApplied(kv, gameId, "wins"))) {
+    const winsRaw = await kv.get("leaderboard:wins");
+    const winsRows = safeParseJsonArrayElements(
+      winsRaw,
+      LeaderboardWinsEntrySchema,
+    );
+    for (const [userId, d] of deltas) {
+      if (d.wins <= 0) continue;
+      const username = usernames.get(userId) ?? userId;
+      const found = winsRows.find((r) => r.userId === userId);
+      if (found) {
+        found.wins += d.wins;
+        found.username = username;
+      } else {
+        winsRows.push({ userId, username, wins: d.wins });
+      }
     }
+    winsRows.sort((a, b) => b.wins - a.wins);
+    await kv.put("leaderboard:wins", JSON.stringify(winsRows.slice(0, 100)));
+    await markLeaderboardCompletionKvStepApplied(kv, gameId, "wins");
   }
-  winsRows.sort((a, b) => b.wins - a.wins);
-  await kv.put("leaderboard:wins", JSON.stringify(winsRows.slice(0, 100)));
 
-  const completionsRaw = await kv.get("leaderboard:completions");
-  const completionRows = safeParseJsonArrayElements(
-    completionsRaw,
-    LeaderboardCompletionsEntrySchema,
-  );
-  for (const [userId, d] of deltas) {
-    if (d.completions <= 0) continue;
-    const username = usernames.get(userId) ?? userId;
-    const found = completionRows.find((r) => r.userId === userId);
-    if (found) {
-      found.completions += d.completions;
-      found.username = username;
-    } else {
-      completionRows.push({
-        userId,
-        username,
-        completions: d.completions,
-      });
+  if (
+    !(await isLeaderboardCompletionKvStepApplied(kv, gameId, "completions"))
+  ) {
+    const completionsRaw = await kv.get("leaderboard:completions");
+    const completionRows = safeParseJsonArrayElements(
+      completionsRaw,
+      LeaderboardCompletionsEntrySchema,
+    );
+    for (const [userId, d] of deltas) {
+      if (d.completions <= 0) continue;
+      const username = usernames.get(userId) ?? userId;
+      const found = completionRows.find((r) => r.userId === userId);
+      if (found) {
+        found.completions += d.completions;
+        found.username = username;
+      } else {
+        completionRows.push({
+          userId,
+          username,
+          completions: d.completions,
+        });
+      }
     }
+    completionRows.sort((a, b) => b.completions - a.completions);
+    await kv.put(
+      "leaderboard:completions",
+      JSON.stringify(completionRows.slice(0, 100)),
+    );
+    await markLeaderboardCompletionKvStepApplied(kv, gameId, "completions");
   }
-  completionRows.sort((a, b) => b.completions - a.completions);
-  await kv.put(
-    "leaderboard:completions",
-    JSON.stringify(completionRows.slice(0, 100)),
-  );
 }
 
 async function incrementLeaderboardSummary(
   kv: KVNamespace,
+  gameId: string,
   increment: LeaderboardSummary,
 ): Promise<void> {
+  if (increment.humanWins <= 0 && increment.aiWins <= 0) {
+    return;
+  }
+  if (await isLeaderboardCompletionKvStepApplied(kv, gameId, "summary")) {
+    return;
+  }
+
   const raw = await kv.get("leaderboard:summary");
   const existing = parseLeaderboardSummaryFromKv(raw);
   const merged: LeaderboardSummary = {
@@ -126,6 +147,68 @@ async function incrementLeaderboardSummary(
   const parsed = LeaderboardSummarySchema.safeParse(merged);
   const next = parsed.success ? parsed.data : merged;
   await kv.put("leaderboard:summary", JSON.stringify(next));
+  await markLeaderboardCompletionKvStepApplied(kv, gameId, "summary");
+}
+
+async function isD1CompletionAlreadyApplied(
+  db: D1Database,
+  idempotencyCandidates: string[],
+  gameId: string,
+): Promise<boolean> {
+  for (const userId of idempotencyCandidates) {
+    const row = await db
+      .prepare(
+        "SELECT recent_games_json FROM user_stats WHERE user_id = ? LIMIT 1",
+      )
+      .bind(userId)
+      .first<{ recent_games_json: string | null }>();
+    if (!row) continue;
+    if (recentGamesJsonContainsGameId(row.recent_games_json, gameId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function collectLeaderboardIncrements(
+  db: D1Database,
+  playerIds: string[],
+  state: InternalGameState,
+  winnerId: string,
+): Promise<{
+  deltas: Map<string, LeaderboardDelta>;
+  usernames: Map<string, string>;
+  summary: LeaderboardSummary;
+}> {
+  const summary = leaderboardOutcomeForGame(state, winnerId);
+  const deltas = new Map<string, LeaderboardDelta>();
+  const usernames = new Map<string, string>();
+
+  for (const playerId of playerIds) {
+    if (isDedicatedSyntheticAiPlayerId(playerId)) continue;
+    if (state.kickedPlayerIds?.includes(playerId)) continue;
+
+    const won = playerWonGame(state, playerId, winnerId);
+    const username = await fetchUsername(db, playerId);
+    usernames.set(playerId, username);
+    const cur = deltas.get(playerId) ?? { completions: 0, wins: 0 };
+    cur.completions += 1;
+    if (won) cur.wins += 1;
+    deltas.set(playerId, cur);
+  }
+
+  return { deltas, usernames, summary };
+}
+
+async function applyLeaderboardKvForCompletion(
+  kv: KVNamespace,
+  gameId: string,
+  deltas: Map<string, LeaderboardDelta>,
+  usernames: Map<string, string>,
+  summary: LeaderboardSummary,
+): Promise<void> {
+  await flushLeaderboardKvIncrements(kv, gameId, deltas, usernames);
+  await incrementLeaderboardSummary(kv, gameId, summary);
 }
 
 /**
@@ -219,17 +302,29 @@ export async function processGameCompletion(
   const idempotencyCandidates =
     humanPlayerIds.length > 0 ? humanPlayerIds : playerIds.slice(0, 1);
 
-  for (const userId of idempotencyCandidates) {
-    const row = await db
-      .prepare(
-        "SELECT recent_games_json FROM user_stats WHERE user_id = ? LIMIT 1",
-      )
-      .bind(userId)
-      .first<{ recent_games_json: string | null }>();
-    if (!row) continue;
-    if (recentGamesJsonContainsGameId(row.recent_games_json, gameId)) {
-      return;
+  const d1AlreadyApplied = await isD1CompletionAlreadyApplied(
+    db,
+    idempotencyCandidates,
+    gameId,
+  );
+
+  if (d1AlreadyApplied) {
+    if (kv) {
+      const leaderboard = await collectLeaderboardIncrements(
+        db,
+        playerIds,
+        state,
+        winnerId,
+      );
+      await applyLeaderboardKvForCompletion(
+        kv,
+        gameId,
+        leaderboard.deltas,
+        leaderboard.usernames,
+        leaderboard.summary,
+      );
     }
+    return;
   }
 
   const statements: D1PreparedStatement[] = [];
@@ -413,18 +508,13 @@ export async function processGameCompletion(
     await db.batch([...achievementStatements, ...statements]);
   }
 
-  if (kv && leaderboardDeltas.size > 0) {
-    await flushLeaderboardKvIncrements(
+  if (kv) {
+    await applyLeaderboardKvForCompletion(
       kv,
+      gameId,
       leaderboardDeltas,
       leaderboardUsernames,
+      leaderboardSummary,
     );
-  }
-
-  if (
-    kv &&
-    (leaderboardSummary.humanWins > 0 || leaderboardSummary.aiWins > 0)
-  ) {
-    await incrementLeaderboardSummary(kv, leaderboardSummary);
   }
 }

@@ -19,3 +19,29 @@ export function parseLeaderboardSummaryFromKv(
     EMPTY_LEADERBOARD_SUMMARY,
   );
 }
+
+export type LeaderboardCompletionKvStep = "wins" | "completions" | "summary";
+
+function completionKvStepKey(
+  gameId: string,
+  step: LeaderboardCompletionKvStep,
+): string {
+  return `leaderboard:completion:${gameId}:${step}`;
+}
+
+export async function isLeaderboardCompletionKvStepApplied(
+  kv: KVNamespace,
+  gameId: string,
+  step: LeaderboardCompletionKvStep,
+): Promise<boolean> {
+  const raw = await kv.get(completionKvStepKey(gameId, step));
+  return raw === "1";
+}
+
+export async function markLeaderboardCompletionKvStepApplied(
+  kv: KVNamespace,
+  gameId: string,
+  step: LeaderboardCompletionKvStep,
+): Promise<void> {
+  await kv.put(completionKvStepKey(gameId, step), "1");
+}

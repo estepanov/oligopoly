@@ -415,6 +415,177 @@ describe("processGameCompletion", () => {
     });
   });
 
+  it("retries leaderboard KV when D1 already committed but KV markers are missing", async () => {
+    const db = createWorkerD1Stub();
+    const kv = createKvStub();
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      status: "completed",
+      started_at: 1,
+      ended_at: 2,
+      winner_id: "user-1",
+      player_ids_json: JSON.stringify(["user-1", "user-2"]),
+      state_json: null,
+    });
+    db._tables.user_stats.push({
+      user_id: "user-1",
+      games_played: 1,
+      wins: 1,
+      trades_completed: 0,
+      auctions_won: 0,
+      recent_games_json: JSON.stringify([
+        { gameId: "game-1", result: "won", endedAt: 1000 },
+      ]),
+    });
+
+    await processGameCompletion(
+      db,
+      kv,
+      "game-1",
+      makeCompletedState({ kickedPlayerIds: [] }),
+      1000,
+    );
+
+    const stats = db._tables.user_stats.find((row) => row.user_id === "user-1");
+    expect(stats?.games_played).toBe(1);
+    expect(stats?.wins).toBe(1);
+    expect(JSON.parse(kv._store.get("leaderboard:wins") ?? "[]")).toEqual([
+      { userId: "user-1", username: "user-1", wins: 1 },
+    ]);
+    const completions = JSON.parse(
+      kv._store.get("leaderboard:completions") ?? "[]",
+    ) as Array<{ userId: string; completions: number }>;
+    expect(completions).toHaveLength(2);
+    expect(
+      completions.find((row) => row.userId === "user-1")?.completions,
+    ).toBe(1);
+    expect(
+      completions.find((row) => row.userId === "user-2")?.completions,
+    ).toBe(1);
+    expect(JSON.parse(kv._store.get("leaderboard:summary") ?? "{}")).toEqual({
+      humanWins: 1,
+      aiWins: 0,
+    });
+  });
+
+  it("does not double-apply leaderboard KV when completion markers already exist", async () => {
+    const db = createWorkerD1Stub();
+    const kv = createKvStub();
+    kv._store.set(
+      "leaderboard:wins",
+      JSON.stringify([{ userId: "user-1", username: "user-1", wins: 1 }]),
+    );
+    kv._store.set(
+      "leaderboard:completions",
+      JSON.stringify([
+        { userId: "user-1", username: "user-1", completions: 1 },
+      ]),
+    );
+    kv._store.set(
+      "leaderboard:summary",
+      JSON.stringify({ humanWins: 1, aiWins: 0 }),
+    );
+    kv._store.set("leaderboard:completion:game-1:wins", "1");
+    kv._store.set("leaderboard:completion:game-1:completions", "1");
+    kv._store.set("leaderboard:completion:game-1:summary", "1");
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      status: "completed",
+      started_at: 1,
+      ended_at: 2,
+      winner_id: "user-1",
+      player_ids_json: JSON.stringify(["user-1", "user-2"]),
+      state_json: null,
+    });
+    db._tables.user_stats.push({
+      user_id: "user-1",
+      games_played: 1,
+      wins: 1,
+      trades_completed: 0,
+      auctions_won: 0,
+      recent_games_json: JSON.stringify([
+        { gameId: "game-1", result: "won", endedAt: 1000 },
+      ]),
+    });
+
+    await processGameCompletion(
+      db,
+      kv,
+      "game-1",
+      makeCompletedState({ kickedPlayerIds: [] }),
+      1000,
+    );
+
+    expect(JSON.parse(kv._store.get("leaderboard:wins") ?? "[]")[0]?.wins).toBe(
+      1,
+    );
+    expect(
+      JSON.parse(kv._store.get("leaderboard:completions") ?? "[]")[0]
+        ?.completions,
+    ).toBe(1);
+    expect(JSON.parse(kv._store.get("leaderboard:summary") ?? "{}")).toEqual({
+      humanWins: 1,
+      aiWins: 0,
+    });
+  });
+
+  it("retries only missing leaderboard KV steps after a partial flush", async () => {
+    const db = createWorkerD1Stub();
+    const kv = createKvStub();
+    kv._store.set(
+      "leaderboard:wins",
+      JSON.stringify([{ userId: "user-1", username: "user-1", wins: 1 }]),
+    );
+    kv._store.set("leaderboard:completion:game-1:wins", "1");
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      status: "completed",
+      started_at: 1,
+      ended_at: 2,
+      winner_id: "user-1",
+      player_ids_json: JSON.stringify(["user-1", "user-2"]),
+      state_json: null,
+    });
+    db._tables.user_stats.push({
+      user_id: "user-1",
+      games_played: 1,
+      wins: 1,
+      trades_completed: 0,
+      auctions_won: 0,
+      recent_games_json: JSON.stringify([
+        { gameId: "game-1", result: "won", endedAt: 1000 },
+      ]),
+    });
+
+    await processGameCompletion(
+      db,
+      kv,
+      "game-1",
+      makeCompletedState({ kickedPlayerIds: [] }),
+      1000,
+    );
+
+    expect(JSON.parse(kv._store.get("leaderboard:wins") ?? "[]")[0]?.wins).toBe(
+      1,
+    );
+    const completions = JSON.parse(
+      kv._store.get("leaderboard:completions") ?? "[]",
+    ) as Array<{ userId: string; completions: number }>;
+    expect(
+      completions.find((row) => row.userId === "user-1")?.completions,
+    ).toBe(1);
+    expect(
+      completions.find((row) => row.userId === "user-2")?.completions,
+    ).toBe(1);
+    expect(JSON.parse(kv._store.get("leaderboard:summary") ?? "{}")).toEqual({
+      humanWins: 1,
+      aiWins: 0,
+    });
+  });
+
   it("counts a syndicate win once in aggregate summary", async () => {
     const db = createWorkerD1Stub();
     const kv = createKvStub();
