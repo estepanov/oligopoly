@@ -38,9 +38,11 @@ export function GamesPage() {
   }, []);
 
   return (
-    <div>
-      <h1 className="pageTitle">Games</h1>
-      <p className="tagline">Games returned by GET /api/games</p>
+    <div className="pageShell">
+      <header className="pageHeader">
+        <h1 className="pageTitle">Games</h1>
+        <p className="tagline">Review active and completed tables.</p>
+      </header>
 
       <div className="card">
         <h2>All games</h2>
@@ -62,12 +64,14 @@ export function GamesPage() {
             <tbody>
               {games.map((g) => (
                 <tr key={g.id}>
-                  <td>
+                  <td data-label="ID">
                     <Link to={`/games/${g.id}`}>{g.id}</Link>
                   </td>
-                  <td>{g.status}</td>
-                  <td>{g.playerCount}</td>
-                  <td>{new Date(g.startedAt).toLocaleString()}</td>
+                  <td data-label="Status">{g.status}</td>
+                  <td data-label="Players">{g.playerCount}</td>
+                  <td data-label="Started">
+                    {new Date(g.startedAt).toLocaleString()}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -24,7 +24,7 @@ describe("GamePlayControls economics dialogs", () => {
           displayName: "Ada",
           position: 0,
           capital: 5_000,
-          ownedTilePositions: [6],
+          ownedTilePositions: [6, 8, 9],
           mortgagedTilePositions: [],
           developmentTokens: {},
           trustworthiness: 7,
@@ -36,6 +36,8 @@ describe("GamePlayControls economics dialogs", () => {
       ],
       tiles: [
         { position: 6, ownerId: "me", mortgaged: false, developmentTokens: 0 },
+        { position: 8, ownerId: "me", mortgaged: false, developmentTokens: 0 },
+        { position: 9, ownerId: "me", mortgaged: false, developmentTokens: 0 },
       ],
     };
 
@@ -43,14 +45,20 @@ describe("GamePlayControls economics dialogs", () => {
       <GamePlayControls
         state={state}
         myPlayerId="me"
-        tileNames={new Map([["6", "Search Engine Corp."]])}
+        tileNames={
+          new Map([
+            ["6", "Search Engine Corp."],
+            ["8", "Social Media Platform"],
+            ["9", "Cloud Infrastructure"],
+          ])
+        }
         busy={false}
         onAction={async () => undefined}
       />,
     );
 
     expect(
-      screen.getByRole("button", { name: /^develop \(/i }),
+      screen.getByRole("button", { name: "Develop (¤1,120)" }),
     ).toHaveTextContent("¤1,120");
     fireEvent.click(
       screen.getByRole("button", {

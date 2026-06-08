@@ -6,6 +6,7 @@ import {
   canCreateBindingContract,
   formSyndicateApCost,
   getTileByPosition,
+  hasSectorControl,
   type InternalGameState,
   isActionBlockedByContracts,
   isAiControlledActor as isAiControlledActorShared,
@@ -363,11 +364,27 @@ export function getTileOwnershipActionGates(
   const player = playerById(state, playerId);
   const tile = getTileByPosition(position);
   const tileState = tileStateByPosition(state, position);
+  const hasFullSectorControl = Boolean(
+    state.players &&
+      state.tiles &&
+      tile?.type === "sector_tile" &&
+      tile.sectorId &&
+      hasSectorControl(
+        {
+          players: state.players,
+          syndicates: state.syndicates,
+          tiles: state.tiles,
+        },
+        playerId,
+        tile.sectorId,
+      ),
+  );
   return {
     canDevelopGate: Boolean(
       player &&
         tile?.type === "sector_tile" &&
         tileState?.ownerId === playerId &&
+        hasFullSectorControl &&
         !tileState.mortgaged &&
         tileState.developmentTokens < MAX_DEVELOPMENT_TOKENS &&
         player.actionPointsRemaining >= ACTION_COSTS.DEVELOP_TILE,

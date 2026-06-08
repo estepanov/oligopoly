@@ -54,119 +54,123 @@ export function DevPage() {
   }, [loadHealth, loadConfig]);
 
   return (
-    <div>
-      <h1 className="pageTitle">Developer</h1>
-      <p className="tagline">Local API status and configuration</p>
+    <div className="pageShell">
+      <header className="pageHeader">
+        <h1 className="pageTitle">Developer</h1>
+        <p className="tagline">Local API status and configuration.</p>
+      </header>
 
-      <div className="card">
-        <h2>Worker health</h2>
-        {healthState.kind === "loading" && <p className="muted">Checking…</p>}
-        {healthState.kind === "error" && (
-          <p className="errorText">{healthState.message}</p>
-        )}
-        {health && (
-          <p className="ok">
-            Status: {health.status} | Service: {health.service} | Time:{" "}
-            {new Date(health.timestamp).toLocaleString()}
+      <div className="devGrid">
+        <div className="card">
+          <h2>Worker health</h2>
+          {healthState.kind === "loading" && <p className="muted">Checking…</p>}
+          {healthState.kind === "error" && (
+            <p className="errorText">{healthState.message}</p>
+          )}
+          {health && (
+            <p className="ok">
+              Status: {health.status} | Service: {health.service} | Time:{" "}
+              {new Date(health.timestamp).toLocaleString()}
+            </p>
+          )}
+          <p style={{ marginTop: "1rem" }}>
+            <button
+              type="button"
+              className="button buttonSecondary"
+              onClick={() => void loadHealth()}
+            >
+              Refresh health
+            </button>
           </p>
-        )}
-        <p style={{ marginTop: "1rem" }}>
-          <button
-            type="button"
-            className="button buttonSecondary"
-            onClick={() => void loadHealth()}
-          >
-            Refresh health
-          </button>
-        </p>
-      </div>
+        </div>
 
-      <div className="card">
-        <h2>Game configuration</h2>
-        {configState.kind === "loading" && <p className="muted">Loading…</p>}
-        {configState.kind === "error" && (
-          <p className="errorText">{configState.message}</p>
-        )}
-        {config && (
-          <div className="configGrid">
-            <div className="configRow">
-              <strong>perimeterTiles:</strong>{" "}
-              <code className="inline">
-                {config.perimeterTiles.length} tiles
-              </code>
+        <div className="card">
+          <h2>Game configuration</h2>
+          {configState.kind === "loading" && <p className="muted">Loading…</p>}
+          {configState.kind === "error" && (
+            <p className="errorText">{configState.message}</p>
+          )}
+          {config && (
+            <div className="configGrid">
+              <div className="configRow">
+                <strong>perimeterTiles:</strong>{" "}
+                <code className="inline">
+                  {config.perimeterTiles.length} tiles
+                </code>
+              </div>
+              <div className="configRow">
+                <strong>diagonalTiles:</strong>{" "}
+                <code className="inline">
+                  {config.diagonalTiles.length} tiles
+                </code>
+              </div>
             </div>
-            <div className="configRow">
-              <strong>diagonalTiles:</strong>{" "}
-              <code className="inline">
-                {config.diagonalTiles.length} tiles
-              </code>
-            </div>
-          </div>
-        )}
-        <p style={{ marginTop: "1rem" }}>
-          <button
-            type="button"
-            className="button buttonSecondary"
-            onClick={() => void loadConfig()}
-          >
-            Refresh config
-          </button>
-        </p>
-      </div>
+          )}
+          <p style={{ marginTop: "1rem" }}>
+            <button
+              type="button"
+              className="button buttonSecondary"
+              onClick={() => void loadConfig()}
+            >
+              Refresh config
+            </button>
+          </p>
+        </div>
 
-      <div className="card">
-        <h2>AI step (debug)</h2>
-        <p className="muted">
-          Manual <code className="inline">POST /api/games/:id/ai/step</code> for
-          local debugging. Production play relies on GameRoom automation.
-        </p>
-        <p style={{ marginTop: "1rem" }}>
-          <label className="muted" htmlFor="debug-game-id">
-            Game ID
-          </label>
-          <input
-            id="debug-game-id"
-            value={debugGameId}
-            onChange={(event) => setDebugGameId(event.target.value)}
-            placeholder="game id"
-            style={{
-              display: "block",
-              width: "100%",
-              maxWidth: "28rem",
-              marginTop: "0.35rem",
-            }}
-          />
-        </p>
-        {aiStepMessage && <p className="muted">{aiStepMessage}</p>}
-        <p style={{ marginTop: "1rem" }}>
-          <button
-            type="button"
-            className="button buttonSecondary"
-            disabled={aiStepBusy || !debugGameId.trim()}
-            onClick={() => {
-              void (async () => {
-                setAiStepBusy(true);
-                setAiStepMessage(null);
-                try {
-                  const next = await stepAiTurn(debugGameId.trim());
-                  setAiStepMessage(
-                    next.aiAction
-                      ? `AI ${next.aiPlayerId} chose ${next.aiAction.type}`
-                      : `Step complete (phase: ${next.phase ?? "unknown"})`,
-                  );
-                } catch (e) {
-                  setAiStepMessage(
-                    e instanceof ApiError ? e.message : "AI step failed",
-                  );
-                } finally {
-                  setAiStepBusy(false);
-                }
-              })();
-            }}
-          >
-            Step AI
-          </button>
-        </p>
+        <div className="card">
+          <h2>AI step (debug)</h2>
+          <p className="muted">
+            Manual <code className="inline">POST /api/games/:id/ai/step</code>{" "}
+            for local debugging. Production play relies on GameRoom automation.
+          </p>
+          <p style={{ marginTop: "1rem" }}>
+            <label className="muted" htmlFor="debug-game-id">
+              Game ID
+            </label>
+            <input
+              id="debug-game-id"
+              value={debugGameId}
+              onChange={(event) => setDebugGameId(event.target.value)}
+              placeholder="game id"
+              style={{
+                display: "block",
+                width: "100%",
+                maxWidth: "28rem",
+                marginTop: "0.35rem",
+              }}
+            />
+          </p>
+          {aiStepMessage && <p className="muted">{aiStepMessage}</p>}
+          <p style={{ marginTop: "1rem" }}>
+            <button
+              type="button"
+              className="button buttonSecondary"
+              disabled={aiStepBusy || !debugGameId.trim()}
+              onClick={() => {
+                void (async () => {
+                  setAiStepBusy(true);
+                  setAiStepMessage(null);
+                  try {
+                    const next = await stepAiTurn(debugGameId.trim());
+                    setAiStepMessage(
+                      next.aiAction
+                        ? `AI ${next.aiPlayerId} chose ${next.aiAction.type}`
+                        : `Step complete (phase: ${next.phase ?? "unknown"})`,
+                    );
+                  } catch (e) {
+                    setAiStepMessage(
+                      e instanceof ApiError ? e.message : "AI step failed",
+                    );
+                  } finally {
+                    setAiStepBusy(false);
+                  }
+                })();
+              }}
+            >
+              Step AI
+            </button>
+          </p>
+        </div>
       </div>
     </div>
   );

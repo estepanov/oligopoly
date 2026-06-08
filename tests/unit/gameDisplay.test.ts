@@ -81,6 +81,38 @@ describe("game display helpers", () => {
     ).toContain("to Copper Scout");
   });
 
+  it("formats dice roll amounts in game logs", () => {
+    expect(
+      formatGameLogEntry(
+        {
+          id: "log-roll",
+          gameId: "g",
+          round: 1,
+          playerId: "human-1",
+          actionType: "roll_dice",
+          payload: { result: [3, 4], doubles: false },
+          createdAt: 1,
+        },
+        new Map(),
+      ),
+    ).toBe("Rolled dice · 3 + 4 = 7");
+
+    expect(
+      formatGameLogEntry(
+        {
+          id: "log-doubles",
+          gameId: "g",
+          round: 1,
+          playerId: "human-1",
+          actionType: "roll_dice",
+          payload: { result: [5, 5], doubles: true },
+          createdAt: 1,
+        },
+        new Map(),
+      ),
+    ).toBe("Rolled dice · 5 + 5 = 10 · Doubles");
+  });
+
   it("formats game log money with custom currency multipliers", () => {
     const currencySettings = {
       currencySymbol: "¤",

@@ -46,9 +46,11 @@ export function LeaderboardPage() {
   }, []);
 
   return (
-    <div>
-      <h1 className="pageTitle">Leaderboard</h1>
-      <p className="tagline">Top players by wins and completed games.</p>
+    <div className="pageShell">
+      <header className="pageHeader">
+        <h1 className="pageTitle">Leaderboard</h1>
+        <p className="tagline">Top players by wins and completed games.</p>
+      </header>
       {loading && <p className="muted">Loading…</p>}
       {error && <p className="errorText">{error}</p>}
       {!loading && !error && (

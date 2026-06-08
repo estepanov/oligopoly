@@ -79,6 +79,288 @@ describe("core game display names", () => {
     expect(container).not.toHaveTextContent("human-2");
   });
 
+  it("groups player assets by matching board set", () => {
+    const base = actionState();
+    const [adaBase, graceBase] = base.players ?? [];
+    if (!adaBase || !graceBase) {
+      throw new Error("Expected two base players in test fixture");
+    }
+    const state: GameState = {
+      ...base,
+      players: [
+        {
+          ...adaBase,
+          ownedTilePositions: [6, 8, 12],
+        },
+        graceBase,
+      ],
+      tiles: [
+        {
+          position: 6,
+          ownerId: "human-1",
+          mortgaged: false,
+          developmentTokens: 0,
+        },
+        {
+          position: 8,
+          ownerId: "human-1",
+          mortgaged: false,
+          developmentTokens: 0,
+        },
+        {
+          position: 12,
+          ownerId: "human-1",
+          mortgaged: false,
+          developmentTokens: 0,
+        },
+      ],
+    };
+
+    render(
+      <PlayerSummaryPanel
+        state={state}
+        myPlayerId="human-1"
+        tileNames={
+          new Map([
+            ["0", "START"],
+            ["6", "Search Engine Corp."],
+            ["8", "Social Media Platform"],
+            ["12", "OIL PIPELINE"],
+          ])
+        }
+      />,
+    );
+
+    const assetList = screen.getByRole("list", {
+      name: /ada owned properties grouped by set/i,
+    });
+    expect(within(assetList).getByText("Big Tech")).toBeInTheDocument();
+    expect(within(assetList).getByText(/2 of 3 owned/i)).toBeInTheDocument();
+    expect(within(assetList).getByText("Utilities")).toBeInTheDocument();
+    expect(within(assetList).getByText(/1 of 2 owned/i)).toBeInTheDocument();
+    expect(
+      within(assetList).getByText("Search Engine Corp."),
+    ).toBeInTheDocument();
+    expect(
+      within(assetList).getByText("Social Media Platform"),
+    ).toBeInTheDocument();
+    expect(within(assetList).getByText("OIL PIPELINE")).toBeInTheDocument();
+  });
+
+  it("shows current rent and development rent increase on player property cards", () => {
+    const base = actionState();
+    const [adaBase, graceBase] = base.players ?? [];
+    if (!adaBase || !graceBase) {
+      throw new Error("Expected two base players in test fixture");
+    }
+    const state: GameState = {
+      ...base,
+      players: [
+        {
+          ...adaBase,
+          capital: 500,
+          ownedTilePositions: [6, 8, 9],
+          actionPointsRemaining: 2,
+        },
+        graceBase,
+      ],
+      tiles: [
+        {
+          position: 6,
+          ownerId: "human-1",
+          mortgaged: false,
+          developmentTokens: 0,
+        },
+        {
+          position: 8,
+          ownerId: "human-1",
+          mortgaged: false,
+          developmentTokens: 0,
+        },
+        {
+          position: 9,
+          ownerId: "human-1",
+          mortgaged: false,
+          developmentTokens: 0,
+        },
+      ],
+    };
+
+    render(
+      <PlayerSummaryPanel
+        state={state}
+        myPlayerId="human-1"
+        tileNames={
+          new Map([
+            ["0", "START"],
+            ["6", "Search Engine Corp."],
+            ["8", "Social Media Platform"],
+            ["9", "Cloud Infrastructure"],
+          ])
+        }
+      />,
+    );
+
+    const propertyCard = screen.getByText("Search Engine Corp.").closest("li");
+    expect(propertyCard).not.toBeNull();
+    expect(
+      within(propertyCard as HTMLElement).getByText("Rent"),
+    ).toBeInTheDocument();
+    expect(
+      within(propertyCard as HTMLElement).getByText("$20"),
+    ).toBeInTheDocument();
+    expect(
+      within(propertyCard as HTMLElement).getByText("+$30 rent"),
+    ).toBeInTheDocument();
+    expect(
+      within(propertyCard as HTMLElement).getByText("$140"),
+    ).toBeInTheDocument();
+  });
+
+  it("marks owned cards when a syndicate completes the set", () => {
+    const base = actionState();
+    const [adaBase, graceBase] = base.players ?? [];
+    if (!adaBase || !graceBase) {
+      throw new Error("Expected two base players in test fixture");
+    }
+    const state: GameState = {
+      ...base,
+      players: [
+        {
+          ...adaBase,
+          ownedTilePositions: [6],
+          syndicateId: "syndicate-g-1",
+        },
+        {
+          ...graceBase,
+          ownedTilePositions: [8, 9],
+          syndicateId: "syndicate-g-1",
+        },
+      ],
+      syndicates: {
+        "syndicate-g-1": {
+          syndicateId: "syndicate-g-1",
+          adminId: "human-1",
+          memberIds: ["human-1", "human-2"],
+        },
+      },
+      tiles: [
+        {
+          position: 6,
+          ownerId: "human-1",
+          mortgaged: false,
+          developmentTokens: 0,
+        },
+        {
+          position: 8,
+          ownerId: "human-2",
+          mortgaged: false,
+          developmentTokens: 0,
+        },
+        {
+          position: 9,
+          ownerId: "human-2",
+          mortgaged: false,
+          developmentTokens: 0,
+        },
+      ],
+    };
+
+    render(
+      <PlayerSummaryPanel
+        state={state}
+        myPlayerId="human-1"
+        tileNames={
+          new Map([
+            ["0", "START"],
+            ["6", "Search Engine Corp."],
+            ["8", "Social Media Platform"],
+            ["9", "Cloud Infrastructure"],
+          ])
+        }
+      />,
+    );
+
+    const assetList = screen.getByRole("list", {
+      name: /ada owned properties grouped by set/i,
+    });
+    const propertyCard = within(assetList)
+      .getByText("Search Engine Corp.")
+      .closest("li");
+    expect(propertyCard).not.toBeNull();
+    expect(
+      within(propertyCard as HTMLElement).getByText("Syndicate set available"),
+    ).toBeInTheDocument();
+  });
+
+  it("groups board table players by syndicate with shared totals", () => {
+    const base = actionState();
+    const [adaBase, graceBase] = base.players ?? [];
+    if (!adaBase || !graceBase) {
+      throw new Error("Expected two base players in test fixture");
+    }
+    const state: GameState = {
+      ...base,
+      players: [
+        {
+          ...adaBase,
+          playerId: "human-1",
+          displayName: "Ada",
+          capital: 500,
+          ownedTilePositions: [6],
+          syndicateId: "syndicate-g-1",
+        },
+        {
+          ...graceBase,
+          playerId: "human-2",
+          displayName: "Grace",
+          capital: 300,
+          ownedTilePositions: [8],
+          syndicateId: "syndicate-g-1",
+        },
+      ],
+      syndicates: {
+        "syndicate-g-1": {
+          syndicateId: "syndicate-g-1",
+          adminId: "human-1",
+          memberIds: ["human-1", "human-2"],
+        },
+      },
+    };
+
+    render(
+      <GameBoardPanel
+        state={state}
+        tileNames={
+          new Map([
+            ["0", "START"],
+            ["1", "Digital Content Co."],
+            ["6", "Search Engine Corp."],
+            ["8", "Social Media Platform"],
+          ])
+        }
+        myPlayerId="human-1"
+        actorId="human-2"
+      />,
+    );
+
+    const table = screen.getByRole("table", {
+      name: /player standings grouped by syndicate/i,
+    });
+    const syndicateRow = within(table).getByText("Syndicate 1").closest("tr");
+    expect(syndicateRow).not.toBeNull();
+    expect(
+      within(table).getByText(/2 members \| Admin You/i),
+    ).toBeInTheDocument();
+    expect(
+      within(syndicateRow as HTMLElement).getByText("$800"),
+    ).toBeInTheDocument();
+    expect(
+      within(syndicateRow as HTMLElement).getByText("$300"),
+    ).toBeInTheDocument();
+    expect(within(table).getByText("Grace")).toBeInTheDocument();
+  });
+
   it("renders display names in auction, negotiation, affinity, and syndicate controls", () => {
     const tileNames = new Map([["6", "Search Engine Corp."]]);
     const base = actionState();

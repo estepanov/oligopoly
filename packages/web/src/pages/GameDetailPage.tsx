@@ -43,134 +43,149 @@ export function GameDetailPage() {
   }
 
   return (
-    <div>
-      <p style={{ marginBottom: "1rem" }}>
-        <Link to="/games">← All games</Link>
-        {" · "}
-        <Link to="/lobbies">Lobbies</Link>
-      </p>
-      <h1 className="pageTitle">Game</h1>
-      <p className="tagline">
-        <code className="inline">{id}</code>
-      </p>
+    <div className="gamePage">
+      <header className="pageHeader">
+        <p className="muted" style={{ margin: 0 }}>
+          <Link to="/games">All games</Link>
+          {" / "}
+          <Link to="/lobbies">Lobbies</Link>
+        </p>
+        <h1 className="pageTitle">Game</h1>
+        <p className="tagline">
+          <code className="inline">{id}</code>
+        </p>
+        <div className="statusStrip">
+          <span className="statusChip">Realtime {wsStatus}</span>
+          <span className="statusChip">{myTurn ? "Your turn" : "Waiting"}</span>
+          {turnDeadline && (
+            <span className="statusChip">
+              Deadline {new Date(turnDeadline).toLocaleTimeString()}
+            </span>
+          )}
+        </div>
+      </header>
 
-      <div className="card">
-        <h2>Summary</h2>
-        {loading && <p className="muted">Loading…</p>}
-        {error && <p className="errorText">{error}</p>}
-        {!loading && !error && game && (
-          <dl
-            style={{
-              display: "grid",
-              gap: "0.5rem 1rem",
-              gridTemplateColumns: "auto 1fr",
-            }}
-          >
-            <dt className="muted">Status</dt>
-            <dd>{game.status}</dd>
-            <dt className="muted">Players</dt>
-            <dd>{game.playerCount}</dd>
-            <dt className="muted">Started</dt>
-            <dd>{new Date(game.startedAt).toLocaleString()}</dd>
-            <dt className="muted">Ended</dt>
-            <dd>
-              {game.endedAt !== null
-                ? new Date(game.endedAt).toLocaleString()
-                : "—"}
-            </dd>
-            <dt className="muted">Winner</dt>
-            <dd>
-              {state && game.winnerId
-                ? playerDisplayName(state, game.winnerId, { myPlayerId })
-                : (game.winnerId ?? "—")}
-            </dd>
-          </dl>
-        )}
-      </div>
+      <div className="gameWorkspace">
+        <section className="gamePrimary" aria-label="Board and players">
+          {state && (
+            <>
+              <div className="gamePageBoard card">
+                <h2>Board</h2>
+                <BoardGrid
+                  state={state}
+                  tileNames={tileNames}
+                  tileDetails={tileDetails}
+                  myPlayerId={myPlayerId}
+                  actorId={actorId}
+                />
+                <GameBoardPanel
+                  state={state}
+                  tileNames={tileNames}
+                  myPlayerId={myPlayerId}
+                  actorId={actorId}
+                />
+              </div>
 
-      {state && (
-        <>
-          <PlayerSummaryPanel
-            state={state}
-            myPlayerId={myPlayerId}
-            tileNames={tileNames}
-          />
+              <PlayerSummaryPanel
+                state={state}
+                myPlayerId={myPlayerId}
+                tileNames={tileNames}
+                actorId={actorId}
+              />
+            </>
+          )}
+        </section>
 
+        <aside className="gameSideRail" aria-label="Game controls">
           <div className="card">
-            <h2>Board</h2>
-            <BoardGrid
-              state={state}
-              tileNames={tileNames}
-              tileDetails={tileDetails}
-              myPlayerId={myPlayerId}
-              actorId={actorId}
-            />
-            <GameBoardPanel
-              state={state}
-              tileNames={tileNames}
-              myPlayerId={myPlayerId}
-              actorId={actorId}
-            />
+            <h2>Summary</h2>
+            {loading && <p className="muted">Loading…</p>}
+            {error && <p className="errorText">{error}</p>}
+            {!loading && !error && game && (
+              <dl className="detailsGrid">
+                <dt className="muted">Status</dt>
+                <dd>{game.status}</dd>
+                <dt className="muted">Players</dt>
+                <dd>{game.playerCount}</dd>
+                <dt className="muted">Started</dt>
+                <dd>{new Date(game.startedAt).toLocaleString()}</dd>
+                <dt className="muted">Ended</dt>
+                <dd>
+                  {game.endedAt !== null
+                    ? new Date(game.endedAt).toLocaleString()
+                    : "—"}
+                </dd>
+                <dt className="muted">Winner</dt>
+                <dd>
+                  {state && game.winnerId
+                    ? playerDisplayName(state, game.winnerId, { myPlayerId })
+                    : (game.winnerId ?? "—")}
+                </dd>
+              </dl>
+            )}
           </div>
 
-          <div className="card">
-            <h2>Action log</h2>
-            <GameActionLog
-              entries={logEntries}
-              tileNames={tileNames}
-              currencySettings={state.settings}
-              playerNames={namesByPlayerId}
-            />
+          <div className="card gamePlayCard">
+            <h2>Play</h2>
+            {state ? (
+              <>
+                <dl className="detailsGrid">
+                  <dt className="muted">Realtime</dt>
+                  <dd>{wsStatus}</dd>
+                  <dt className="muted">Your turn</dt>
+                  <dd>{myTurn ? "Yes" : "No"}</dd>
+                  <dt className="muted">
+                    {timerKind === "auction_bids"
+                      ? "Auction closes"
+                      : timerKind === "auction_settle"
+                        ? "Auction reveals"
+                        : "Turn deadline"}
+                  </dt>
+                  <dd>
+                    {turnDeadline
+                      ? new Date(turnDeadline).toLocaleTimeString()
+                      : "—"}
+                  </dd>
+                </dl>
+
+                <GamePlayControls
+                  state={state}
+                  myPlayerId={myPlayerId}
+                  tileNames={tileNames}
+                  busy={busyAction}
+                  onAction={runAction}
+                />
+
+                <div className="buttonRow" style={{ marginTop: "1rem" }}>
+                  <button
+                    type="button"
+                    className="button buttonSecondary"
+                    disabled={busyAction}
+                    onClick={() => void refresh()}
+                  >
+                    Refresh
+                  </button>
+                </div>
+                {statusLine && <p className="muted">{statusLine}</p>}
+              </>
+            ) : (
+              <p className="muted">
+                Sign in as a game participant to load state.
+              </p>
+            )}
           </div>
-        </>
-      )}
 
-      <div className="card">
-        <h2>Play</h2>
-        {state ? (
-          <>
-            <dl className="detailsGrid">
-              <dt className="muted">Realtime</dt>
-              <dd>{wsStatus}</dd>
-              <dt className="muted">Your turn</dt>
-              <dd>{myTurn ? "Yes" : "No"}</dd>
-              <dt className="muted">
-                {timerKind === "auction_bids"
-                  ? "Auction closes"
-                  : timerKind === "auction_settle"
-                    ? "Auction reveals"
-                    : "Turn deadline"}
-              </dt>
-              <dd>
-                {turnDeadline
-                  ? new Date(turnDeadline).toLocaleTimeString()
-                  : "—"}
-              </dd>
-            </dl>
-
-            <GamePlayControls
-              state={state}
-              myPlayerId={myPlayerId}
-              tileNames={tileNames}
-              busy={busyAction}
-              onAction={runAction}
-            />
-
-            <div className="buttonRow" style={{ marginTop: "1rem" }}>
-              <button
-                type="button"
-                className="button buttonSecondary"
-                disabled={busyAction}
-                onClick={() => void refresh()}
-              >
-                Refresh
-              </button>
+          {state && (
+            <div className="card">
+              <GameActionLog
+                entries={logEntries}
+                tileNames={tileNames}
+                currencySettings={state.settings}
+                playerNames={namesByPlayerId}
+              />
             </div>
-            {statusLine && <p className="muted">{statusLine}</p>}
-          </>
-        ) : (
-          <p className="muted">Sign in as a game participant to load state.</p>
-        )}
+          )}
+        </aside>
       </div>
     </div>
   );

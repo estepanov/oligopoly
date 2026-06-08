@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -6,6 +6,7 @@ type InfoDialogProps = {
   title: string;
   triggerLabel: string;
   triggerClassName?: string;
+  triggerStyle?: CSSProperties;
   triggerContent?: ReactNode;
   children: ReactNode;
 };
@@ -14,6 +15,7 @@ export function InfoDialog({
   title,
   triggerLabel,
   triggerClassName = "infoButton",
+  triggerStyle,
   triggerContent = "i",
   children,
 }: InfoDialogProps) {
@@ -116,6 +118,7 @@ export function InfoDialog({
         ref={triggerRef}
         type="button"
         className={triggerClassName}
+        style={triggerStyle}
         aria-label={triggerLabel}
         onClick={() => setOpen(true)}
       >

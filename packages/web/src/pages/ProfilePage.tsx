@@ -57,8 +57,10 @@ export function ProfilePage() {
 
   if (!user) {
     return (
-      <div>
-        <h1 className="pageTitle">Profile</h1>
+      <div className="pageShell">
+        <header className="pageHeader">
+          <h1 className="pageTitle">Profile</h1>
+        </header>
         <p className="muted">
           <Link to="/login?returnTo=/profile">Sign in</Link> to view your rank,
           achievements, and game history.
@@ -68,15 +70,17 @@ export function ProfilePage() {
   }
 
   return (
-    <div>
-      <h1 className="pageTitle">Profile</h1>
-      <p className="tagline">
-        Signed in as <strong>{user.username}</strong>
-      </p>
+    <div className="pageShell">
+      <header className="pageHeader">
+        <h1 className="pageTitle">Profile</h1>
+        <p className="tagline">
+          Signed in as <strong>{user.username}</strong>
+        </p>
+      </header>
       {loading && <p className="muted">Loading profile…</p>}
       {error && <p className="errorText">{error}</p>}
       {!loading && !error && rank && (
-        <>
+        <div className="profileGrid">
           <div className="card">
             <h2>Rank</h2>
             <dl className="detailsGrid">
@@ -119,7 +123,7 @@ export function ProfilePage() {
               </ul>
             )}
           </div>
-        </>
+        </div>
       )}
     </div>
   );

@@ -69,7 +69,7 @@ import {
   PASS_START_BONUS,
 } from "./setup.js";
 import { deepClone, getPlayer } from "./stateUtils.js";
-import { areSameSyndicate } from "./syndicate.js";
+import { areSameSyndicate, hasSectorControl } from "./syndicate.js";
 import {
   applyWinIfThresholdCrossed,
   markFinalRoundTurnComplete,
@@ -792,6 +792,8 @@ export function handleDevelopTile(
   if (tileState.mortgaged) throw "game.tile_mortgaged";
   if (tileState.developmentTokens >= MAX_DEVELOPMENT_TOKENS)
     throw "game.max_development";
+  if (!tile.sectorId || !hasSectorControl(state, playerId, tile.sectorId))
+    throw "game.sector_not_controlled";
 
   const tokenNum = tileState.developmentTokens + 1;
   const cost = calculateDevelopmentCost(

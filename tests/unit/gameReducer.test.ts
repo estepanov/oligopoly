@@ -232,6 +232,65 @@ describe("applyGameAction", () => {
     }
   });
 
+  it("rejects property development until the actor controls the full sector", () => {
+    const state = minimalTwoPlayerState("action");
+    const alice = state.players?.[0];
+    const bob = state.players?.[1];
+    if (alice) {
+      alice.actionPointsRemaining = 2;
+      alice.ownedTilePositions = [6, 8];
+    }
+    if (bob) {
+      bob.ownedTilePositions = [9];
+    }
+    state.tiles = [
+      { position: 6, ownerId: "alice", mortgaged: false, developmentTokens: 0 },
+      { position: 8, ownerId: "alice", mortgaged: false, developmentTokens: 0 },
+      { position: 9, ownerId: "bob", mortgaged: false, developmentTokens: 0 },
+    ];
+
+    const result = applyGameAction(
+      state,
+      { type: "develop_tile", tilePosition: 6, tokenNumber: 1 },
+      { actorId: "alice" },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errorKey).toBe(GameErrorKeys.SECTOR_NOT_CONTROLLED);
+    }
+  });
+
+  it("allows property development when the actor controls the full sector", () => {
+    const state = minimalTwoPlayerState("action");
+    const alice = state.players?.[0];
+    if (alice) {
+      alice.capital = 1000;
+      alice.actionPointsRemaining = 2;
+      alice.ownedTilePositions = [6, 8, 9];
+    }
+    state.tiles = [
+      { position: 6, ownerId: "alice", mortgaged: false, developmentTokens: 0 },
+      { position: 8, ownerId: "alice", mortgaged: false, developmentTokens: 0 },
+      { position: 9, ownerId: "alice", mortgaged: false, developmentTokens: 0 },
+    ];
+
+    const result = applyGameAction(
+      state,
+      { type: "develop_tile", tilePosition: 6, tokenNumber: 1 },
+      { actorId: "alice" },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(
+      result.state.tiles?.find((tile) => tile.position === 6),
+    ).toMatchObject({ developmentTokens: 1 });
+    expect(result.state.players?.[0]?.actionPointsRemaining).toBe(0);
+  });
+
   it("returns UNKNOWN_ENGINE_ERROR for unexpected string throws", () => {
     const spy = vi
       .spyOn(gameStateMachineModule, "applyAction")

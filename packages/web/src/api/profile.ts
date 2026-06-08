@@ -24,6 +24,10 @@ const UserGameSchema = z.object({
   participated: z.boolean(),
 });
 
+const ThemePreferenceSchema = z.object({
+  themePreference: z.enum(["light", "dark", "system"]),
+});
+
 const authHeaders = (): HeadersInit => {
   const token = getStoredToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -48,5 +52,19 @@ export function fetchMyGames() {
     `${env.apiUrl}/api/users/me/games`,
     z.array(UserGameSchema),
     { headers: authHeaders() },
+  );
+}
+
+export function updateMyThemePreference(
+  themePreference: "light" | "dark" | "system",
+) {
+  return requestJson(
+    `${env.apiUrl}/api/users/me/theme`,
+    ThemePreferenceSchema,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ themePreference }),
+    },
   );
 }

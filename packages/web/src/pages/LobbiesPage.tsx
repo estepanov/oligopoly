@@ -668,592 +668,636 @@ export function LobbiesPage() {
   };
 
   return (
-    <div>
-      <h1 className="pageTitle">Lobbies</h1>
-      <p className="tagline">
-        Create, join, and start games through the Worker lobby API.
-      </p>
-
-      <div className="card">
-        <h2>Your access</h2>
-        {loading && <p className="muted">Loading session…</p>}
-        {!loading && (
-          <dl className="detailsGrid">
-            <dt className="muted">Session</dt>
-            <dd>
-              {user ? (
-                <>
-                  Signed in as <strong>{user.username}</strong>
-                </>
-              ) : (
-                "Signed out"
-              )}
-            </dd>
-            <dt className="muted">Without signing in</dt>
-            <dd>
-              Browse public lobbies and load a lobby by ID or invite link.
-              Loading only shows details; it does not join you.
-            </dd>
-            <dt className="muted">After signing in</dt>
-            <dd>
-              Create lobbies, join public lobbies, join private lobbies with a
-              valid invite token, generate private invites when you are an
-              admin, and start a lobby when you are an admin with at least two
-              players.
-            </dd>
-            <dt className="muted">Selected lobby status</dt>
-            <dd>{selectedLobbyMembershipText}</dd>
-          </dl>
-        )}
-        {!loading && !user && (
-          <p className="muted">
-            Join and create actions stay disabled until you{" "}
-            <Link to={signInHref}>sign in</Link>.
-          </p>
-        )}
-      </div>
-
-      <div className="card">
-        <h2>Create lobby</h2>
-        <p className="muted">
-          Requires a signed-in session. Creating a lobby adds your account as
-          the first player and admin.
+    <div className="pageShell">
+      <header className="pageHeader">
+        <h1 className="pageTitle">Lobbies</h1>
+        <p className="tagline">
+          Create, join, and start games through the Worker lobby API.
         </p>
-        {user && (
-          <p className="muted">
-            Waiting lobby slots used: {myLobbies.length}/
-            {MAX_ACTIVE_LOBBIES_PER_USER}.
-          </p>
-        )}
-        <div className="formGrid">
-          <div>
-            <label className="fieldLabel" htmlFor="create-name">
-              Name
-            </label>
-            <input
-              id="create-name"
-              className="textInput"
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="fieldLabel" htmlFor="create-max">
-              Max players
-            </label>
-            <select
-              id="create-max"
-              className="textInput"
-              value={createMaxPlayers}
-              onChange={(e) => setCreateMaxPlayers(Number(e.target.value))}
-            >
-              {[2, 3, 4, 5, 6].map((count) => (
-                <option key={count} value={count}>
-                  {count}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <LobbyAiSettings
-          aiCount={createAiCount}
-          maxPlayers={createMaxPlayers}
-          personality={createAiPersonality}
-          onAiCountChange={setCreateAiCount}
-          onPersonalityChange={setCreateAiPersonality}
-        />
-        <div className="formGrid">
-          <div>
-            <label className="fieldLabel" htmlFor="create-visibility">
-              Lobby visibility
-            </label>
-            <select
-              id="create-visibility"
-              className="textInput"
-              value={createIsPrivate ? "private" : "public"}
-              onChange={(e) => setCreateIsPrivate(e.target.value === "private")}
-            >
-              <option value="public">Public - joinable by lobby ID</option>
-              <option value="private">Private - invite token required</option>
-            </select>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="button"
-          disabled={
-            busyCreate ||
-            loading ||
-            !user ||
-            isAtLobbyLimit ||
-            !createName.trim()
-          }
-          onClick={onCreateLobby}
-        >
-          {busyCreate ? "Creating…" : "Create lobby"}
-        </button>
-        {user && isAtLobbyLimit && (
-          <p className="muted">
-            Leave one of your waiting lobbies before creating another.
-          </p>
-        )}
-      </div>
-
-      <div className="card">
-        <h2>Join or load lobby</h2>
-        <p className="muted">
-          Load lobby fetches details only. Join lobby adds your signed-in
-          account to that lobby.
-        </p>
-        <p className="muted">
-          {user ? (
-            "Public lobbies can be joined directly. Private lobbies require a valid invite token."
-          ) : (
-            <>
-              You are signed out. Loading is available, but joining is disabled
-              until you <Link to={signInHref}>sign in</Link>.
-            </>
+        <div className="statusStrip">
+          <span className="statusChip">
+            Slots {myLobbies.length}/{MAX_ACTIVE_LOBBIES_PER_USER}
+          </span>
+          <span className="statusChip">
+            {user ? `Signed in as ${user.username}` : "Signed out"}
+          </span>
+          {selectedLobby && (
+            <span className="statusChip">
+              Selected {lobbySeatCount(selectedLobby)}/
+              {selectedLobby.maxPlayers}
+            </span>
           )}
-        </p>
-        {user && (
-          <p className="muted">
-            Waiting lobby slots used: {myLobbies.length}/
-            {MAX_ACTIVE_LOBBIES_PER_USER}.
-          </p>
-        )}
-        <div className="formGrid">
-          <div>
-            <label className="fieldLabel" htmlFor="join-id">
-              Lobby ID or invite link
-            </label>
-            <input
-              id="join-id"
-              className="textInput"
-              value={joinLobbyId}
-              onChange={(e) => {
-                const nextValue = e.target.value;
-                const parsed = resolveLobbyJoinInput(nextValue, "");
-                setJoinLobbyId(nextValue);
-                setJoinToken(parsed.token);
-              }}
-              placeholder="Paste lobby id or invite link"
-            />
-          </div>
-          <div>
-            <label className="fieldLabel" htmlFor="join-token">
-              Invite token (optional)
-            </label>
-            <input
-              id="join-token"
-              className="textInput"
-              value={joinToken}
-              onChange={(e) => setJoinToken(e.target.value)}
-              placeholder="Optional"
-            />
-          </div>
         </div>
-        <div className="buttonRow">
-          <button
-            type="button"
-            className="button buttonSecondary"
-            onClick={onLoadLobby}
-            disabled={!joinLobbyId.trim()}
-          >
-            Load lobby
-          </button>
-          <button
-            type="button"
-            className="button"
-            onClick={onJoinLobby}
-            disabled={
-              busyJoin ||
-              loading ||
-              !user ||
-              isAtLobbyLimit ||
-              !joinLobbyId.trim()
-            }
-          >
-            {busyJoin ? "Joining…" : "Join lobby"}
-          </button>
-        </div>
-        {user && isAtLobbyLimit && (
-          <p className="muted">
-            Leave one of your waiting lobbies before joining another.
-          </p>
-        )}
-      </div>
+      </header>
 
-      <div className="card">
-        <h2>Your lobbies</h2>
-        {loading && <p className="muted">Loading session…</p>}
-        {!loading && !user && (
-          <p className="muted">
-            Sign in to see the waiting lobbies your account is currently in.
-          </p>
-        )}
-        {!loading && user && (
-          <>
-            <p className="muted">
-              You can be in at most {MAX_ACTIVE_LOBBIES_PER_USER} waiting
-              lobbies at once. Admin roles are marked so you can switch between
-              them quickly.
-            </p>
-            <p className="muted">
-              Waiting lobby slots used: {myLobbies.length}/
-              {MAX_ACTIVE_LOBBIES_PER_USER}.
-            </p>
-            {loadingMyLobbies && <p className="muted">Loading your lobbies…</p>}
-            {!loadingMyLobbies && myLobbies.length === 0 && (
-              <p className="emptyState">
-                You are not currently in any waiting lobbies.
+      <div className="lobbyWorkspace">
+        <section className="lobbyPrimary" aria-label="Lobby setup">
+          <div className="card">
+            <h2>Your access</h2>
+            {loading && <p className="muted">Loading session…</p>}
+            {!loading && (
+              <dl className="detailsGrid">
+                <dt className="muted">Session</dt>
+                <dd>
+                  {user ? (
+                    <>
+                      Signed in as <strong>{user.username}</strong>
+                    </>
+                  ) : (
+                    "Signed out"
+                  )}
+                </dd>
+                <dt className="muted">Without signing in</dt>
+                <dd>
+                  Browse public lobbies and load a lobby by ID or invite link.
+                  Loading only shows details; it does not join you.
+                </dd>
+                <dt className="muted">After signing in</dt>
+                <dd>
+                  Create lobbies, join public lobbies, join private lobbies with
+                  a valid invite token, generate private invites when you are an
+                  admin, and start a lobby when you are an admin with at least
+                  two players.
+                </dd>
+                <dt className="muted">Selected lobby status</dt>
+                <dd>{selectedLobbyMembershipText}</dd>
+              </dl>
+            )}
+            {!loading && !user && (
+              <p className="muted">
+                Join and create actions stay disabled until you{" "}
+                <Link to={signInHref}>sign in</Link>.
               </p>
             )}
-            {!loadingMyLobbies && myLobbies.length > 0 && (
+          </div>
+
+          <div className="card">
+            <h2>Create lobby</h2>
+            <p className="muted">
+              Requires a signed-in session. Creating a lobby adds your account
+              as the first player and admin.
+            </p>
+            {user && (
+              <p className="muted">
+                Waiting lobby slots used: {myLobbies.length}/
+                {MAX_ACTIVE_LOBBIES_PER_USER}.
+              </p>
+            )}
+            <div className="formGrid">
+              <div>
+                <label className="fieldLabel" htmlFor="create-name">
+                  Name
+                </label>
+                <input
+                  id="create-name"
+                  className="textInput"
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="fieldLabel" htmlFor="create-max">
+                  Max players
+                </label>
+                <select
+                  id="create-max"
+                  className="textInput"
+                  value={createMaxPlayers}
+                  onChange={(e) => setCreateMaxPlayers(Number(e.target.value))}
+                >
+                  {[2, 3, 4, 5, 6].map((count) => (
+                    <option key={count} value={count}>
+                      {count}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <LobbyAiSettings
+              aiCount={createAiCount}
+              maxPlayers={createMaxPlayers}
+              personality={createAiPersonality}
+              onAiCountChange={setCreateAiCount}
+              onPersonalityChange={setCreateAiPersonality}
+            />
+            <div className="formGrid">
+              <div>
+                <label className="fieldLabel" htmlFor="create-visibility">
+                  Lobby visibility
+                </label>
+                <select
+                  id="create-visibility"
+                  className="textInput"
+                  value={createIsPrivate ? "private" : "public"}
+                  onChange={(e) =>
+                    setCreateIsPrivate(e.target.value === "private")
+                  }
+                >
+                  <option value="public">Public - joinable by lobby ID</option>
+                  <option value="private">
+                    Private - invite token required
+                  </option>
+                </select>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="button"
+              disabled={
+                busyCreate ||
+                loading ||
+                !user ||
+                isAtLobbyLimit ||
+                !createName.trim()
+              }
+              onClick={onCreateLobby}
+            >
+              {busyCreate ? "Creating…" : "Create lobby"}
+            </button>
+            {user && isAtLobbyLimit && (
+              <p className="muted">
+                Leave one of your waiting lobbies before creating another.
+              </p>
+            )}
+          </div>
+
+          <div className="card">
+            <h2>Join or load lobby</h2>
+            <p className="muted">
+              Load lobby fetches details only. Join lobby adds your signed-in
+              account to that lobby.
+            </p>
+            <p className="muted">
+              {user ? (
+                "Public lobbies can be joined directly. Private lobbies require a valid invite token."
+              ) : (
+                <>
+                  You are signed out. Loading is available, but joining is
+                  disabled until you <Link to={signInHref}>sign in</Link>.
+                </>
+              )}
+            </p>
+            {user && (
+              <p className="muted">
+                Waiting lobby slots used: {myLobbies.length}/
+                {MAX_ACTIVE_LOBBIES_PER_USER}.
+              </p>
+            )}
+            <div className="formGrid">
+              <div>
+                <label className="fieldLabel" htmlFor="join-id">
+                  Lobby ID or invite link
+                </label>
+                <input
+                  id="join-id"
+                  className="textInput"
+                  value={joinLobbyId}
+                  onChange={(e) => {
+                    const nextValue = e.target.value;
+                    const parsed = resolveLobbyJoinInput(nextValue, "");
+                    setJoinLobbyId(nextValue);
+                    setJoinToken(parsed.token);
+                  }}
+                  placeholder="Paste lobby id or invite link"
+                />
+              </div>
+              <div>
+                <label className="fieldLabel" htmlFor="join-token">
+                  Invite token (optional)
+                </label>
+                <input
+                  id="join-token"
+                  className="textInput"
+                  value={joinToken}
+                  onChange={(e) => setJoinToken(e.target.value)}
+                  placeholder="Optional"
+                />
+              </div>
+            </div>
+            <div className="buttonRow">
+              <button
+                type="button"
+                className="button buttonSecondary"
+                onClick={onLoadLobby}
+                disabled={!joinLobbyId.trim()}
+              >
+                Load lobby
+              </button>
+              <button
+                type="button"
+                className="button"
+                onClick={onJoinLobby}
+                disabled={
+                  busyJoin ||
+                  loading ||
+                  !user ||
+                  isAtLobbyLimit ||
+                  !joinLobbyId.trim()
+                }
+              >
+                {busyJoin ? "Joining…" : "Join lobby"}
+              </button>
+            </div>
+            {user && isAtLobbyLimit && (
+              <p className="muted">
+                Leave one of your waiting lobbies before joining another.
+              </p>
+            )}
+          </div>
+        </section>
+        <section className="lobbyLists" aria-label="Lobby lists and details">
+          <div className="card">
+            <h2>Your lobbies</h2>
+            {loading && <p className="muted">Loading session…</p>}
+            {!loading && !user && (
+              <p className="muted">
+                Sign in to see the waiting lobbies your account is currently in.
+              </p>
+            )}
+            {!loading && user && (
+              <>
+                <p className="muted">
+                  You can be in at most {MAX_ACTIVE_LOBBIES_PER_USER} waiting
+                  lobbies at once. Admin roles are marked so you can switch
+                  between them quickly.
+                </p>
+                <p className="muted">
+                  Waiting lobby slots used: {myLobbies.length}/
+                  {MAX_ACTIVE_LOBBIES_PER_USER}.
+                </p>
+                {loadingMyLobbies && (
+                  <p className="muted">Loading your lobbies…</p>
+                )}
+                {!loadingMyLobbies && myLobbies.length === 0 && (
+                  <p className="emptyState">
+                    You are not currently in any waiting lobbies.
+                  </p>
+                )}
+                {!loadingMyLobbies && myLobbies.length > 0 && (
+                  <table className="gamesTable">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Role</th>
+                        <th>Players</th>
+                        <th>Visibility</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {myLobbies.map((lobby) => {
+                        const membership =
+                          user &&
+                          lobby.players.find(
+                            (player) => player.userId === user.userId,
+                          );
+
+                        return (
+                          <tr key={lobby.id}>
+                            <td data-label="Name">{lobby.name}</td>
+                            <td data-label="Role">
+                              {membership?.isAdmin ? "Admin" : "Player"}
+                            </td>
+                            <td data-label="Players">
+                              {lobbySeatCount(lobby)}/{lobby.maxPlayers}
+                            </td>
+                            <td data-label="Visibility">
+                              {lobby.isPrivate ? "Private" : "Public"}
+                            </td>
+                            <td data-label="Action">
+                              <div className="buttonRow">
+                                <button
+                                  type="button"
+                                  className="button buttonSecondary"
+                                  onClick={() => {
+                                    setJoinLobbyId(lobby.id);
+                                    setJoinToken("");
+                                    void refreshSelectedLobby(lobby.id);
+                                    revealSelectedLobby();
+                                  }}
+                                >
+                                  Open
+                                </button>
+                                <button
+                                  type="button"
+                                  className="button buttonSecondary"
+                                  disabled={busyLeave}
+                                  onClick={() => void onLeaveLobby(lobby.id)}
+                                >
+                                  {busyLeave ? "Leaving…" : "Leave"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="card">
+            <h2>Public lobbies</h2>
+            <p className="muted">
+              Anyone can browse this list. Select loads details below and does
+              not join your account to the lobby.
+            </p>
+            {loadingPublicLobbies && <p className="muted">Loading…</p>}
+            {!loadingPublicLobbies && publicLobbies.length === 0 && (
+              <p className="emptyState">No public lobbies available.</p>
+            )}
+            {!loadingPublicLobbies && publicLobbies.length > 0 && (
               <table className="gamesTable">
                 <thead>
                   <tr>
                     <th>Name</th>
-                    <th>Role</th>
                     <th>Players</th>
-                    <th>Visibility</th>
+                    <th>Status</th>
                     <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {myLobbies.map((lobby) => {
-                    const membership =
-                      user &&
-                      lobby.players.find(
-                        (player) => player.userId === user.userId,
-                      );
-
-                    return (
-                      <tr key={lobby.id}>
-                        <td>{lobby.name}</td>
-                        <td>{membership?.isAdmin ? "Admin" : "Player"}</td>
-                        <td>
-                          {lobbySeatCount(lobby)}/{lobby.maxPlayers}
-                        </td>
-                        <td>{lobby.isPrivate ? "Private" : "Public"}</td>
-                        <td>
-                          <div className="buttonRow">
-                            <button
-                              type="button"
-                              className="button buttonSecondary"
-                              onClick={() => {
-                                setJoinLobbyId(lobby.id);
-                                setJoinToken("");
-                                void refreshSelectedLobby(lobby.id);
-                                revealSelectedLobby();
-                              }}
-                            >
-                              Open
-                            </button>
-                            <button
-                              type="button"
-                              className="button buttonSecondary"
-                              disabled={busyLeave}
-                              onClick={() => void onLeaveLobby(lobby.id)}
-                            >
-                              {busyLeave ? "Leaving…" : "Leave"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {publicLobbies.map((lobby) => (
+                    <tr key={lobby.id}>
+                      <td data-label="Name">{lobby.name}</td>
+                      <td data-label="Players">
+                        {lobbySeatCount(lobby)}/{lobby.maxPlayers}
+                      </td>
+                      <td data-label="Status">{lobby.status}</td>
+                      <td data-label="Action">
+                        <button
+                          type="button"
+                          className="button buttonSecondary"
+                          onClick={() => {
+                            setJoinLobbyId(lobby.id);
+                            setJoinToken("");
+                            void refreshSelectedLobby(lobby.id);
+                            revealSelectedLobby();
+                          }}
+                        >
+                          Select
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             )}
-          </>
-        )}
-      </div>
+          </div>
 
-      <div className="card">
-        <h2>Public lobbies</h2>
-        <p className="muted">
-          Anyone can browse this list. Select loads details below and does not
-          join your account to the lobby.
-        </p>
-        {loadingPublicLobbies && <p className="muted">Loading…</p>}
-        {!loadingPublicLobbies && publicLobbies.length === 0 && (
-          <p className="emptyState">No public lobbies available.</p>
-        )}
-        {!loadingPublicLobbies && publicLobbies.length > 0 && (
-          <table className="gamesTable">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Players</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {publicLobbies.map((lobby) => (
-                <tr key={lobby.id}>
-                  <td>{lobby.name}</td>
-                  <td>
-                    {lobbySeatCount(lobby)}/{lobby.maxPlayers}
-                  </td>
-                  <td>{lobby.status}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="button buttonSecondary"
-                      onClick={() => {
-                        setJoinLobbyId(lobby.id);
-                        setJoinToken("");
-                        void refreshSelectedLobby(lobby.id);
-                        revealSelectedLobby();
-                      }}
-                    >
-                      Select
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className="card" ref={selectedLobbyCardRef} id="selected-lobby-room">
-        <h2>Selected lobby</h2>
-        {!selectedLobby && (
-          <p className="emptyState">
-            Select a lobby above or create one to view details.
-          </p>
-        )}
-        {selectedLobby && (
-          <>
-            <dl className="detailsGrid">
-              <dt className="muted">Lobby ID</dt>
-              <dd>
-                <code className="inline">{selectedLobby.id}</code>
-              </dd>
-              <dt className="muted">Status</dt>
-              <dd>{selectedLobby.status}</dd>
-              <dt className="muted">Live updates</dt>
-              <dd>{lobbyWsStatus}</dd>
-              <dt className="muted">Host</dt>
-              <dd>{selectedLobby.hostId}</dd>
-              <dt className="muted">Visibility</dt>
-              <dd>{selectedLobby.isPrivate ? "Private" : "Public"}</dd>
-              <dt className="muted">Players</dt>
-              <dd>
-                {lobbySeatCount(selectedLobby)}/{selectedLobby.maxPlayers}
-              </dd>
-              <dt className="muted">Your membership</dt>
-              <dd>{selectedLobbyMembershipText}</dd>
-              <dt className="muted">What you can do</dt>
-              <dd>{selectedLobbyActionText}</dd>
-            </dl>
-
-            {selectedLobby.isPrivate && isCurrentSubjectAdmin && (
-              <>
-                <h3 className="subheading">Private invite</h3>
-                {!inviteShare || inviteShare.lobbyId !== selectedLobby.id ? (
-                  <>
-                    <p className="muted">
-                      Generate a shareable invite link for this private lobby.
-                    </p>
-                    <div className="buttonRow">
-                      <button
-                        type="button"
-                        className="button buttonSecondary"
-                        onClick={onGenerateInvite}
-                        disabled={busyInvite || loading || !user}
-                      >
-                        {busyInvite ? "Generating…" : "Generate invite link"}
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="inviteSharePanel">
-                    <label
-                      className="fieldLabel"
-                      htmlFor="selected-invite-link"
-                    >
-                      Share link
-                    </label>
-                    <div className="inviteFieldRow">
-                      <input
-                        id="selected-invite-link"
-                        className="textInput"
-                        value={inviteShare.url}
-                        readOnly
-                      />
-                      <button
-                        type="button"
-                        className="button buttonSecondary"
-                        onClick={() =>
-                          void copyInviteValue(inviteShare.url, "Invite link")
-                        }
-                      >
-                        Copy link
-                      </button>
-                    </div>
-
-                    <label
-                      className="fieldLabel"
-                      htmlFor="selected-invite-token"
-                    >
-                      Invite token
-                    </label>
-                    <div className="inviteFieldRow">
-                      <input
-                        id="selected-invite-token"
-                        className="textInput"
-                        value={inviteShare.token}
-                        readOnly
-                      />
-                      <button
-                        type="button"
-                        className="button buttonSecondary"
-                        onClick={() =>
-                          void copyInviteValue(
-                            inviteShare.token,
-                            "Invite token",
-                          )
-                        }
-                      >
-                        Copy token
-                      </button>
-                    </div>
-
-                    <div className="buttonRow">
-                      <button
-                        type="button"
-                        className="button buttonSecondary"
-                        onClick={onGenerateInvite}
-                        disabled={busyInvite || loading || !user}
-                      >
-                        {busyInvite ? "Refreshing…" : "Generate new invite"}
-                      </button>
-                    </div>
-                    <p className="muted">
-                      Invite links open this lobby with the token prefilled and
-                      currently expire after about{" "}
-                      {formatInviteExpiry(inviteShare.expiresInSeconds)}.
-                    </p>
-                  </div>
-                )}
-              </>
-            )}
-            {selectedLobby.isPrivate && !isCurrentSubjectAdmin && (
-              <p className="muted">
-                Private invite links can only be generated by admins who are
-                already in this lobby.
+          <div
+            className="card"
+            ref={selectedLobbyCardRef}
+            id="selected-lobby-room"
+          >
+            <h2>Selected lobby</h2>
+            {!selectedLobby && (
+              <p className="emptyState">
+                Select a lobby above or create one to view details.
               </p>
             )}
-
-            <h3 className="subheading">Players</h3>
-            <ul className="plainList">
-              {selectedLobby.players.map((player) => (
-                <li key={player.userId}>
-                  <code className="inline">{player.userId}</code>
-                  {(() => {
-                    const labels = formatLobbyPlayerLabels(
-                      player,
-                      user?.userId,
-                    );
-                    return labels ? ` (${labels})` : "";
-                  })()}
-                </li>
-              ))}
-            </ul>
-            {(selectedLobby.aiSlots ?? []).length > 0 && (
+            {selectedLobby && (
               <>
-                <h3 className="subheading">AI seats</h3>
+                <dl className="detailsGrid">
+                  <dt className="muted">Lobby ID</dt>
+                  <dd>
+                    <code className="inline">{selectedLobby.id}</code>
+                  </dd>
+                  <dt className="muted">Status</dt>
+                  <dd>{selectedLobby.status}</dd>
+                  <dt className="muted">Live updates</dt>
+                  <dd>{lobbyWsStatus}</dd>
+                  <dt className="muted">Host</dt>
+                  <dd>{selectedLobby.hostId}</dd>
+                  <dt className="muted">Visibility</dt>
+                  <dd>{selectedLobby.isPrivate ? "Private" : "Public"}</dd>
+                  <dt className="muted">Players</dt>
+                  <dd>
+                    {lobbySeatCount(selectedLobby)}/{selectedLobby.maxPlayers}
+                  </dd>
+                  <dt className="muted">Your membership</dt>
+                  <dd>{selectedLobbyMembershipText}</dd>
+                  <dt className="muted">What you can do</dt>
+                  <dd>{selectedLobbyActionText}</dd>
+                </dl>
+
+                {selectedLobby.isPrivate && isCurrentSubjectAdmin && (
+                  <>
+                    <h3 className="subheading">Private invite</h3>
+                    {!inviteShare ||
+                    inviteShare.lobbyId !== selectedLobby.id ? (
+                      <>
+                        <p className="muted">
+                          Generate a shareable invite link for this private
+                          lobby.
+                        </p>
+                        <div className="buttonRow">
+                          <button
+                            type="button"
+                            className="button buttonSecondary"
+                            onClick={onGenerateInvite}
+                            disabled={busyInvite || loading || !user}
+                          >
+                            {busyInvite
+                              ? "Generating…"
+                              : "Generate invite link"}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="inviteSharePanel">
+                        <label
+                          className="fieldLabel"
+                          htmlFor="selected-invite-link"
+                        >
+                          Share link
+                        </label>
+                        <div className="inviteFieldRow">
+                          <input
+                            id="selected-invite-link"
+                            className="textInput"
+                            value={inviteShare.url}
+                            readOnly
+                          />
+                          <button
+                            type="button"
+                            className="button buttonSecondary"
+                            onClick={() =>
+                              void copyInviteValue(
+                                inviteShare.url,
+                                "Invite link",
+                              )
+                            }
+                          >
+                            Copy link
+                          </button>
+                        </div>
+
+                        <label
+                          className="fieldLabel"
+                          htmlFor="selected-invite-token"
+                        >
+                          Invite token
+                        </label>
+                        <div className="inviteFieldRow">
+                          <input
+                            id="selected-invite-token"
+                            className="textInput"
+                            value={inviteShare.token}
+                            readOnly
+                          />
+                          <button
+                            type="button"
+                            className="button buttonSecondary"
+                            onClick={() =>
+                              void copyInviteValue(
+                                inviteShare.token,
+                                "Invite token",
+                              )
+                            }
+                          >
+                            Copy token
+                          </button>
+                        </div>
+
+                        <div className="buttonRow">
+                          <button
+                            type="button"
+                            className="button buttonSecondary"
+                            onClick={onGenerateInvite}
+                            disabled={busyInvite || loading || !user}
+                          >
+                            {busyInvite ? "Refreshing…" : "Generate new invite"}
+                          </button>
+                        </div>
+                        <p className="muted">
+                          Invite links open this lobby with the token prefilled
+                          and currently expire after about{" "}
+                          {formatInviteExpiry(inviteShare.expiresInSeconds)}.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+                {selectedLobby.isPrivate && !isCurrentSubjectAdmin && (
+                  <p className="muted">
+                    Private invite links can only be generated by admins who are
+                    already in this lobby.
+                  </p>
+                )}
+
+                <h3 className="subheading">Players</h3>
                 <ul className="plainList">
-                  {(selectedLobby.aiSlots ?? []).map((slot) => (
-                    <li key={slot.id}>
-                      {slot.name} ({slot.personality})
+                  {selectedLobby.players.map((player) => (
+                    <li key={player.userId}>
+                      <code className="inline">{player.userId}</code>
+                      {(() => {
+                        const labels = formatLobbyPlayerLabels(
+                          player,
+                          user?.userId,
+                        );
+                        return labels ? ` (${labels})` : "";
+                      })()}
                     </li>
                   ))}
                 </ul>
-              </>
-            )}
+                {(selectedLobby.aiSlots ?? []).length > 0 && (
+                  <>
+                    <h3 className="subheading">AI seats</h3>
+                    <ul className="plainList">
+                      {(selectedLobby.aiSlots ?? []).map((slot) => (
+                        <li key={slot.id}>
+                          {slot.name} ({slot.personality})
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
 
-            <LobbyReadyControls
-              lobby={selectedLobby}
-              userId={user?.userId}
-              busy={busyStart || busyLeave || busyInvite}
-              onUpdated={(updated) => {
-                const normalized = normalizeLobby(updated);
-                setSelectedLobby(normalized);
-                setMyLobbies((current) =>
-                  current.map((lobby) =>
-                    lobby.id === normalized.id ? normalized : lobby,
-                  ),
-                );
-              }}
-              onBusy={setBusyStart}
-              onMessage={(text, kind) => setMessage({ text, kind })}
-            />
+                <LobbyReadyControls
+                  lobby={selectedLobby}
+                  userId={user?.userId}
+                  busy={busyStart || busyLeave || busyInvite}
+                  onUpdated={(updated) => {
+                    const normalized = normalizeLobby(updated);
+                    setSelectedLobby(normalized);
+                    setMyLobbies((current) =>
+                      current.map((lobby) =>
+                        lobby.id === normalized.id ? normalized : lobby,
+                      ),
+                    );
+                  }}
+                  onBusy={setBusyStart}
+                  onMessage={(text, kind) => setMessage({ text, kind })}
+                />
 
-            <div className="buttonRow">
-              {selectedLobbyMembership &&
-                selectedLobby.status === "waiting" && (
+                <div className="buttonRow">
+                  {selectedLobbyMembership &&
+                    selectedLobby.status === "waiting" && (
+                      <button
+                        type="button"
+                        className="button buttonSecondary"
+                        onClick={() => void onLeaveLobby(selectedLobby.id)}
+                        disabled={busyLeave}
+                      >
+                        {busyLeave ? "Leaving…" : "Leave lobby"}
+                      </button>
+                    )}
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={onStartLobby}
+                    disabled={
+                      busyStart ||
+                      loading ||
+                      !user ||
+                      !isCurrentSubjectAdmin ||
+                      !canStartLobby(
+                        selectedLobby.status,
+                        lobbySeatCount(selectedLobby),
+                        selectedLobby.players,
+                      )
+                    }
+                  >
+                    {busyStart ? "Starting…" : "Start game"}
+                  </button>
                   <button
                     type="button"
                     className="button buttonSecondary"
-                    onClick={() => void onLeaveLobby(selectedLobby.id)}
-                    disabled={busyLeave}
+                    onClick={() => void refreshSelectedLobby(selectedLobby.id)}
                   >
-                    {busyLeave ? "Leaving…" : "Leave lobby"}
+                    Refresh lobby
                   </button>
+                </div>
+                {startLobbyHelpText && (
+                  <p className="muted">{startLobbyHelpText}</p>
                 )}
-              <button
-                type="button"
-                className="button"
-                onClick={onStartLobby}
-                disabled={
-                  busyStart ||
-                  loading ||
-                  !user ||
-                  !isCurrentSubjectAdmin ||
-                  !canStartLobby(
-                    selectedLobby.status,
-                    lobbySeatCount(selectedLobby),
-                    selectedLobby.players,
-                  )
-                }
-              >
-                {busyStart ? "Starting…" : "Start game"}
-              </button>
-              <button
-                type="button"
-                className="button buttonSecondary"
-                onClick={() => void refreshSelectedLobby(selectedLobby.id)}
-              >
-                Refresh lobby
-              </button>
-            </div>
-            {startLobbyHelpText && (
-              <p className="muted">{startLobbyHelpText}</p>
+              </>
             )}
-          </>
-        )}
-      </div>
+          </div>
 
-      {selectedLobby?.status === "in_game" && (
-        <div className="card">
-          <h2>Next step</h2>
-          {selectedLobby.gameId ? (
-            <p>
-              Lobby started.{" "}
-              <Link to={`/games/${selectedLobby.gameId}`}>Return to game</Link>
-            </p>
-          ) : (
-            <p className="muted">
-              Lobby started. Open <Link to="/games">Games</Link> to inspect
-              active games.
-            </p>
+          {selectedLobby?.status === "in_game" && (
+            <div className="card">
+              <h2>Next step</h2>
+              {selectedLobby.gameId ? (
+                <p>
+                  Lobby started.{" "}
+                  <Link to={`/games/${selectedLobby.gameId}`}>
+                    Return to game
+                  </Link>
+                </p>
+              ) : (
+                <p className="muted">
+                  Lobby started. Open <Link to="/games">Games</Link> to inspect
+                  active games.
+                </p>
+              )}
+            </div>
           )}
-        </div>
-      )}
+        </section>
+      </div>
 
       {message && (
         <p className={message.kind === "error" ? "errorText" : "ok"}>

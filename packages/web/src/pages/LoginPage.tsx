@@ -77,9 +77,11 @@ export function LoginPage() {
   const devLoginEnabled = isLocalApi;
 
   return (
-    <div>
-      <h1 className="pageTitle">Sign In</h1>
-      <p className="tagline">Authenticate with your passkey</p>
+    <div className="authPage">
+      <header className="pageHeader">
+        <h1 className="pageTitle">Sign In</h1>
+        <p className="tagline">Authenticate with your passkey.</p>
+      </header>
 
       <div className="card">
         <div className="formGrid">

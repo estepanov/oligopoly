@@ -33,9 +33,11 @@ export function RegisterPage() {
   }, [username, login, navigate, returnTo]);
 
   return (
-    <div>
-      <h1 className="pageTitle">Create Account</h1>
-      <p className="tagline">Register with a passkey — no password needed</p>
+    <div className="authPage">
+      <header className="pageHeader">
+        <h1 className="pageTitle">Create Account</h1>
+        <p className="tagline">Register with a passkey - no password needed.</p>
+      </header>
 
       <div className="card">
         <div className="formGrid">

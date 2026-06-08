@@ -2318,10 +2318,12 @@ describe("applyAction — develop tile affinity", () => {
       phase: "action",
       affinityAssignments: { "player-1": "lean_manufacturing" },
     });
-    state.players[0].ownedTilePositions = [3];
+    state.players[0].ownedTilePositions = [1, 3, 11];
     state.players[0].actionPointsRemaining = 2;
-    const tile = state.tiles.find((t) => t.position === 3)!;
-    tile.ownerId = "player-1";
+    for (const position of state.players[0].ownedTilePositions) {
+      const tile = state.tiles.find((t) => t.position === position);
+      if (tile) tile.ownerId = "player-1";
+    }
 
     const result = applyAction(state, "player-1", {
       type: "develop_tile",

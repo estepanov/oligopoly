@@ -3,6 +3,93 @@ import { describe, expect, it } from "vitest";
 import { getTileEconomics } from "../../packages/web/src/lib/tileEconomics";
 
 describe("getTileEconomics", () => {
+  it("does not allow development before the player controls the full sector", () => {
+    const state: GameState = {
+      gameId: "g",
+      round: 1,
+      phase: "action",
+      currentPlayerIndex: 0,
+      turnOrder: ["me", "you"],
+      myAffinityCardId: null,
+      settings: { currencySymbol: "$", currencyMultiplier: "1" },
+      players: [
+        {
+          playerId: "me",
+          position: 0,
+          capital: 500,
+          ownedTilePositions: [6, 8],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 2,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+        {
+          playerId: "you",
+          position: 0,
+          capital: 500,
+          ownedTilePositions: [9],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 0,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+      ],
+      tiles: [
+        { position: 6, ownerId: "me", mortgaged: false, developmentTokens: 0 },
+        { position: 8, ownerId: "me", mortgaged: false, developmentTokens: 0 },
+        { position: 9, ownerId: "you", mortgaged: false, developmentTokens: 0 },
+      ],
+    };
+
+    const economics = getTileEconomics(state, "me", 6);
+
+    expect(economics.developmentCost).toBe(140);
+    expect(economics.canDevelop).toBe(false);
+  });
+
+  it("allows development once the player controls the full sector", () => {
+    const state: GameState = {
+      gameId: "g",
+      round: 1,
+      phase: "action",
+      currentPlayerIndex: 0,
+      turnOrder: ["me"],
+      myAffinityCardId: null,
+      settings: { currencySymbol: "$", currencyMultiplier: "1" },
+      players: [
+        {
+          playerId: "me",
+          position: 0,
+          capital: 500,
+          ownedTilePositions: [6, 8, 9],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 2,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+      ],
+      tiles: [
+        { position: 6, ownerId: "me", mortgaged: false, developmentTokens: 0 },
+        { position: 8, ownerId: "me", mortgaged: false, developmentTokens: 0 },
+        { position: 9, ownerId: "me", mortgaged: false, developmentTokens: 0 },
+      ],
+    };
+
+    const economics = getTileEconomics(state, "me", 6);
+
+    expect(economics.developmentCost).toBe(140);
+    expect(economics.canDevelop).toBe(true);
+  });
+
   it("uses Synthetic CDO for available mortgage rate without changing stored rate", () => {
     const state: GameState = {
       gameId: "g",

@@ -400,6 +400,7 @@ export const GameErrorKeys = {
   TILE_NOT_OWNED: "game.tile_not_owned",
   TILE_MORTGAGED: "game.tile_mortgaged",
   MAX_DEVELOPMENT: "game.max_development",
+  SECTOR_NOT_CONTROLLED: "game.sector_not_controlled",
   INSUFFICIENT_AP: "game.insufficient_ap",
   TILE_NOT_MORTGAGED: "game.tile_not_mortgaged",
   DB_NOT_CONFIGURED: "game.db_not_configured",

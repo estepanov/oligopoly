@@ -72,6 +72,219 @@ const ACTION_LABELS: Record<string, string> = {
   new_round: "New round",
 };
 
+type GameLogTone =
+  | "auction"
+  | "deal"
+  | "event"
+  | "money"
+  | "movement"
+  | "property"
+  | "system";
+
+type ActionLogPresentation = {
+  badge: string;
+  description: string;
+  eyebrow: string;
+  tone: GameLogTone;
+};
+
+const DEFAULT_ACTION_PRESENTATION: ActionLogPresentation = {
+  badge: "Log",
+  description:
+    "A game update was recorded. The details show who changed, what changed, and where it happened when that information is available.",
+  eyebrow: "Game update",
+  tone: "system",
+};
+
+const ACTION_PRESENTATION: Record<string, ActionLogPresentation> = {
+  game_started: {
+    badge: "Start",
+    description: "The match is underway and turn order is now active.",
+    eyebrow: "Setup",
+    tone: "system",
+  },
+  roll_dice: {
+    badge: "Move",
+    description:
+      "A player rolled dice. Movement may create follow-up entries for landing effects, purchases, rent, or path choices.",
+    eyebrow: "Movement",
+    tone: "movement",
+  },
+  path_choice: {
+    badge: "Path",
+    description:
+      "A player chose whether to follow the outside board path or the diagonal express path.",
+    eyebrow: "Movement",
+    tone: "movement",
+  },
+  buy_tile: {
+    badge: "Tile",
+    description:
+      "A player bought an available tile. Ownership and cash changes are usually shown in nearby detail entries.",
+    eyebrow: "Acquisition",
+    tone: "property",
+  },
+  decline_tile: {
+    badge: "Pass",
+    description:
+      "A player declined to buy the tile they landed on. This can open the tile for auction.",
+    eyebrow: "Acquisition",
+    tone: "property",
+  },
+  develop_tile: {
+    badge: "Build",
+    description:
+      "A player added a development token to a sector tile they control, increasing future rent.",
+    eyebrow: "Property",
+    tone: "property",
+  },
+  mortgage_tile: {
+    badge: "Debt",
+    description:
+      "A player mortgaged an owned tile for cash. Mortgaged tiles do not collect normal value until redeemed.",
+    eyebrow: "Property",
+    tone: "money",
+  },
+  redeem_tile: {
+    badge: "Clear",
+    description:
+      "A player paid to redeem a mortgaged tile so it can operate normally again.",
+    eyebrow: "Property",
+    tone: "money",
+  },
+  pay_rent: {
+    badge: "Rent",
+    description:
+      "A player paid rent to another player after landing on an owned tile.",
+    eyebrow: "Payment",
+    tone: "money",
+  },
+  pass_start: {
+    badge: "Cash",
+    description: "A player passed START and collected the standard bonus.",
+    eyebrow: "Payment",
+    tone: "money",
+  },
+  auction_bid: {
+    badge: "Bid",
+    description:
+      "A player submitted an auction bid. Sealed auctions may hide exact bid amounts until settlement.",
+    eyebrow: "Auction",
+    tone: "auction",
+  },
+  auction_pass: {
+    badge: "Pass",
+    description: "A player chose not to bid in the active auction.",
+    eyebrow: "Auction",
+    tone: "auction",
+  },
+  auction_settled: {
+    badge: "Sold",
+    description:
+      "An auction finished and the winning bidder, price, or no-sale result was recorded.",
+    eyebrow: "Auction",
+    tone: "auction",
+  },
+  auction_no_bids: {
+    badge: "No bid",
+    description: "The auction closed without a buyer.",
+    eyebrow: "Auction",
+    tone: "auction",
+  },
+  market_event_drawn: {
+    badge: "Event",
+    description:
+      "A market event card was drawn. Resolution entries explain its effect.",
+    eyebrow: "Market event",
+    tone: "event",
+  },
+  market_event_resolved: {
+    badge: "Event",
+    description:
+      "A market event effect was applied to the game, a tile, or players.",
+    eyebrow: "Market event",
+    tone: "event",
+  },
+  market_event_capital_change: {
+    badge: "Cash",
+    description: "A market event changed a player's cash balance.",
+    eyebrow: "Market event",
+    tone: "money",
+  },
+  disruption_drawn: {
+    badge: "Risk",
+    description:
+      "A disruption card was drawn. Resolution entries explain the consequence.",
+    eyebrow: "Disruption",
+    tone: "event",
+  },
+  disruption_resolved: {
+    badge: "Risk",
+    description: "A disruption card effect was applied.",
+    eyebrow: "Disruption",
+    tone: "event",
+  },
+  disruption_capital_change: {
+    badge: "Cash",
+    description: "A disruption changed a player's cash balance.",
+    eyebrow: "Disruption",
+    tone: "money",
+  },
+  affinity_bonus: {
+    badge: "Bonus",
+    description: "A player's affinity produced an extra benefit.",
+    eyebrow: "Affinity",
+    tone: "event",
+  },
+  syndicate_formed: {
+    badge: "Team",
+    description:
+      "Players formed a permanent syndicate and now share strategic control according to their charter.",
+    eyebrow: "Syndicate",
+    tone: "deal",
+  },
+  capital_revealed: {
+    badge: "Intel",
+    description: "A player's cash total was revealed by an action or affinity.",
+    eyebrow: "Information",
+    tone: "deal",
+  },
+  game_won: {
+    badge: "Win",
+    description:
+      "The game ended or entered final resolution because a win condition was met.",
+    eyebrow: "Result",
+    tone: "system",
+  },
+  player_state_changed: {
+    badge: "Delta",
+    description:
+      "This detail entry explains the actual state changes from an action, such as cash, AP, position, ownership, debt, or trust.",
+    eyebrow: "Changed",
+    tone: "system",
+  },
+  rate_card_set: {
+    badge: "Rate",
+    description:
+      "A player adjusted rent pressure for a sector with a rate card.",
+    eyebrow: "Rate card",
+    tone: "deal",
+  },
+  debt_interest: {
+    badge: "Debt",
+    description: "Outstanding debt gained interest.",
+    eyebrow: "Debt",
+    tone: "money",
+  },
+  new_round: {
+    badge: "Round",
+    description:
+      "A new round started after every active player finished a turn.",
+    eyebrow: "Round",
+    tone: "system",
+  },
+};
+
 /** Tile actions: money and inventory deltas belong on `player_state_changed`. */
 const TILE_NAME_ONLY_LOG_TYPES = new Set([
   "buy_tile",
@@ -269,6 +482,141 @@ function formatPlayerStateChange(
   return parts.length > 0 ? ` · ${parts.join("; ")}` : "";
 }
 
+function formatAbsoluteCurrency(
+  value: number,
+  currencySettings?: CurrencyDisplaySettings,
+): string {
+  return formatCurrencyAmount(Math.abs(value), currencySettings);
+}
+
+function formatFriendlyPlayerStateChange(
+  payload: unknown,
+  tileNames: Map<string, string>,
+  currencySettings?: CurrencyDisplaySettings,
+): string[] {
+  const parsed = PlayerStateChangedPayloadSchema.safeParse(payload);
+  if (!parsed.success) return [];
+  const { changes } = parsed.data;
+  const parts: string[] = [];
+
+  const capital = changes.capital;
+  if (typeof capital?.delta === "number") {
+    const ending =
+      typeof capital.after === "number"
+        ? formatCurrencyAmount(capital.after, currencySettings)
+        : String(capital.after);
+    if (capital.delta > 0) {
+      parts.push(
+        `Gained ${formatAbsoluteCurrency(capital.delta, currencySettings)}. Cash now ${ending}.`,
+      );
+    } else if (capital.delta < 0) {
+      parts.push(
+        `Spent ${formatAbsoluteCurrency(capital.delta, currencySettings)}. Cash now ${ending}.`,
+      );
+    } else {
+      parts.push(`Cash stayed at ${ending}.`);
+    }
+  }
+
+  const owned = changes.ownedTilePositions;
+  const acquired = formatTileList(owned?.added, tileNames);
+  const lost = formatTileList(owned?.removed, tileNames);
+  if (acquired) parts.push(`Acquired ${acquired}.`);
+  if (lost) parts.push(`Lost ${lost}.`);
+
+  const mortgagedTiles = changes.mortgagedTilePositions;
+  const newlyMortgaged = formatTileList(mortgagedTiles?.added, tileNames);
+  const redeemed = formatTileList(mortgagedTiles?.removed, tileNames);
+  if (newlyMortgaged) parts.push(`Mortgaged ${newlyMortgaged}.`);
+  if (redeemed) parts.push(`Redeemed ${redeemed}.`);
+
+  const development = changes.developmentTokens;
+  if (Array.isArray(development)) {
+    for (const item of development) {
+      parts.push(
+        `Added development token ${item.after} to ${tileLabel(
+          item.position,
+          tileNames,
+        )}.`,
+      );
+    }
+  }
+
+  const actionPoints = changes.actionPointsRemaining;
+  if (typeof actionPoints?.delta === "number") {
+    if (actionPoints.delta < 0) {
+      parts.push(
+        `Used ${Math.abs(actionPoints.delta)} AP. ${String(
+          actionPoints.after,
+        )} left.`,
+      );
+    } else if (actionPoints.delta > 0) {
+      parts.push(
+        `Recovered ${actionPoints.delta} AP. ${String(
+          actionPoints.after,
+        )} available.`,
+      );
+    }
+  }
+
+  const trustworthiness = changes.trustworthiness;
+  if (typeof trustworthiness?.delta === "number") {
+    const direction = trustworthiness.delta >= 0 ? "rose" : "fell";
+    parts.push(
+      `Trust ${direction} ${Math.abs(trustworthiness.delta)} to ${String(
+        trustworthiness.after,
+      )}.`,
+    );
+  }
+
+  const debt = changes.outstandingDebt;
+  if (typeof debt?.delta === "number") {
+    const ending =
+      typeof debt.after === "number"
+        ? formatCurrencyAmount(debt.after, currencySettings)
+        : String(debt.after);
+    if (debt.delta > 0) {
+      parts.push(
+        `Debt increased by ${formatAbsoluteCurrency(
+          debt.delta,
+          currencySettings,
+        )}. Debt now ${ending}.`,
+      );
+    } else if (debt.delta < 0) {
+      parts.push(
+        `Debt fell by ${formatAbsoluteCurrency(
+          debt.delta,
+          currencySettings,
+        )}. Debt now ${ending}.`,
+      );
+    }
+  }
+
+  const position = changes.position;
+  if (
+    typeof position?.after === "number" ||
+    typeof position?.after === "string"
+  ) {
+    parts.push(`Moved to ${tileLabel(position.after, tileNames)}.`);
+  }
+
+  const ir = changes.inRegulation;
+  if (ir) {
+    parts.push(ir.after ? "Entered regulation." : "Left regulation.");
+  }
+
+  const syn = changes.syndicateId;
+  if (syn) {
+    parts.push(
+      typeof syn.after === "string"
+        ? `Joined syndicate ${syn.after}.`
+        : "Left syndicate.",
+    );
+  }
+
+  return parts;
+}
+
 function formatGameWon(record: Record<string, unknown>): string {
   if (typeof record.reason === "string") {
     return ` · ${record.reason}`;
@@ -280,6 +628,24 @@ function formatGameWon(record: Record<string, unknown>): string {
     return ` · ${record.marketValue} of ${record.totalMarketValue} market value`;
   }
   return "";
+}
+
+function formatDiceRoll(record: Record<string, unknown>): string {
+  if (
+    !Array.isArray(record.result) ||
+    record.result.length !== 2 ||
+    typeof record.result[0] !== "number" ||
+    typeof record.result[1] !== "number"
+  ) {
+    return "";
+  }
+
+  const [d1, d2] = record.result;
+  const parts = [`${d1} + ${d2} = ${d1 + d2}`];
+  if (record.doubles === true) {
+    parts.push("Doubles");
+  }
+  return ` · ${parts.join(" · ")}`;
 }
 
 function tilePositionFromPayload(
@@ -323,6 +689,9 @@ function payloadSuffix(
   }
   if (actionType === "player_state_changed") {
     return formatPlayerStateChange(record, tileNames, currencySettings);
+  }
+  if (actionType === "roll_dice") {
+    return formatDiceRoll(record);
   }
 
   if (TILE_NAME_ONLY_LOG_TYPES.has(canonicalType)) {
@@ -402,6 +771,79 @@ function payloadSuffix(
   }
 
   return actionType.includes("_") ? "" : `: ${JSON.stringify(payload)}`;
+}
+
+function trimPayloadPrefix(value: string): string {
+  return value.replace(/^ · /, "").replace(/^: /, "");
+}
+
+function splitLogDetails(value: string): string[] {
+  return trimPayloadPrefix(value)
+    .split(/\s+·\s+|;\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+export type GameLogDisplayEntry = {
+  actorName: string | null;
+  badge: string;
+  description: string;
+  details: string[];
+  eyebrow: string;
+  headline: string;
+  occurredAt: Date;
+  round: number;
+  timeLabel: string;
+  tone: GameLogTone;
+};
+
+export function describeGameLogEntry(
+  entry: GameLogEntry,
+  tileNames: Map<string, string>,
+  currencySettings: CurrencyDisplaySettings | string = "$",
+  playerNames?: Map<string, string>,
+): GameLogDisplayEntry {
+  const normalizedCurrencySettings =
+    typeof currencySettings === "string"
+      ? { currencySymbol: currencySettings }
+      : currencySettings;
+  const labelKey = canonicalLogActionType(entry.actionType);
+  const presentation =
+    ACTION_PRESENTATION[labelKey] ?? DEFAULT_ACTION_PRESENTATION;
+  const suffix = payloadSuffix(
+    entry.actionType,
+    entry.payload,
+    tileNames,
+    normalizedCurrencySettings,
+    playerNames,
+  );
+  const details =
+    entry.actionType === "player_state_changed"
+      ? formatFriendlyPlayerStateChange(
+          entry.payload,
+          tileNames,
+          normalizedCurrencySettings,
+        )
+      : splitLogDetails(suffix);
+  const occurredAt = new Date(entry.createdAt);
+
+  return {
+    actorName: entry.playerId
+      ? (playerNames?.get(entry.playerId) ?? entry.playerId)
+      : null,
+    badge: presentation.badge,
+    description: presentation.description,
+    details,
+    eyebrow: presentation.eyebrow,
+    headline: ACTION_LABELS[labelKey] ?? entry.actionType.replaceAll("_", " "),
+    occurredAt,
+    round: entry.round,
+    timeLabel: occurredAt.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    }),
+    tone: presentation.tone,
+  };
 }
 
 export function formatGameLogEntry(
