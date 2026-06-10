@@ -1,13 +1,13 @@
 import type { GameAction, GameState } from "@oligopoly/validation";
 import { tileLabel } from "../lib/boardDisplay";
-import { playerDisplayName } from "../lib/gameDisplay";
+import { formatCurrencyAmount, playerDisplayName } from "../lib/gameDisplay";
+import { describeGameStep, gameActionAvailability } from "../lib/gameStepUi";
 import {
   canBuyPendingTile,
   isAuctionPhase,
   isMyTurn,
   ownedTilesForPlayer,
-  phaseUiDescriptor,
-  turnGuidance,
+  pendingPurchaseDecision,
 } from "../lib/gameUi";
 import { ActionPhaseExtras } from "./ActionPhaseExtras";
 import { AuctionPanel } from "./AuctionPanel";
@@ -20,14 +20,41 @@ type GamePlayControlsProps = {
   myPlayerId: string | null;
   tileNames: Map<string, string>;
   busy: boolean;
+  pendingAction?: { type: GameAction["type"]; label: string } | null;
   onAction: (label: string, action: GameAction) => Promise<void>;
 };
+
+function actionButtonLabel(
+  actionType: GameAction["type"],
+  idleLabel: string,
+  pendingAction: GamePlayControlsProps["pendingAction"],
+): string {
+  if (pendingAction?.type !== actionType) return idleLabel;
+
+  switch (actionType) {
+    case "buy_tile":
+      return "Buying...";
+    case "decline_tile":
+      return "Opening auction...";
+    case "draw_market_event":
+      return "Drawing...";
+    case "end_turn":
+      return "Ending...";
+    case "path_choice":
+      return "Choosing...";
+    case "roll_dice":
+      return "Rolling...";
+    default:
+      return "Applying...";
+  }
+}
 
 export function GamePlayControls({
   state,
   myPlayerId,
   tileNames,
   busy,
+  pendingAction,
   onAction,
 }: GamePlayControlsProps) {
   const myTurn = isMyTurn(state, myPlayerId);
@@ -36,9 +63,15 @@ export function GamePlayControls({
   const ownedTiles = myPlayerId ? ownedTilesForPlayer(state, myPlayerId) : [];
   const gameOver = state.phase === "game_over";
   const insiderPeek = state.pendingInsiderPeek ?? undefined;
-  const guidance = turnGuidance(state, myPlayerId);
-  const phaseUi = phaseUiDescriptor(state.phase);
   const canBuyTile = canBuyPendingTile(state, myPlayerId);
+  const step = describeGameStep(state, myPlayerId);
+  const actions = gameActionAvailability(state, myPlayerId);
+  const purchaseDecision = myTurn
+    ? pendingPurchaseDecision(state, myPlayerId)
+    : null;
+  const purchaseTileName = purchaseDecision
+    ? tileLabel(purchaseDecision.tilePosition, tileNames)
+    : null;
 
   if (state.phase === "waiting_for_insider_peek") {
     return (
@@ -65,19 +98,63 @@ export function GamePlayControls({
 
   return (
     <>
-      {!myPlayerId && (
-        <p className="muted">
-          Sign in as a game participant to take actions on your turn.
-        </p>
-      )}
+      <div className="auctionPanel playStepPanel" aria-live="polite">
+        <p className="turnGuidance ok">{step.eyebrow}</p>
+        <h3>{step.title}</h3>
+        <p>{step.description}</p>
+        <p className="muted">{step.coaching}</p>
 
-      {myPlayerId && !myTurn && !auctionActive && (
-        <p className="muted">Waiting for the current player to act…</p>
-      )}
-
-      {myTurn && !auctionActive && guidance && (
-        <p className="turnGuidance ok">{guidance}</p>
-      )}
+        {purchaseDecision && purchaseTileName && (
+          <>
+            <dl className="purchaseDecisionGrid">
+              <div>
+                <dt>Tile</dt>
+                <dd>
+                  <strong>{purchaseTileName}</strong>
+                </dd>
+              </div>
+              <div>
+                <dt>Price</dt>
+                <dd>
+                  {purchaseDecision.acquisitionCost === null
+                    ? "Unknown"
+                    : formatCurrencyAmount(
+                        purchaseDecision.acquisitionCost,
+                        state.settings,
+                      )}
+                </dd>
+              </div>
+              <div>
+                <dt>Your cash</dt>
+                <dd>
+                  {purchaseDecision.playerCapital === null
+                    ? "Unknown"
+                    : formatCurrencyAmount(
+                        purchaseDecision.playerCapital,
+                        state.settings,
+                      )}
+                </dd>
+              </div>
+              <div>
+                <dt>After buying</dt>
+                <dd>
+                  {purchaseDecision.cashAfterPurchase === null
+                    ? "Not enough cash"
+                    : formatCurrencyAmount(
+                        purchaseDecision.cashAfterPurchase,
+                        state.settings,
+                      )}
+                </dd>
+              </div>
+            </dl>
+            <p className={purchaseDecision.canAfford ? "ok" : "muted"}>
+              {purchaseDecision.canAfford
+                ? "Buy if this tile advances your sector control or blocks a rival. Decline if you want the table to price it through auction."
+                : "You cannot afford the face-value purchase, but declining still opens the auction path."}
+            </p>
+          </>
+        )}
+      </div>
 
       <RateCardPanel
         state={state}
@@ -96,7 +173,7 @@ export function GamePlayControls({
 
       {myTurn && !auctionActive && (
         <div className="buttonRow">
-          {phaseUi.canDrawMarketEvent && (
+          {actions.canDrawMarketEvent && (
             <button
               type="button"
               className="button"
@@ -107,11 +184,15 @@ export function GamePlayControls({
                 })
               }
             >
-              Retry market event draw
+              {actionButtonLabel(
+                "draw_market_event",
+                "Retry draw",
+                pendingAction,
+              )}
             </button>
           )}
 
-          {phaseUi.canRollDice && (
+          {actions.canRollDice && (
             <button
               type="button"
               className="button"
@@ -120,11 +201,11 @@ export function GamePlayControls({
                 void onAction("Rolled dice", { type: "roll_dice" })
               }
             >
-              Roll dice
+              {actionButtonLabel("roll_dice", "Roll dice", pendingAction)}
             </button>
           )}
 
-          {phaseUi.canResolvePurchase && pendingTile !== null && (
+          {actions.canResolvePurchase && pendingTile !== null && (
             <>
               {canBuyTile && (
                 <button
@@ -138,7 +219,11 @@ export function GamePlayControls({
                     })
                   }
                 >
-                  Buy tile
+                  {actionButtonLabel(
+                    "buy_tile",
+                    `Buy ${purchaseTileName ?? "tile"}`,
+                    pendingAction,
+                  )}
                 </button>
               )}
 
@@ -153,12 +238,16 @@ export function GamePlayControls({
                   })
                 }
               >
-                Decline tile
+                {actionButtonLabel(
+                  "decline_tile",
+                  "Decline - start auction",
+                  pendingAction,
+                )}
               </button>
             </>
           )}
 
-          {phaseUi.canChoosePath && (
+          {actions.canChoosePath && (
             <>
               <button
                 type="button"
@@ -171,7 +260,11 @@ export function GamePlayControls({
                   })
                 }
               >
-                Perimeter path
+                {actionButtonLabel(
+                  "path_choice",
+                  "Take perimeter path",
+                  pendingAction,
+                )}
               </button>
 
               <button
@@ -185,19 +278,23 @@ export function GamePlayControls({
                   })
                 }
               >
-                Diagonal path
+                {actionButtonLabel(
+                  "path_choice",
+                  "Take Diagonal Express",
+                  pendingAction,
+                )}
               </button>
             </>
           )}
 
-          {phaseUi.canEndTurn && (
+          {actions.canEndTurn && (
             <button
               type="button"
               className="button buttonSecondary"
               disabled={busy}
               onClick={() => void onAction("Ended turn", { type: "end_turn" })}
             >
-              End turn
+              {actionButtonLabel("end_turn", "End turn", pendingAction)}
             </button>
           )}
         </div>

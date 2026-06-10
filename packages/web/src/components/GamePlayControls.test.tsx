@@ -1,7 +1,200 @@
 import type { GameState } from "@oligopoly/validation";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { ActionPhaseExtras } from "./ActionPhaseExtras";
 import { GamePlayControls } from "./GamePlayControls";
+
+const tileNames = new Map([
+  ["6", "Search Engine Corp."],
+  ["8", "Social Media Platform"],
+  ["9", "Cloud Infrastructure"],
+]);
+
+function baseGameState(overrides: Partial<GameState> = {}): GameState {
+  return {
+    gameId: "g",
+    round: 1,
+    phase: "waiting_for_roll",
+    currentPlayerIndex: 0,
+    turnOrder: ["me", "opponent"],
+    freeMarketPool: 0,
+    pendingBuyTilePosition: null,
+    lastDiceRoll: null,
+    winnerId: null,
+    eliminatedPlayerIds: [],
+    myAffinityCardId: null,
+    players: [
+      {
+        playerId: "me",
+        displayName: "Ada",
+        position: 0,
+        capital: 500,
+        ownedTilePositions: [],
+        mortgagedTilePositions: [],
+        developmentTokens: {},
+        trustworthiness: 7,
+        actionPointsRemaining: 2,
+        inRegulation: false,
+        doublesCount: 0,
+        isOnDiagonal: false,
+      },
+      {
+        playerId: "opponent",
+        displayName: "Grace",
+        position: 1,
+        capital: 500,
+        ownedTilePositions: [],
+        mortgagedTilePositions: [],
+        developmentTokens: {},
+        trustworthiness: 7,
+        actionPointsRemaining: 0,
+        inRegulation: false,
+        doublesCount: 0,
+        isOnDiagonal: false,
+      },
+    ],
+    tiles: [],
+    ...overrides,
+  };
+}
+
+describe("GamePlayControls next-action guidance", () => {
+  it("foregrounds roll guidance without changing the roll action", async () => {
+    const onAction = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <GamePlayControls
+        state={baseGameState()}
+        myPlayerId="me"
+        tileNames={tileNames}
+        busy={false}
+        onAction={onAction}
+      />,
+    );
+
+    expect(screen.getByText("Movement")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Roll to move" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/the server rolls the dice and moves you/i),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Roll dice" }));
+
+    await waitFor(() => {
+      expect(onAction).toHaveBeenCalledWith("Rolled dice", {
+        type: "roll_dice",
+      });
+    });
+  });
+
+  it("renames and disables the active action while waiting on the server", () => {
+    render(
+      <GamePlayControls
+        state={baseGameState()}
+        myPlayerId="me"
+        tileNames={tileNames}
+        busy={true}
+        pendingAction={{ label: "Rolled dice", type: "roll_dice" }}
+        onAction={async () => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Rolling..." })).toBeDisabled();
+  });
+
+  it("explains buy and decline decisions with face-value purchase context", async () => {
+    const onAction = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <GamePlayControls
+        state={baseGameState({
+          phase: "waiting_for_buy",
+          pendingBuyTilePosition: 6,
+        })}
+        myPlayerId="me"
+        tileNames={tileNames}
+        busy={false}
+        onAction={onAction}
+      />,
+    );
+
+    expect(screen.getByText("Right of first refusal")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        name: "Buy the tile or open an auction",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Search Engine Corp.")).toBeInTheDocument();
+    expect(screen.getByText("$140")).toBeInTheDocument();
+    expect(screen.getByText("$500")).toBeInTheDocument();
+    expect(screen.getByText("$360")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /declining starts an auction where every eligible player/i,
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Buy Search Engine Corp." }),
+    );
+
+    await waitFor(() => {
+      expect(onAction).toHaveBeenCalledWith("Bought tile", {
+        type: "buy_tile",
+        tilePosition: 6,
+      });
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Decline - start auction" }),
+    );
+
+    await waitFor(() => {
+      expect(onAction).toHaveBeenCalledWith("Declined tile", {
+        type: "decline_tile",
+        tilePosition: 6,
+      });
+    });
+  });
+
+  it("explains route choice while preserving path actions", async () => {
+    const onAction = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <GamePlayControls
+        state={baseGameState({ phase: "waiting_for_path_choice" })}
+        myPlayerId="me"
+        tileNames={tileNames}
+        busy={false}
+        onAction={onAction}
+      />,
+    );
+
+    expect(screen.getByText("Route choice")).toBeInTheDocument();
+    expect(
+      screen.getByText(/perimeter keeps you on the outer board/i),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Take Diagonal Express" }),
+    );
+
+    await waitFor(() => {
+      expect(onAction).toHaveBeenCalledWith("Chose diagonal path", {
+        type: "path_choice",
+        choice: "diagonal",
+      });
+    });
+  });
+});
 
 describe("GamePlayControls economics dialogs", () => {
   it("shows currency-valued development economics with active affinity modifiers", () => {
@@ -45,13 +238,7 @@ describe("GamePlayControls economics dialogs", () => {
       <GamePlayControls
         state={state}
         myPlayerId="me"
-        tileNames={
-          new Map([
-            ["6", "Search Engine Corp."],
-            ["8", "Social Media Platform"],
-            ["9", "Cloud Infrastructure"],
-          ])
-        }
+        tileNames={tileNames}
         busy={false}
         onAction={async () => undefined}
       />,

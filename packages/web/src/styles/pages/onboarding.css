@@ -1,0 +1,549 @@
+.firstGameGuide,
+.homeSecondaryActions {
+  display: grid;
+  gap: 1rem;
+}
+
+.homeHero {
+  min-width: 0;
+  min-height: 24rem;
+  display: grid;
+  align-items: center;
+  gap: clamp(1rem, 3vw, 2rem);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: clamp(1rem, 4vw, 2rem);
+  background:
+    linear-gradient(135deg, var(--color-surface-strong), transparent 74%),
+    var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.homeHeroCopy {
+  min-width: 0;
+  max-width: 42rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.homeHero .pageTitle {
+  max-width: 11ch;
+  font-size: clamp(3rem, 8vw, 5.8rem);
+  line-height: 0.92;
+  overflow-wrap: normal;
+}
+
+.homeHero .tagline {
+  max-width: 38rem;
+  font-size: clamp(1rem, 2vw, 1.28rem);
+}
+
+.homeHeroVisual {
+  min-width: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.homeBoardPreview {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 1;
+  min-height: clamp(15rem, 28vw, 22rem);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.92),
+      color-mix(in srgb, var(--color-bg-soft) 78%, white)
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 2.2rem,
+      var(--color-border) 2.2rem calc(2.2rem + 1px)
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0 2.2rem,
+      var(--color-border) 2.2rem calc(2.2rem + 1px)
+    );
+  box-shadow: 0 18px 42px rgba(18, 34, 27, 0.1);
+}
+
+.homeBoardRail {
+  position: absolute;
+  border: 1px solid var(--color-border-strong);
+  background: color-mix(in srgb, var(--color-surface-strong) 78%, transparent);
+}
+
+.homeBoardRailTop,
+.homeBoardRailBottom {
+  left: 1rem;
+  right: 1rem;
+  height: 3.2rem;
+}
+
+.homeBoardRailTop {
+  top: 1rem;
+}
+
+.homeBoardRailBottom {
+  bottom: 1rem;
+}
+
+.homeBoardRailLeft,
+.homeBoardRailRight {
+  top: 1rem;
+  bottom: 1rem;
+  width: 3.2rem;
+}
+
+.homeBoardRailLeft {
+  left: 1rem;
+}
+
+.homeBoardRailRight {
+  right: 1rem;
+}
+
+.homeBoardRoute {
+  position: absolute;
+  inset: 4.8rem;
+  border: 2px dashed color-mix(in srgb, var(--color-accent) 54%, transparent);
+  border-radius: 999px;
+  transform: rotate(-12deg);
+}
+
+.homeBoardToken {
+  position: absolute;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 3px solid var(--color-surface-strong);
+  border-radius: 50%;
+  box-shadow: 0 10px 24px rgba(18, 34, 27, 0.18);
+}
+
+.homeBoardTokenA {
+  top: 3rem;
+  left: 5.5rem;
+  background: var(--color-accent);
+}
+
+.homeBoardTokenB {
+  right: 4.7rem;
+  bottom: 4.25rem;
+  background: var(--color-warm);
+}
+
+.homeBoardDeal {
+  position: absolute;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  max-width: calc(100% - 2.5rem);
+  min-width: 9rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.72rem 0.82rem;
+  background: var(--color-surface-strong);
+  box-shadow: var(--shadow-card);
+}
+
+.homeBoardDeal span,
+.homeBoardDeal strong {
+  display: block;
+}
+
+.homeBoardDeal span {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.homeBoardDeal strong {
+  margin-top: 0.12rem;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.homeHeroStats {
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.statPill {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.72rem 0.8rem;
+  background: var(--color-surface-strong);
+}
+
+.statPill strong {
+  display: block;
+  color: var(--color-accent-strong);
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.statPill span {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.firstGameGuideHeader {
+  max-width: 60rem;
+}
+
+.firstGameGuideHeader h2,
+.firstGameGuideHeader p {
+  margin: 0;
+}
+
+.firstGameGuideGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(23rem, 100%), 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.firstGameGuideCard,
+.lobbyFirstGamePanel {
+  display: grid;
+  gap: 1rem;
+}
+
+.firstGameGuideCard {
+  align-content: start;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: clamp(1rem, 3vw, 1.35rem);
+  background: color-mix(in srgb, var(--color-surface-strong) 88%, transparent);
+  box-shadow: 0 14px 36px rgba(18, 34, 27, 0.08);
+}
+
+.firstGameGuideCardHeader {
+  display: grid;
+  gap: 0.38rem;
+}
+
+.firstGameGuideCardHeader h3,
+.firstGameGuideCardHeader p {
+  margin: 0;
+}
+
+.firstGameSteps,
+.lobbySetupSteps {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  counter-reset: guide-step;
+}
+
+.firstGameStep,
+.lobbySetupSteps li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: start;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.72rem;
+  background: color-mix(in srgb, var(--color-surface-strong) 78%, transparent);
+  counter-increment: guide-step;
+}
+
+.firstGameStep::before,
+.lobbySetupSteps li::before {
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 50%;
+  color: var(--color-accent-strong);
+  background: var(--color-accent-soft);
+  font-weight: 950;
+  content: counter(guide-step);
+}
+
+.firstGameStep strong,
+.firstGameStep span,
+.lobbySetupSteps strong,
+.lobbySetupSteps span {
+  min-width: 0;
+  display: block;
+}
+
+.firstGameStep > strong,
+.firstGameStep > span,
+.lobbySetupSteps li > strong,
+.lobbySetupSteps li > span {
+  grid-column: 2;
+}
+
+.firstGameStep span,
+.lobbySetupSteps span {
+  margin-top: 0.16rem;
+}
+
+.firstGameGuideActions {
+  align-self: end;
+  display: grid;
+  gap: 0.55rem;
+  align-items: start;
+  margin-top: 0.25rem;
+}
+
+.firstGameGuideActions p {
+  margin: 0;
+}
+
+.homeUtilityRow {
+  border-top: 1px solid var(--color-border);
+  padding-top: 1rem;
+}
+
+.homeUtilityRow .pageHeader h2,
+.homeUtilityRow .pageHeader p {
+  margin: 0;
+}
+
+@media (max-width: 680px) {
+  .homeHeroStats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .homeHero {
+    min-height: auto;
+  }
+
+  .homeHero .buttonRow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .homeHero .button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .homeHero .pageTitle {
+    max-width: none;
+    font-size: clamp(2.45rem, 13vw, 3.55rem);
+    line-height: 0.95;
+  }
+
+  .homeHeroVisual {
+    gap: 0.65rem;
+  }
+
+  .homeBoardPreview {
+    min-height: 8.8rem;
+  }
+
+  .homeBoardDeal {
+    min-width: 7.5rem;
+    padding: 0.48rem 0.58rem;
+  }
+
+  .homeBoardDeal strong {
+    font-size: 1rem;
+  }
+
+  .statPill {
+    padding: 0.6rem;
+  }
+
+  .statPill strong {
+    font-size: 1.08rem;
+  }
+
+  .statPill span {
+    font-size: 0.68rem;
+  }
+}
+
+@media (min-width: 1040px) {
+  .homeHero {
+    grid-template-columns: minmax(0, 1.25fr) minmax(20rem, 0.75fr);
+    align-items: center;
+  }
+}
+
+.lobbyFirstGameIntro {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.lobbyFirstGameIntro h2,
+.lobbyFirstGameIntro p {
+  margin: 0;
+}
+
+.lobbySessionSummary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.72rem;
+}
+
+.lobbySessionSummary > div {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.82rem;
+  background: var(--color-surface-strong);
+}
+
+.lobbySessionSummary strong {
+  display: block;
+  margin-top: 0.22rem;
+  color: var(--color-text);
+  font-size: 1rem;
+}
+
+.lobbyLaunchChecklist {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.65rem;
+  padding: 0;
+  margin: 1rem 0;
+  list-style: none;
+}
+
+.lobbyLaunchChecklistItem {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1.7rem minmax(0, 1fr);
+  gap: 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.72rem;
+  background: var(--color-surface-strong);
+}
+
+.lobbyLaunchChecklistItem > span {
+  width: 1.7rem;
+  height: 1.7rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--color-muted);
+  background: var(--color-surface-muted);
+  font-weight: 950;
+}
+
+.lobbyLaunchChecklistItemComplete {
+  border-color: color-mix(
+    in srgb,
+    var(--color-accent) 42%,
+    var(--color-border)
+  );
+}
+
+.lobbyLaunchChecklistItemComplete > span {
+  color: var(--color-accent-strong);
+  background: var(--color-accent-soft);
+}
+
+.lobbyLaunchChecklistItem p,
+.lobbyRosterList span {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.lobbyRoster {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1rem 0;
+}
+
+.lobbyRosterList li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lobbyRosterList strong,
+.lobbyRosterList span {
+  display: block;
+}
+
+.technicalDetails {
+  margin: 1rem 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.72rem 0.85rem;
+  background: color-mix(in srgb, var(--color-surface-muted) 52%, transparent);
+}
+
+.technicalDetails summary {
+  color: var(--color-muted);
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.technicalDetails .detailsGrid {
+  margin-top: 0.72rem;
+}
+
+.playStepPanel,
+.purchaseDecisionGrid {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.playStepPanel h3,
+.playStepPanel p {
+  margin: 0;
+}
+
+.purchaseDecisionGrid {
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  margin: 0.85rem 0 0;
+}
+
+.auctionDecisionGrid {
+  margin-bottom: 0.85rem;
+}
+
+.purchaseDecisionGrid div {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.58rem 0.65rem;
+  background: var(--color-surface-strong);
+}
+
+.purchaseDecisionGrid dt,
+.purchaseDecisionGrid dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.purchaseDecisionGrid dt {
+  color: var(--color-muted);
+  font-size: 0.68rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.purchaseDecisionGrid dd {
+  margin-top: 0.18rem;
+  font-weight: 850;
+}

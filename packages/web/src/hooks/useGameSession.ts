@@ -4,7 +4,13 @@ import type {
   GameState,
   GameSummary,
 } from "@oligopoly/validation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { fetchGameConfig } from "../api/gameConfig";
 import {
   fetchGameLog,
@@ -21,6 +27,12 @@ import {
   mergeAuctionClientView,
 } from "../lib/gameUi";
 import { type GameSessionUpdate, useGameRealtime } from "./useGameRealtime";
+
+type PendingGameAction = {
+  label: string;
+  type: GameAction["type"];
+  startedAt: number;
+};
 
 function appendLogEntries(
   current: GameLogEntry[],
@@ -62,6 +74,12 @@ export function useGameSession(
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState(false);
   const [statusLine, setStatusLine] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingGameAction | null>(
+    null,
+  );
+  const [lastActionLatencyMs, setLastActionLatencyMs] = useState<number | null>(
+    null,
+  );
 
   const applySessionUpdate = useCallback((update: GameSessionUpdate) => {
     setState((current) => mergeAuctionClientView(current, update.state));
@@ -153,20 +171,34 @@ export function useGameSession(
   const runAction = useCallback(
     async (label: string, action: GameAction) => {
       if (!gameId) return;
+      const startedAt =
+        typeof performance === "undefined" ? Date.now() : performance.now();
       setBusyAction(true);
+      setPendingAction({ label, type: action.type, startedAt: Date.now() });
+      setStatusLine(`${label}...`);
+      setLastActionLatencyMs(null);
       setError(null);
       try {
         const next = await submitGameAction(gameId, action);
-        setState((current) => mergeAuctionClientView(current, next));
-        setStatusLine(label);
-        if (next.logEntries?.length) {
-          setLogEntries((current) =>
-            appendLogEntries(current, next.logEntries),
-          );
-        }
+        const finishedAt =
+          typeof performance === "undefined" ? Date.now() : performance.now();
+        const latencyMs = Math.max(0, Math.round(finishedAt - startedAt));
+
+        startTransition(() => {
+          setState((current) => mergeAuctionClientView(current, next));
+          setStatusLine(`${label} confirmed`);
+          setLastActionLatencyMs(latencyMs);
+          setPendingAction(null);
+          setBusyAction(false);
+          if (next.logEntries?.length) {
+            setLogEntries((current) =>
+              appendLogEntries(current, next.logEntries),
+            );
+          }
+        });
       } catch (e) {
         setError(e instanceof ApiError ? e.message : "Action failed");
-      } finally {
+        setPendingAction(null);
         setBusyAction(false);
       }
     },
@@ -207,6 +239,8 @@ export function useGameSession(
     error,
     loading,
     busyAction,
+    pendingAction,
+    lastActionLatencyMs,
     statusLine,
     wsStatus,
     turnDeadline,

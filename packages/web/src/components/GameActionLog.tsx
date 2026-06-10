@@ -1,4 +1,5 @@
 import type { GameLogEntry } from "@oligopoly/validation";
+import { useMemo } from "react";
 import type { CurrencyDisplaySettings } from "../lib/gameDisplay";
 import { describeGameLogEntry } from "../lib/gameLogDisplay";
 import { InfoDialog } from "./InfoDialog";
@@ -11,6 +12,8 @@ type GameActionLogProps = {
   playerNames?: Map<string, string>;
 };
 
+const VISIBLE_LOG_ENTRY_LIMIT = 50;
+
 export function GameActionLog({
   entries,
   tileNames,
@@ -18,15 +21,26 @@ export function GameActionLog({
   currencySettings,
   playerNames,
 }: GameActionLogProps) {
-  const displayEntries = [...entries].reverse().map((entry) => ({
-    id: entry.id,
-    display: describeGameLogEntry(
-      entry,
-      tileNames,
-      currencySettings ?? currencySymbol,
-      playerNames,
-    ),
-  }));
+  const hiddenEntryCount = Math.max(
+    0,
+    entries.length - VISIBLE_LOG_ENTRY_LIMIT,
+  );
+  const displayEntries = useMemo(
+    () =>
+      entries
+        .slice(-VISIBLE_LOG_ENTRY_LIMIT)
+        .reverse()
+        .map((entry) => ({
+          id: entry.id,
+          display: describeGameLogEntry(
+            entry,
+            tileNames,
+            currencySettings ?? currencySymbol,
+            playerNames,
+          ),
+        })),
+    [currencySettings, currencySymbol, entries, playerNames, tileNames],
+  );
 
   return (
     <section className="gameActionLogPanel" aria-labelledby="action-log-title">
@@ -70,6 +84,11 @@ export function GameActionLog({
           </ul>
         </InfoDialog>
       </div>
+      {hiddenEntryCount > 0 && (
+        <p className="gameActionLogLimit muted">
+          Showing latest {VISIBLE_LOG_ENTRY_LIMIT} of {entries.length} entries.
+        </p>
+      )}
 
       {displayEntries.length === 0 ? (
         <div className="gameActionLogEmpty">
@@ -83,7 +102,12 @@ export function GameActionLog({
           </p>
         </div>
       ) : (
-        <div className="gameActionLog" role="feed" aria-label="Game activity">
+        <div
+          className="gameActionLog"
+          role="feed"
+          aria-label="Game activity"
+          aria-live="polite"
+        >
           {displayEntries.map(({ id, display }) => (
             <article
               key={id}

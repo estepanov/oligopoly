@@ -293,7 +293,7 @@ describe("core game display names", () => {
     ).toBeInTheDocument();
   });
 
-  it("groups board table players by syndicate with shared totals", () => {
+  it("renders compact board context with player display names", () => {
     const base = actionState();
     const [adaBase, graceBase] = base.players ?? [];
     if (!adaBase || !graceBase) {
@@ -344,21 +344,18 @@ describe("core game display names", () => {
       />,
     );
 
-    const table = screen.getByRole("table", {
-      name: /player standings grouped by syndicate/i,
-    });
-    const syndicateRow = within(table).getByText("Syndicate 1").closest("tr");
-    expect(syndicateRow).not.toBeNull();
+    expect(screen.getByText("You are on")).toBeInTheDocument();
+    expect(screen.getAllByText("START").length).toBeGreaterThan(0);
+    expect(screen.getByText("Your capital")).toBeInTheDocument();
+    expect(screen.getByText("$500")).toBeInTheDocument();
+    expect(screen.getByText("Owned tiles")).toBeInTheDocument();
+    expect(screen.getByText(/active player:/i)).toBeInTheDocument();
+    const positions = screen.getByRole("list", { name: /player positions/i });
+    expect(within(positions).getByText("You")).toBeInTheDocument();
+    expect(within(positions).getByText("Grace")).toBeInTheDocument();
     expect(
-      within(table).getByText(/2 members \| Admin You/i),
+      within(positions).getByText("Digital Content Co."),
     ).toBeInTheDocument();
-    expect(
-      within(syndicateRow as HTMLElement).getByText("$800"),
-    ).toBeInTheDocument();
-    expect(
-      within(syndicateRow as HTMLElement).getByText("$300"),
-    ).toBeInTheDocument();
-    expect(within(table).getByText("Grace")).toBeInTheDocument();
   });
 
   it("renders display names in auction, negotiation, affinity, and syndicate controls", () => {

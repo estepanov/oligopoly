@@ -16,19 +16,27 @@ const requestWithEnv = (
     headers?: Record<string, string>;
     body?: unknown;
     db?: D1Database;
+    env?: Record<string, unknown>;
+    executionCtx?: ExecutionContext;
   } = {},
 ) => {
-  const { method = "GET", headers = {}, body, db } = options;
+  const { method = "GET", headers = {}, body, db, env, executionCtx } = options;
   const init: RequestInit = { method, headers: { ...headers } };
   if (body) {
     (init.headers as Record<string, string>)["Content-Type"] =
       "application/json";
     init.body = JSON.stringify(body);
   }
-  return app.request(path, init, {
-    ALLOWED_ORIGINS: "http://localhost:5173",
-    DB: db,
-  });
+  return app.request(
+    path,
+    init,
+    {
+      ALLOWED_ORIGINS: "http://localhost:5173",
+      DB: db,
+      ...env,
+    },
+    executionCtx,
+  );
 };
 
 export async function markLobbyPlayersReady(

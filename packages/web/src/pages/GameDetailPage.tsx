@@ -1,9 +1,11 @@
+import { useDeferredValue, useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../components/AuthContext";
 import { BoardGrid } from "../components/BoardGrid";
 import { GameActionLog } from "../components/GameActionLog";
 import { GameBoardPanel } from "../components/GameBoardPanel";
 import { GamePlayControls } from "../components/GamePlayControls";
+import { GameStatusHeader } from "../components/GameStatusHeader";
 import { PlayerSummaryPanel } from "../components/PlayerSummaryPanel";
 import { useGameSession } from "../hooks/useGameSession";
 import { playerDisplayName, playerNameMap } from "../lib/gameDisplay";
@@ -21,6 +23,8 @@ export function GameDetailPage() {
     error,
     loading,
     busyAction,
+    pendingAction,
+    lastActionLatencyMs,
     statusLine,
     wsStatus,
     turnDeadline,
@@ -30,8 +34,20 @@ export function GameDetailPage() {
     runAction,
     refresh,
   } = useGameSession(id, user?.userId ?? null);
-  const actorId = state ? currentActorId(state) : null;
-  const namesByPlayerId = state ? playerNameMap(state) : undefined;
+  const deferredState = useDeferredValue(state);
+  const deferredLogEntries = useDeferredValue(logEntries);
+  const actorId = useMemo(
+    () => (state ? currentActorId(state) : null),
+    [state],
+  );
+  const deferredActorId = useMemo(
+    () => (deferredState ? currentActorId(deferredState) : null),
+    [deferredState],
+  );
+  const namesByPlayerId = useMemo(
+    () => (deferredState ? playerNameMap(deferredState) : undefined),
+    [deferredState],
+  );
 
   if (!id) {
     return (
@@ -44,64 +60,98 @@ export function GameDetailPage() {
 
   return (
     <div className="gamePage">
-      <header className="pageHeader">
-        <p className="muted" style={{ margin: 0 }}>
-          <Link to="/games">All games</Link>
-          {" / "}
-          <Link to="/lobbies">Lobbies</Link>
-        </p>
-        <h1 className="pageTitle">Game</h1>
-        <p className="tagline">
-          <code className="inline">{id}</code>
-        </p>
-        <div className="statusStrip">
-          <span className="statusChip">Realtime {wsStatus}</span>
-          <span className="statusChip">{myTurn ? "Your turn" : "Waiting"}</span>
-          {turnDeadline && (
-            <span className="statusChip">
-              Deadline {new Date(turnDeadline).toLocaleTimeString()}
-            </span>
-          )}
-        </div>
-      </header>
+      <GameStatusHeader
+        gameId={id}
+        state={state}
+        actorId={actorId}
+        myPlayerId={myPlayerId}
+        myTurn={myTurn}
+        wsStatus={wsStatus}
+        turnDeadline={turnDeadline}
+        timerKind={timerKind}
+      />
 
       <div className="gameWorkspace">
-        <section className="gamePrimary" aria-label="Board and players">
-          {state && (
+        <section className="card gamePlayCard" aria-label="Play controls">
+          <h2>Play</h2>
+          {loading && <p className="muted">Loading table state...</p>}
+          {error && (
+            <p className="errorText" role="alert">
+              {error}
+            </p>
+          )}
+          {state ? (
             <>
-              <div className="gamePageBoard card">
-                <h2>Board</h2>
-                <BoardGrid
-                  state={state}
-                  tileNames={tileNames}
-                  tileDetails={tileDetails}
-                  myPlayerId={myPlayerId}
-                  actorId={actorId}
-                />
-                <GameBoardPanel
-                  state={state}
-                  tileNames={tileNames}
-                  myPlayerId={myPlayerId}
-                  actorId={actorId}
-                />
-              </div>
+              <dl className="detailsGrid">
+                <dt className="muted">Realtime</dt>
+                <dd>{wsStatus}</dd>
+                <dt className="muted">Your turn</dt>
+                <dd>{myTurn ? "Yes" : "No"}</dd>
+                <dt className="muted">
+                  {timerKind === "auction_bids"
+                    ? "Auction closes"
+                    : timerKind === "auction_settle"
+                      ? "Auction reveals"
+                      : "Turn deadline"}
+                </dt>
+                <dd>
+                  {turnDeadline
+                    ? new Date(turnDeadline).toLocaleTimeString()
+                    : "—"}
+                </dd>
+              </dl>
 
-              <PlayerSummaryPanel
+              <GamePlayControls
                 state={state}
                 myPlayerId={myPlayerId}
                 tileNames={tileNames}
-                actorId={actorId}
+                busy={busyAction}
+                pendingAction={pendingAction}
+                onAction={runAction}
               />
+
+              {pendingAction && (
+                <div className="actionPendingBanner" role="status">
+                  <span className="actionPendingPulse" aria-hidden="true" />
+                  <span>
+                    <strong>{pendingAction.label}</strong>
+                    <span className="actionPendingDetail">
+                      Waiting for server confirmation...
+                    </span>
+                  </span>
+                </div>
+              )}
+
+              <div className="buttonRow gameRefreshActions">
+                <button
+                  type="button"
+                  className="button buttonSecondary"
+                  disabled={busyAction}
+                  onClick={() => void refresh()}
+                >
+                  Refresh
+                </button>
+              </div>
+              {statusLine && (
+                <p className="muted actionLatencyLine">
+                  {statusLine}
+                  {lastActionLatencyMs !== null
+                    ? ` in ${lastActionLatencyMs} ms`
+                    : ""}
+                </p>
+              )}
             </>
-          )}
+          ) : !loading && !error ? (
+            <p className="muted">
+              Sign in as a game participant to load state.
+            </p>
+          ) : null}
         </section>
 
-        <aside className="gameSideRail" aria-label="Game controls">
-          <div className="card">
-            <h2>Summary</h2>
-            {loading && <p className="muted">Loading…</p>}
-            {error && <p className="errorText">{error}</p>}
-            {!loading && !error && game && (
+        <aside className="gameSecondaryRail" aria-label="Table details">
+          <div className="card gameSummaryCard">
+            <h2>Table details</h2>
+            {!loading && game && (
               <dl className="detailsGrid">
                 <dt className="muted">Status</dt>
                 <dd>{game.status}</dd>
@@ -113,79 +163,61 @@ export function GameDetailPage() {
                 <dd>
                   {game.endedAt !== null
                     ? new Date(game.endedAt).toLocaleString()
-                    : "—"}
+                    : "-"}
                 </dd>
                 <dt className="muted">Winner</dt>
                 <dd>
-                  {state && game.winnerId
-                    ? playerDisplayName(state, game.winnerId, { myPlayerId })
-                    : (game.winnerId ?? "—")}
+                  {deferredState && game.winnerId
+                    ? playerDisplayName(deferredState, game.winnerId, {
+                        myPlayerId,
+                      })
+                    : (game.winnerId ?? "-")}
                 </dd>
               </dl>
             )}
           </div>
 
-          <div className="card gamePlayCard">
-            <h2>Play</h2>
-            {state ? (
-              <>
-                <dl className="detailsGrid">
-                  <dt className="muted">Realtime</dt>
-                  <dd>{wsStatus}</dd>
-                  <dt className="muted">Your turn</dt>
-                  <dd>{myTurn ? "Yes" : "No"}</dd>
-                  <dt className="muted">
-                    {timerKind === "auction_bids"
-                      ? "Auction closes"
-                      : timerKind === "auction_settle"
-                        ? "Auction reveals"
-                        : "Turn deadline"}
-                  </dt>
-                  <dd>
-                    {turnDeadline
-                      ? new Date(turnDeadline).toLocaleTimeString()
-                      : "—"}
-                  </dd>
-                </dl>
-
-                <GamePlayControls
-                  state={state}
-                  myPlayerId={myPlayerId}
-                  tileNames={tileNames}
-                  busy={busyAction}
-                  onAction={runAction}
-                />
-
-                <div className="buttonRow" style={{ marginTop: "1rem" }}>
-                  <button
-                    type="button"
-                    className="button buttonSecondary"
-                    disabled={busyAction}
-                    onClick={() => void refresh()}
-                  >
-                    Refresh
-                  </button>
-                </div>
-                {statusLine && <p className="muted">{statusLine}</p>}
-              </>
-            ) : (
-              <p className="muted">
-                Sign in as a game participant to load state.
-              </p>
-            )}
-          </div>
-
-          {state && (
+          {deferredState && (
             <div className="card">
               <GameActionLog
-                entries={logEntries}
+                entries={deferredLogEntries}
                 tileNames={tileNames}
-                currencySettings={state.settings}
+                currencySettings={deferredState.settings}
                 playerNames={namesByPlayerId}
               />
             </div>
           )}
         </aside>
+
+        <section className="gamePrimary" aria-label="Board and players">
+          {deferredState && (
+            <>
+              <div className="gamePageBoard card">
+                <h2>Board</h2>
+                <BoardGrid
+                  state={deferredState}
+                  tileNames={tileNames}
+                  tileDetails={tileDetails}
+                  myPlayerId={myPlayerId}
+                  actorId={deferredActorId}
+                />
+                <GameBoardPanel
+                  state={deferredState}
+                  tileNames={tileNames}
+                  myPlayerId={myPlayerId}
+                  actorId={deferredActorId}
+                />
+              </div>
+
+              <PlayerSummaryPanel
+                state={deferredState}
+                myPlayerId={myPlayerId}
+                tileNames={tileNames}
+                actorId={deferredActorId}
+              />
+            </>
+          )}
+        </section>
       </div>
     </div>
   );

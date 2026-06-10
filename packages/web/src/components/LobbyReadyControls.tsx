@@ -1,5 +1,10 @@
 import type { LobbyResponse } from "@oligopoly/validation";
 import { clearLobbyReady, setLobbyReady } from "../api/lobbies";
+import {
+  lobbyPlayerLabel,
+  lobbyPlayerRole,
+  sortedLobbyPlayers,
+} from "../lib/lobbyDisplay";
 
 type LobbyReadyControlsProps = {
   lobby: LobbyResponse;
@@ -52,11 +57,16 @@ export function LobbyReadyControls({
           ? "All players are ready. An admin can start the game."
           : "Every human player must mark ready before the admin can start."}
       </p>
-      <ul className="plainList muted">
-        {lobby.players.map((player) => (
+      <ul className="plainList muted lobbyRosterList">
+        {sortedLobbyPlayers(lobby.players).map((player, index) => (
           <li key={player.userId}>
-            <code className="inline">{player.userId}</code>
-            {player.isReady ? " — ready" : " — not ready"}
+            <div>
+              <strong>{lobbyPlayerLabel(player, index, userId)}</strong>
+              <span>{lobbyPlayerRole(player)}</span>
+            </div>
+            <span className={player.isReady ? "ok" : "muted"}>
+              {player.isReady ? "Ready" : "Not ready"}
+            </span>
           </li>
         ))}
       </ul>

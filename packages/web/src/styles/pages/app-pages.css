@@ -49,72 +49,6 @@
   gap: 1rem;
 }
 
-.homeHero {
-  min-height: min(56vh, 34rem);
-  display: grid;
-  align-items: end;
-  gap: 1rem;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: clamp(1.1rem, 4vw, 2.4rem);
-  background:
-    linear-gradient(
-      125deg,
-      color-mix(in srgb, var(--color-surface-strong) 86%, transparent),
-      transparent 58%
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent 0 2.6rem,
-      var(--color-border) 2.6rem calc(2.6rem + 1px)
-    ),
-    repeating-linear-gradient(
-      0deg,
-      transparent 0 2.6rem,
-      var(--color-border) 2.6rem calc(2.6rem + 1px)
-    ),
-    var(--color-surface);
-  box-shadow: var(--shadow-card);
-}
-
-.homeHeroCopy {
-  max-width: 48rem;
-  display: grid;
-  gap: 0.75rem;
-}
-
-.homeHeroStats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.65rem;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-
-.statPill {
-  min-width: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 0.8rem;
-  background: var(--color-surface-strong);
-}
-
-.statPill strong {
-  display: block;
-  color: var(--color-accent-strong);
-  font-family: var(--font-display);
-  font-size: 1.45rem;
-  line-height: 1;
-}
-
-.statPill span {
-  color: var(--color-muted);
-  font-size: 0.78rem;
-  font-weight: 850;
-}
-
 .lobbyWorkspace,
 .gameWorkspace {
   display: grid;
@@ -123,8 +57,7 @@
 
 .lobbyPrimary,
 .lobbyLists,
-.gamePrimary,
-.gameSideRail {
+.gamePrimary {
   min-width: 0;
   display: grid;
   gap: 1rem;
@@ -166,14 +99,6 @@
 .gamePageBoard {
   display: grid;
   gap: 0.9rem;
-}
-
-.gameSideRail {
-  order: -1;
-}
-
-.gamePlayCard {
-  order: -1;
 }
 
 .gameBoardTable {
@@ -712,6 +637,11 @@
   font-weight: 800;
 }
 
+.gameActionLogLimit {
+  margin: -0.25rem 0 0;
+  font-size: 0.76rem;
+}
+
 .gameActionLog {
   max-height: min(32rem, 58vh);
   display: grid;
@@ -737,6 +667,9 @@
       transparent 42%
     ),
     color-mix(in srgb, var(--color-surface-strong) 82%, transparent);
+}
+
+.gameActionLogItem:first-child {
   animation: actionLogIn 0.24s ease both;
 }
 
@@ -2032,11 +1965,8 @@
     width: 100%;
   }
 
-  .homeHeroStats {
-    grid-template-columns: 1fr;
-  }
-
-  .pageTitle {
+  .pageShell .pageTitle,
+  .authPage .pageTitle {
     overflow-wrap: anywhere;
   }
 
@@ -2207,176 +2137,6 @@
   .gameBoardSyndicateMemberRow td:first-child {
     padding-left: 0;
   }
-
-  .boardGrid {
-    min-width: 0;
-    gap: 0.12rem;
-    padding: 0.25rem;
-  }
-
-  .boardGridCell {
-    gap: 0.08rem;
-    padding: 0.2rem;
-  }
-
-  .boardGridCell-bottom {
-    padding-top: 0.58rem;
-  }
-
-  .boardGridCell-bottom .boardGridSectorBand,
-  .boardGridCell-top .boardGridSectorBand,
-  .boardGridCellCorner .boardGridSectorBand,
-  .boardGridCell-diagonal .boardGridSectorBand {
-    inset-inline: 0.16rem;
-    height: 0.26rem;
-  }
-
-  .boardGridCell-top {
-    padding-bottom: 0.58rem;
-  }
-
-  .boardGridCell-bottom .boardGridSectorBand {
-    top: 0.14rem;
-  }
-
-  .boardGridCell-top .boardGridSectorBand {
-    bottom: 0.14rem;
-  }
-
-  .boardGridCell-left {
-    padding-right: 0.5rem;
-  }
-
-  .boardGridCell-left .boardGridSectorBand {
-    inset: 0.16rem 0.12rem 0.16rem auto;
-    width: 0.2rem;
-  }
-
-  .boardGridCell-right {
-    padding-left: 0.5rem;
-  }
-
-  .boardGridCell-right .boardGridSectorBand {
-    inset: 0.16rem auto 0.16rem 0.12rem;
-    width: 0.2rem;
-  }
-
-  .boardGridCell-diagonal {
-    width: clamp(4.6rem, 18%, 5.8rem);
-    min-height: 3.75rem;
-    padding: 0.34rem 0.26rem;
-  }
-
-  .boardGridName {
-    display: -webkit-box;
-    font-size: 0.42rem;
-    line-height: 1.05;
-    -webkit-line-clamp: 2;
-  }
-
-  .boardGridCellCorner .boardGridName {
-    font-size: 0.46rem;
-    line-height: 0.98;
-    -webkit-line-clamp: 2;
-  }
-
-  .boardGridCellCorner .boardGridType,
-  .boardGridCellCorner .boardGridStatus {
-    display: none;
-  }
-
-  .boardGridType,
-  .boardGridStatus,
-  .boardGridMortgageBadge {
-    max-width: 100%;
-    padding: 0.04rem 0.12rem;
-    font-size: 0.34rem;
-  }
-
-  .boardGridTileMeta,
-  .boardGridFooter {
-    gap: 0.08rem;
-  }
-
-  .boardGridDevelopment {
-    gap: 0.04rem;
-  }
-
-  .boardGridDevelopment span {
-    width: 0.18rem;
-    height: 0.18rem;
-  }
-
-  .boardGridCenter {
-    padding: 0.4rem;
-  }
-
-  .boardGridCenterTop,
-  .boardGridCenterBottom {
-    max-inline-size: 8.5rem;
-    gap: 0.08rem;
-  }
-
-  .boardGridCenterTop {
-    top: 15%;
-    left: 72%;
-  }
-
-  .boardGridCenterBottom {
-    top: 85%;
-    left: 28%;
-  }
-
-  .boardGridCenter strong {
-    font-size: 0.82rem;
-  }
-
-  .boardGridCenter .eyebrow {
-    display: none;
-  }
-
-  .boardGridCenter .muted {
-    display: block;
-    font-size: 0.48rem;
-    line-height: 1;
-  }
-
-  .boardGridDiagonalList {
-    display: none;
-  }
-
-  .boardGridSectorBand {
-    min-height: 0.28rem;
-  }
-
-  .boardGridPosition {
-    font-size: 0.55rem;
-  }
-
-  .boardGridOccupants {
-    min-width: 1rem;
-    min-height: 0.7rem;
-    padding: 0.08rem 0.16rem;
-    font-size: 0.44rem;
-  }
-}
-
-.gamePage .pageHeader {
-  gap: 0.32rem;
-}
-
-.gamePage .pageTitle {
-  font-size: clamp(1.65rem, 4vw, 2.8rem);
-  line-height: 1;
-}
-
-.gamePage .tagline {
-  max-width: 36rem;
-  font-size: 0.88rem;
-}
-
-.gamePage .statusStrip {
-  margin-top: 0.25rem;
 }
 
 @media (min-width: 760px) {
@@ -2484,29 +2244,8 @@
     gap: 1.15rem;
   }
 
-  .homeHero {
-    grid-template-columns: minmax(0, 1.25fr) minmax(20rem, 0.75fr);
-    align-items: end;
-  }
-
   .lobbyWorkspace {
     grid-template-columns: minmax(0, 1.08fr) minmax(25rem, 0.92fr);
-  }
-
-  .gameWorkspace {
-    grid-template-columns: minmax(38rem, 1.55fr) minmax(22rem, 0.8fr);
-    align-items: start;
-  }
-
-  .gamePrimary,
-  .gameSideRail,
-  .gamePlayCard {
-    order: initial;
-  }
-
-  .gameSideRail {
-    position: sticky;
-    top: calc(var(--nav-height) + 1rem);
   }
 }
 

@@ -1,7 +1,11 @@
 import { Link } from "react-router-dom";
+import { useAuth } from "../components/AuthContext";
+import { FirstGameGuide } from "../components/FirstGameGuide";
 import { env } from "../env";
 
 export function HomePage() {
+  const { user } = useAuth();
+
   return (
     <div className="homePage">
       <section className="homeHero" aria-labelledby="home-heading">
@@ -11,58 +15,77 @@ export function HomePage() {
             {env.appName}
           </h1>
           <p className="tagline">
-            A game of markets, alliances, and permanent commitment.
+            Create a private table, invite a friend or add AI, and learn each
+            turn with clear next-step prompts.
           </p>
           <div className="buttonRow">
-            <Link to="/lobbies" className="button">
-              Open lobbies
-            </Link>
-            <Link to="/leaderboard" className="button buttonSecondary">
-              Leaderboard
+            <a href="#first-game-guide-heading" className="button">
+              Start your first game
+            </a>
+            <Link
+              to={user ? "/lobbies" : "/login"}
+              className="button buttonSecondary"
+            >
+              {user ? "Open lobbies" : "Sign in"}
             </Link>
           </div>
         </div>
-        <ul className="homeHeroStats" aria-label="Game shape">
-          <li className="statPill">
-            <strong>2-6</strong>
-            <span>Seats per game</span>
-          </li>
-          <li className="statPill">
-            <strong>AI</strong>
-            <span>Solo or mixed lobbies</span>
-          </li>
-          <li className="statPill">
-            <strong>Live</strong>
-            <span>Realtime board state</span>
-          </li>
-        </ul>
+        <div className="homeHeroVisual">
+          <div className="homeBoardPreview" aria-hidden="true">
+            <div className="homeBoardRail homeBoardRailTop" />
+            <div className="homeBoardRail homeBoardRailRight" />
+            <div className="homeBoardRail homeBoardRailBottom" />
+            <div className="homeBoardRail homeBoardRailLeft" />
+            <div className="homeBoardToken homeBoardTokenA" />
+            <div className="homeBoardToken homeBoardTokenB" />
+            <div className="homeBoardRoute" />
+            <div className="homeBoardDeal">
+              <span>Ready</span>
+              <strong>Start table</strong>
+            </div>
+          </div>
+          <ul className="homeHeroStats" aria-label="Game shape">
+            <li className="statPill">
+              <strong>2-6</strong>
+              <span>Seats per game</span>
+            </li>
+            <li className="statPill">
+              <strong>Invite</strong>
+              <span>Private lobbies</span>
+            </li>
+            <li className="statPill">
+              <strong>AI</strong>
+              <span>Solo practice</span>
+            </li>
+          </ul>
+        </div>
       </section>
 
-      <div className="homeActionGrid">
-        <div className="card">
-          <h2>Start a table</h2>
-          <p className="muted">
-            Create a public lobby, share a private invite, or add AI seats for a
-            quieter solo setup.
-          </p>
-          <div className="buttonRow">
-            <Link to="/lobbies" className="button buttonSecondary">
-              Manage lobbies
-            </Link>
-            <Link to="/games" className="button buttonSecondary">
-              Browse games
-            </Link>
-          </div>
+      <FirstGameGuide />
+
+      <section
+        className="homeSecondaryActions homeUtilityRow"
+        aria-labelledby="home-more"
+      >
+        <div className="pageHeader">
+          <span className="eyebrow">After setup</span>
+          <h2 className="subheading" id="home-more">
+            Keep exploring
+          </h2>
         </div>
-        <div className="card">
-          <h2>Developer tools</h2>
-          <p className="muted">
-            Check worker health, inspect loaded board configuration, and run
-            local AI debugging from one compact panel.
-          </p>
-          <Link to="/dev">Open developer panel</Link>
+        <div className="buttonRow">
+          <Link to="/games" className="button buttonSecondary">
+            Browse active games
+          </Link>
+          <Link to="/leaderboard" className="button buttonSecondary">
+            View leaderboard
+          </Link>
         </div>
-      </div>
+        <p className="muted">
+          Local operator tools are still available in the{" "}
+          <Link to="/dev">developer panel</Link>.
+        </p>
+      </section>
     </div>
   );
 }

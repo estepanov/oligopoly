@@ -14,6 +14,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function failAfter(ms: number, message: string): Promise<never> {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(message)), ms);
+  });
+}
+
 describe("POST /api/games/:id/action — market events", () => {
   it("starts games by automatically drawing the first turn-start market event", async () => {
     const db = createD1Stub();
@@ -134,6 +140,55 @@ describe("POST /api/games/:id/action — basics", () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("game.invalid_action");
+  });
+
+  it("returns the persisted action response without waiting for durable notify follow-up", async () => {
+    const db = createD1Stub();
+    const { gameId, currentPlayer } = await createAndStartGame(db);
+    const waitUntilPromises: Promise<unknown>[] = [];
+    let notifyStarted = false;
+    let releaseNotify: ((response: Response) => void) | null = null;
+    const notifyPromise = new Promise<Response>((resolve) => {
+      releaseNotify = resolve;
+    });
+    const gameRoom = {
+      idFromName: () => "game-room-id",
+      get: () => ({
+        fetch: () => {
+          notifyStarted = true;
+          return notifyPromise;
+        },
+      }),
+    } as unknown as DurableObjectNamespace;
+    const executionCtx = {
+      waitUntil: (promise: Promise<unknown>) => {
+        waitUntilPromises.push(promise);
+      },
+    } as unknown as ExecutionContext;
+
+    const responsePromise = requestWithEnv(`/api/games/${gameId}/action`, {
+      method: "POST",
+      headers: { "x-subject": currentPlayer },
+      body: { type: "roll_dice", result: [3, 4] },
+      db,
+      env: { GAME_ROOM: gameRoom },
+      executionCtx,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(notifyStarted).toBe(true);
+    expect(waitUntilPromises).toHaveLength(1);
+
+    const res = await Promise.race([
+      responsePromise,
+      failAfter(100, "action response waited for durable notify"),
+    ]);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Server-Timing")).toContain("persist;dur=");
+
+    releaseNotify?.(new Response("ok"));
+    await Promise.all(waitUntilPromises);
   });
 
   it("rejects unknown action types via schema validation", async () => {

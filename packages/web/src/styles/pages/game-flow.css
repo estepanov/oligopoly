@@ -1,0 +1,337 @@
+.gamePage .gameWorkspace {
+  grid-template-areas:
+    "play"
+    "board"
+    "secondary";
+}
+
+.gamePage .gamePlayCard {
+  grid-area: play;
+  order: initial;
+}
+
+.gamePage .gamePrimary {
+  grid-area: board;
+}
+
+.gamePage .gameSecondaryRail {
+  min-width: 0;
+  display: grid;
+  grid-area: secondary;
+  gap: 1rem;
+  align-content: start;
+}
+
+.gameRefreshActions {
+  margin-top: 1rem;
+}
+
+.actionPendingBanner {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.9rem;
+  border: 1px solid
+    color-mix(in srgb, var(--color-accent) 34%, var(--color-border));
+  border-radius: var(--radius-md);
+  padding: 0.72rem 0.8rem;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+}
+
+.actionPendingBanner > span:last-child {
+  display: grid;
+  gap: 0.08rem;
+  min-width: 0;
+}
+
+.actionPendingBanner strong {
+  color: var(--color-text);
+  line-height: 1.1;
+}
+
+.actionPendingDetail {
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.actionPendingPulse {
+  width: 0.65rem;
+  height: 0.65rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 0.35rem var(--color-accent-soft);
+  animation: actionPendingPulse 900ms ease-in-out infinite;
+}
+
+.actionLatencyLine {
+  margin-top: 0.6rem;
+}
+
+@keyframes actionPendingPulse {
+  0%,
+  100% {
+    transform: scale(0.85);
+    opacity: 0.65;
+  }
+
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .actionPendingPulse {
+    animation: none;
+  }
+}
+
+.auctionBidInput {
+  display: block;
+  width: 100%;
+  max-width: 12rem;
+}
+
+.auctionActionRow {
+  margin-top: 0.75rem;
+}
+
+.boardContextGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 0.65rem;
+}
+
+.boardContextGrid > div {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.72rem;
+  background: var(--color-surface-strong);
+}
+
+.boardContextGrid strong {
+  display: block;
+  margin-top: 0.12rem;
+  font-family: var(--font-display);
+  font-size: 1.12rem;
+  line-height: 1.05;
+}
+
+.playerPositionChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.playerPositionChips li {
+  max-width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.38rem 0.58rem;
+  background: var(--color-surface-strong);
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+
+.playerPositionChips li.isActive {
+  border-color: color-mix(
+    in srgb,
+    var(--color-accent) 42%,
+    var(--color-border)
+  );
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+}
+
+.playerPositionChips strong {
+  color: var(--color-text);
+}
+
+.playerPositionChips span::before {
+  content: " at ";
+}
+
+.gamePage .pageHeader {
+  gap: 0.32rem;
+}
+
+.gamePage .pageTitle {
+  font-size: clamp(1.65rem, 4vw, 2.8rem);
+  line-height: 1;
+}
+
+.gamePage .tagline {
+  max-width: 36rem;
+  font-size: 0.88rem;
+}
+
+.gamePage .statusStrip {
+  margin-top: 0.25rem;
+}
+
+.mobileBoardOverview {
+  display: none;
+}
+
+@media (max-width: 680px) {
+  .gamePage .pageTitle {
+    overflow-wrap: anywhere;
+  }
+
+  .mobileBoardOverview {
+    display: grid;
+    gap: 0.9rem;
+  }
+
+  .mobileBoardHero {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .mobileBoardHero > div,
+  .mobileBoardFocusList li,
+  .mobileBoardDisclosure {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-strong);
+  }
+
+  .mobileBoardHero > div {
+    padding: 0.82rem;
+  }
+
+  .mobileBoardHero strong {
+    display: block;
+    margin-top: 0.15rem;
+    font-family: var(--font-display);
+    font-size: 1.08rem;
+    line-height: 1.12;
+  }
+
+  .mobileBoardFocusList,
+  .mobileBoardFullList {
+    padding: 0;
+    margin: 0;
+    list-style: none;
+  }
+
+  .mobileBoardFocusList {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .mobileBoardFocusList li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.25rem 0.65rem;
+    padding: 0.72rem;
+  }
+
+  .mobileBoardPosition {
+    display: inline-grid;
+    min-width: 2.35rem;
+    height: 2.1rem;
+    place-items: center;
+    border-radius: var(--radius-sm);
+    background: var(--color-accent-soft);
+    color: var(--color-accent-strong);
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    font-weight: 950;
+  }
+
+  .mobileBoardTileMain {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+
+  .mobileBoardTileMain strong {
+    font-size: 1rem;
+    line-height: 1.14;
+  }
+
+  .mobileBoardTileMain span,
+  .mobileBoardOccupants {
+    color: var(--color-muted);
+    font-size: 0.82rem;
+    line-height: 1.3;
+  }
+
+  .mobileBoardOccupants {
+    grid-column: 2;
+  }
+
+  .mobileBoardDisclosure {
+    padding: 0.72rem;
+  }
+
+  .mobileBoardDisclosure summary {
+    cursor: pointer;
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 900;
+  }
+
+  .mobileBoardFullList {
+    display: grid;
+    gap: 0.42rem;
+    max-height: 22rem;
+    overflow: auto;
+    padding-top: 0.72rem;
+  }
+
+  .mobileBoardFullList li {
+    display: grid;
+    grid-template-columns: 2.4rem minmax(0, 1fr);
+    gap: 0.12rem 0.5rem;
+    border-top: 1px solid var(--color-border);
+    padding-top: 0.42rem;
+  }
+
+  .mobileBoardFullList span {
+    color: var(--color-accent-strong);
+    font-family: var(--font-display);
+    font-weight: 950;
+  }
+
+  .mobileBoardFullList strong {
+    min-width: 0;
+    font-size: 0.92rem;
+    line-height: 1.16;
+  }
+
+  .mobileBoardFullList em,
+  .mobileBoardFullList small {
+    grid-column: 2;
+    color: var(--color-muted);
+    font-size: 0.78rem;
+    font-style: normal;
+  }
+
+  .boardGrid {
+    display: none;
+  }
+}
+
+@media (min-width: 1040px) {
+  .gamePage .gameWorkspace {
+    grid-template-columns: minmax(23rem, 0.82fr) minmax(38rem, 1.5fr);
+    grid-template-areas:
+      "play board"
+      "secondary board";
+    align-items: start;
+  }
+
+  .gamePage .gamePlayCard {
+    position: sticky;
+    top: calc(var(--nav-height) + 1rem);
+  }
+}

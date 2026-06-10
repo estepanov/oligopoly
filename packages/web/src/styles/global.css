@@ -1,2 +1,4 @@
 @import "./base/app-core.css";
 @import "./pages/app-pages.css";
+@import "./pages/onboarding.css";
+@import "./pages/game-flow.css";

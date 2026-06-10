@@ -16,6 +16,7 @@ type PersistOptions = {
   gameRoom?: DurableObjectNamespace;
   actorId?: string;
   kv?: KVNamespace;
+  notify?: boolean;
   aiMeta?: {
     aiPlayerId: string;
     personality: AiPersonality;
@@ -239,25 +240,44 @@ export async function persistGameActionResult(
     await processGameCompletion(db, options.kv, gameId, result.state, now);
   }
 
+  if (options.notify !== false) {
+    await notifyGameActionResult(
+      gameId,
+      result,
+      logRows.map(({ apiEntry }) => apiEntry),
+      options,
+      now,
+    );
+  }
+
+  return logRows.map(({ apiEntry }) => apiEntry);
+}
+
+export async function notifyGameActionResult(
+  gameId: string,
+  result: ApplyActionResult,
+  persistedLogEntries: GameLogEntry[],
+  options: PersistOptions = {},
+  sentAt: number = Date.now(),
+): Promise<void> {
   const hiddenTransfer = darkPoolTransferPayload(result.logEntries);
   const broadcastState = hiddenTransfer
     ? applyDarkPoolTransferRedaction(result.state, result.logEntries)
     : result.state;
   const broadcastLogEntries = hiddenTransfer
     ? []
-    : logRows
-        .filter(({ entry }) => entry.broadcast !== false)
-        .map(({ apiEntry }) => apiEntry);
+    : persistedLogEntries.filter(
+        (_entry, index) => result.logEntries[index]?.broadcast !== false,
+      );
+
   await broadcastGameEvent(options.gameRoom, gameId, {
     type: "game.action_applied",
-    sentAt: now,
+    sentAt,
     gameId,
     actorId: options.actorId ?? options.aiMeta?.aiPlayerId ?? "system",
     logEntries: broadcastLogEntries,
     state: broadcastState,
   });
-
-  return logRows.map(({ apiEntry }) => apiEntry);
 }
 
 export function toActionResponse(

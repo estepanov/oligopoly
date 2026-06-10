@@ -98,13 +98,12 @@ describe("LobbiesPage", () => {
 
     await screen.findByText(/no public lobbies available/i);
 
+    expect(screen.getByText(/you can browse first/i)).toBeInTheDocument();
     expect(
-      screen.getByText(
-        /browse public lobbies and load a lobby by id or invite link/i,
-      ),
+      screen.getByText(/start a private table, paste an invite/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/join and create actions stay disabled until you/i),
+      screen.getByText(/loading previews the table; joining seats/i),
     ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/lobby id or invite link/i), {
@@ -158,17 +157,33 @@ describe("LobbiesPage", () => {
 
     expect(await screen.findByDisplayValue(inviteLink)).toBeInTheDocument();
     expect(
-      screen.getAllByText(/you are in this lobby as an admin/i),
-    ).toHaveLength(2);
-    expect(screen.getAllByRole("listitem")[0]).toHaveTextContent(
-      "user-1 (you, admin, not ready)",
-    );
+      screen.getByText(/you are in this lobby as an admin/i),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("You").length).toBeGreaterThan(0);
+    expect(screen.getByText(/human seat 1 · host/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /generate new invite/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/technical details/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /copy link/i }));
 
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith(inviteLink);
     });
+  });
+
+  it("opens solo practice setup with one AI seat selected", async () => {
+    render(
+      <MemoryRouter initialEntries={["/lobbies?setup=solo-ai"]}>
+        <LobbiesPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(/no public lobbies available/i);
+
+    expect(screen.getByLabelText(/name/i)).toHaveValue("Solo Practice");
+    expect(screen.getByLabelText(/ai players/i)).toHaveValue("1");
   });
 
   it("joins a private lobby from a pasted invite link", async () => {
@@ -411,8 +426,8 @@ describe("LobbiesPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByText(/you are signed in, but not in this lobby/i),
-      ).toHaveLength(2);
+        screen.getByText(/you are signed in, but not in this lobby/i),
+      ).toBeInTheDocument();
     });
     expect(
       screen.getByText(

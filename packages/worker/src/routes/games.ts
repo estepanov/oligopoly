@@ -9,7 +9,7 @@ import {
   GameErrorKeys,
   GameStatusSchema,
 } from "@oligopoly/validation";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import {
   type PersistedGameState,
   toClientGameState,
@@ -19,6 +19,7 @@ import { upgradeWebSocket } from "../realtime/upgrade.js";
 import { stepGameAiTurn } from "../services/gameAi.js";
 import { listGames, toGameSummary } from "../services/gameListings.js";
 import {
+  notifyGameActionResult,
   persistGameActionResult,
   toActionResponse,
 } from "../services/gamePersistence.js";
@@ -36,8 +37,38 @@ type Variables = {
 };
 
 type AppEnv = { Bindings: Bindings; Variables: Variables };
+type AppContext = Context<AppEnv>;
 
 export const gameRoutes = new Hono<AppEnv>();
+
+type TimingEntry = {
+  name: string;
+  duration: number;
+};
+
+function nowMs(): number {
+  return typeof performance === "undefined" ? Date.now() : performance.now();
+}
+
+function formatServerTiming(entries: TimingEntry[]): string {
+  return entries
+    .map(
+      (entry) => `${entry.name};dur=${Math.max(0, entry.duration).toFixed(1)}`,
+    )
+    .join(", ");
+}
+
+function scheduleActionSideEffect(c: AppContext, promise: Promise<void>): void {
+  const guarded = promise.catch((error) => {
+    console.error("Failed to notify game action result", error);
+  });
+
+  try {
+    c.executionCtx.waitUntil(guarded);
+  } catch {
+    void guarded;
+  }
+}
 
 type GameAccessRow = {
   id: string;
@@ -318,6 +349,8 @@ gameRoutes.get("/:id/replay", async (c) => {
 // Auth required; must be the current player's turn.
 // ---------------------------------------------------------------------------
 gameRoutes.post("/:id/action", async (c) => {
+  const actionStartedAt = nowMs();
+  const timings: TimingEntry[] = [];
   const id = c.req.param("id");
   const subject = c.get("userId");
 
@@ -330,6 +363,7 @@ gameRoutes.post("/:id/action", async (c) => {
     return c.json({ error: GameErrorKeys.DB_NOT_CONFIGURED }, 500);
   }
 
+  const gameReadStartedAt = nowMs();
   const row = await db
     .prepare(
       "SELECT id, status, player_ids_json, state_json FROM games WHERE id = ?",
@@ -341,6 +375,10 @@ gameRoutes.post("/:id/action", async (c) => {
       player_ids_json: string;
       state_json: string | null;
     }>();
+  timings.push({
+    name: "game_read",
+    duration: nowMs() - gameReadStartedAt,
+  });
 
   if (!row) {
     return c.json({ error: GameErrorKeys.NOT_FOUND }, 404);
@@ -382,15 +420,46 @@ gameRoutes.post("/:id/action", async (c) => {
   const engineInput = buildEngineActionInput(actionBody, c.req.url);
 
   try {
+    const engineStartedAt = nowMs();
     const result = applyAction(gameState, subject, engineInput);
+    timings.push({
+      name: "engine",
+      duration: nowMs() - engineStartedAt,
+    });
 
+    const persistStartedAt = nowMs();
     const logEntries = await persistGameActionResult(db, id, result, {
       gameRoom: c.env?.GAME_ROOM,
       actorId: subject,
       kv: c.env?.KV,
+      notify: false,
+    });
+    timings.push({
+      name: "persist",
+      duration: nowMs() - persistStartedAt,
     });
 
-    return c.json(toActionResponse(result, subject, { logEntries }));
+    const notifyStartedAt = nowMs();
+    scheduleActionSideEffect(
+      c,
+      notifyGameActionResult(id, result, logEntries, {
+        gameRoom: c.env?.GAME_ROOM,
+        actorId: subject,
+        kv: c.env?.KV,
+      }),
+    );
+    timings.push({
+      name: "notify_schedule",
+      duration: nowMs() - notifyStartedAt,
+    });
+
+    timings.push({
+      name: "total",
+      duration: nowMs() - actionStartedAt,
+    });
+    const response = c.json(toActionResponse(result, subject, { logEntries }));
+    response.headers.set("Server-Timing", formatServerTiming(timings));
+    return response;
   } catch (err) {
     if (typeof err === "string") {
       return c.json({ error: err }, 400);

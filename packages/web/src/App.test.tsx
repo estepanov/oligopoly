@@ -14,6 +14,28 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders first-game paths on the home route", () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("link", { name: /start your first game/i }),
+    ).toHaveAttribute("href", "#first-game-guide-heading");
+    expect(
+      screen.getByRole("heading", { name: /play with a friend/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /practice solo vs ai/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /set up solo practice/i }),
+    ).toHaveAttribute("href", "/lobbies?setup=solo-ai");
+    expect(container.querySelector(".homeHeroVisual")).toBeInTheDocument();
+    expect(container.querySelectorAll(".statPill")).toHaveLength(3);
+  });
+
   it("navigates to games route", () => {
     render(
       <MemoryRouter initialEntries={["/games"]}>

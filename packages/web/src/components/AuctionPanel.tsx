@@ -1,5 +1,5 @@
 import type { GameAction, GameState } from "@oligopoly/validation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { tileLabel } from "../lib/boardDisplay";
 import { formatCurrencyAmount, playerDisplayName } from "../lib/gameDisplay";
 import {
@@ -31,23 +31,54 @@ export function AuctionPanel({
 }: AuctionPanelProps) {
   const [bidAmount, setBidAmount] = useState("1");
   const auction = state.pendingAuction;
-
-  if (!isAuctionPhase(state) || !auction) {
-    return null;
-  }
-
+  const auctionActive = isAuctionPhase(state) && Boolean(auction);
   const bidding = isAuctionBiddingPhase(state);
   const openAuction = isOpenAuctionPhase(state);
   const liveAuction = isLiveAuctionPhase(state);
   const sealedAuction = isSealedAuctionPhase(state);
+  const highBid = currentAuctionHighBid(state);
+  const minBid =
+    auction && liveAuction
+      ? Math.max(auction.tieBreakMinBid ?? 1, highBid + 1)
+      : (auction?.tieBreakMinBid ?? 1);
+
+  useEffect(() => {
+    setBidAmount((current) => {
+      const currentBid = Number.parseInt(current, 10);
+      return Number.isFinite(currentBid) && currentBid >= minBid
+        ? current
+        : String(minBid);
+    });
+  }, [minBid]);
+
+  if (!auctionActive || !auction) {
+    return null;
+  }
+
   const visibleBids = openAuction || liveAuction;
 
   const currencySettings = state.settings;
   const tileName = tileLabel(auction.tilePosition, tileNames);
-  const highBid = currentAuctionHighBid(state);
-  const minBid = liveAuction
-    ? Math.max(auction.tieBreakMinBid ?? 1, highBid + 1)
-    : (auction.tieBreakMinBid ?? 1);
+  const myPlayer = state.players?.find(
+    (player) => player.playerId === myPlayerId,
+  );
+  const playerCapital = myPlayer?.capital ?? null;
+  const parsedBid = Number.parseInt(bidAmount, 10);
+  const bidIsNumber = Number.isFinite(parsedBid);
+  const bidBelowMinimum = bidIsNumber && parsedBid < minBid;
+  const bidAboveCash =
+    bidIsNumber && playerCapital !== null && parsedBid > playerCapital;
+  const cashAfterBid =
+    bidIsNumber && playerCapital !== null && !bidAboveCash
+      ? playerCapital - parsedBid
+      : null;
+  const bidError = !bidIsNumber
+    ? "Enter a bid amount."
+    : bidBelowMinimum
+      ? `Minimum bid is ${formatCurrencyAmount(minBid, currencySettings)}.`
+      : bidAboveCash
+        ? "You do not have enough capital for that bid."
+        : null;
   const submitted = hasSubmittedAuction(state, myPlayerId);
   const eligible = canParticipateInAuction(state, myPlayerId);
   const submissionCount = auction.submissionCount ?? 0;
@@ -136,31 +167,58 @@ export function AuctionPanel({
 
       {showBidForm && (
         <>
+          <dl className="purchaseDecisionGrid auctionDecisionGrid">
+            <div>
+              <dt>Minimum bid</dt>
+              <dd>{formatCurrencyAmount(minBid, currencySettings)}</dd>
+            </div>
+            <div>
+              <dt>Your cash</dt>
+              <dd>
+                {playerCapital === null
+                  ? "Unknown"
+                  : formatCurrencyAmount(playerCapital, currencySettings)}
+              </dd>
+            </div>
+            <div>
+              <dt>After bid</dt>
+              <dd>
+                {cashAfterBid === null
+                  ? "Not available"
+                  : formatCurrencyAmount(cashAfterBid, currencySettings)}
+              </dd>
+            </div>
+          </dl>
           <label className="muted" htmlFor="auction-bid-amount">
             Bid amount
           </label>
           <input
             id="auction-bid-amount"
+            className="auctionBidInput"
             type="number"
             min={minBid}
+            max={playerCapital ?? undefined}
             value={bidAmount}
             onChange={(event) => setBidAmount(event.target.value)}
-            style={{ display: "block", width: "100%", maxWidth: "12rem" }}
           />
-          <div className="buttonRow" style={{ marginTop: "0.75rem" }}>
+          {bidError && (
+            <p className="errorText" role="alert">
+              {bidError}
+            </p>
+          )}
+          <div className="buttonRow auctionActionRow">
             <button
               type="button"
               className="button"
-              disabled={busy}
+              disabled={busy || Boolean(bidError)}
               onClick={() => {
-                const amount = Number.parseInt(bidAmount, 10);
-                if (!Number.isFinite(amount)) return;
+                if (bidError) return;
                 void onAction(
-                  `Bid ${formatCurrencyAmount(amount, currencySettings)} on ${tileName}`,
+                  `Bid ${formatCurrencyAmount(parsedBid, currencySettings)} on ${tileName}`,
                   {
                     type: "auction_bid",
                     tilePosition: auction.tilePosition,
-                    amount,
+                    amount: parsedBid,
                   },
                 );
               }}

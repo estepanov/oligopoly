@@ -72,77 +72,6 @@ export function effectiveAffinityContext(
   return { affinityAssignments: assignments };
 }
 
-type PhaseUiCapabilities = {
-  canDrawMarketEvent?: boolean;
-  canRollDice?: boolean;
-  canResolvePurchase?: boolean;
-  canChoosePath?: boolean;
-  canEndTurn?: boolean;
-};
-
-export type PhaseUiDescriptor = PhaseUiCapabilities & {
-  guidance: string | null;
-};
-
-const DEFAULT_PHASE_UI_DESCRIPTOR: PhaseUiDescriptor = {
-  guidance: null,
-};
-
-const PHASE_UI_DESCRIPTORS: Partial<
-  Record<NonNullable<GameState["phase"]>, PhaseUiDescriptor>
-> = {
-  waiting_for_market_event: {
-    guidance: "Draw the market event to start the round.",
-    canDrawMarketEvent: true,
-  },
-  waiting_for_roll: {
-    guidance: "Roll the dice to move.",
-    canRollDice: true,
-  },
-  rolling_doubles: {
-    guidance: "You rolled doubles — roll again!",
-    canRollDice: true,
-  },
-  waiting_for_buy: {
-    guidance: "Buy this tile or decline it (declining starts an auction).",
-    canResolvePurchase: true,
-  },
-  waiting_for_path_choice: {
-    guidance: "Choose the perimeter or diagonal path.",
-    canChoosePath: true,
-  },
-  action: {
-    guidance:
-      "Develop or mortgage your tiles, make a deal, then end your turn.",
-    canEndTurn: true,
-  },
-};
-
-export function phaseUiDescriptor(
-  phase: GameState["phase"],
-): PhaseUiDescriptor {
-  return phase
-    ? (PHASE_UI_DESCRIPTORS[phase] ?? DEFAULT_PHASE_UI_DESCRIPTOR)
-    : DEFAULT_PHASE_UI_DESCRIPTOR;
-}
-
-/**
- * Short, action-oriented guidance for the player whose turn it is, based on the
- * current phase. Returns null when there is no specific prompt (e.g. it is not
- * the player's turn, or a dedicated panel already covers the phase).
- *
- * Phase-level turn button capabilities live in `phaseUiDescriptor`; non-phase
- * checks such as pending purchases, auctions, owned tiles, and busy flags remain
- * with the controls that need them.
- */
-export function turnGuidance(
-  state: GameState,
-  myPlayerId: string | null,
-): string | null {
-  if (!isMyTurn(state, myPlayerId)) return null;
-  return phaseUiDescriptor(state.phase).guidance;
-}
-
 export function isAuctionPhase(state: GameState): boolean {
   return (
     (state.phase === "waiting_for_auction_bids" ||
@@ -316,6 +245,47 @@ function acquisitionCostForPlayer(
   );
 }
 
+export type PendingPurchaseDecision = {
+  tilePosition: number | string;
+  acquisitionCost: number | null;
+  playerCapital: number | null;
+  cashAfterPurchase: number | null;
+  canAfford: boolean;
+};
+
+export function pendingPurchaseDecision(
+  state: GameState,
+  myPlayerId: string | null,
+): PendingPurchaseDecision | null {
+  if (
+    state.phase !== "waiting_for_buy" ||
+    state.pendingBuyTilePosition === null ||
+    state.pendingBuyTilePosition === undefined
+  ) {
+    return null;
+  }
+
+  const player = myPlayerId ? playerById(state, myPlayerId) : undefined;
+  const acquisitionCost = myPlayerId
+    ? acquisitionCostForPlayer(state, myPlayerId, state.pendingBuyTilePosition)
+    : null;
+  const playerCapital = player?.capital ?? null;
+  const cashAfterPurchase =
+    acquisitionCost !== null &&
+    playerCapital !== null &&
+    playerCapital >= acquisitionCost
+      ? playerCapital - acquisitionCost
+      : null;
+
+  return {
+    tilePosition: state.pendingBuyTilePosition,
+    acquisitionCost,
+    playerCapital,
+    cashAfterPurchase,
+    canAfford: cashAfterPurchase !== null,
+  };
+}
+
 export function canBuyPendingTile(
   state: GameState,
   myPlayerId: string | null,
@@ -323,20 +293,7 @@ export function canBuyPendingTile(
   if (!isMyTurn(state, myPlayerId) || state.phase !== "waiting_for_buy") {
     return false;
   }
-  if (
-    !myPlayerId ||
-    state.pendingBuyTilePosition === null ||
-    state.pendingBuyTilePosition === undefined
-  ) {
-    return false;
-  }
-  const player = playerById(state, myPlayerId);
-  const cost = acquisitionCostForPlayer(
-    state,
-    myPlayerId,
-    state.pendingBuyTilePosition,
-  );
-  return Boolean(player && cost !== null && player.capital >= cost);
+  return pendingPurchaseDecision(state, myPlayerId)?.canAfford ?? false;
 }
 
 export type TileOwnershipActionGates = {
