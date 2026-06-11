@@ -39,7 +39,11 @@ function createAlarmTrackingState() {
     },
     deleteAlarm: async () => {},
   };
-  return { state: { storage } as unknown as DurableObjectState, setAlarmCalls };
+  return {
+    state: { storage } as unknown as DurableObjectState,
+    setAlarmCalls,
+    store,
+  };
 }
 
 const humanPlayer = (playerId: string, actionPoints: number) => ({
@@ -133,5 +137,79 @@ describe("Durable Object notify routing", () => {
     expect(res.status).toBe(200);
     expect(setAlarmCalls.length).toBeGreaterThan(0);
     expect(setAlarmCalls.at(-1) ?? 0).toBeGreaterThan(Date.now());
+  });
+
+  it("schedules the trade offer deadline when it is the earliest timer", async () => {
+    const { state, setAlarmCalls, store } = createAlarmTrackingState();
+    const room = new GameRoom(state, {});
+    const deadline = Date.now() + 30_000;
+    const gameState = {
+      gameId: "g1",
+      round: 1,
+      phase: "action",
+      turnOrder: ["p1", "p2"],
+      currentPlayerIndex: 0,
+      players: [humanPlayer("p1", 2), humanPlayer("p2", 0)],
+      settings: { turnTimeout: "5min" },
+      tradeOffers: [
+        {
+          id: "trade-1",
+          gameId: "g1",
+          proposerId: "p1",
+          recipientId: "p2",
+          gives: { capital: 100, tilePositions: [] },
+          receives: { capital: 0, tilePositions: [] },
+          status: "pending",
+          createdAt: Date.now(),
+          expiresAt: deadline,
+          counterCount: 0,
+        },
+      ],
+    };
+    const res = await room.fetch(
+      notifyRequest("/notify?gameId=g1", {
+        type: "game.action_applied",
+        gameId: "g1",
+        state: gameState,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(setAlarmCalls.at(-1)).toBe(deadline);
+    expect(store.get("timerKind")).toBe("trade_offer");
+    expect(store.get("turnActorId")).toBe("p1");
+    const preservedTurnDeadline = store.get("turnDeadlineAt") as number;
+    expect(preservedTurnDeadline).toBeGreaterThan(deadline);
+  });
+
+  it("restores the original turn deadline after a trade expiry resync", async () => {
+    const { state, setAlarmCalls, store } = createAlarmTrackingState();
+    const room = new GameRoom(state, {});
+    const deadline = Date.now() + 30_000;
+    const turnDeadline = Date.now() + 300_000;
+    store.set("turnActorId", "p1");
+    store.set("turnDeadlineAt", turnDeadline);
+    const gameState = {
+      gameId: "g1",
+      round: 1,
+      phase: "action",
+      turnOrder: ["p1", "p2"],
+      currentPlayerIndex: 0,
+      players: [humanPlayer("p1", 2), humanPlayer("p2", 0)],
+      settings: { turnTimeout: "5min" },
+      tradeOffers: [],
+    };
+
+    const res = await room.fetch(
+      notifyRequest("/notify?gameId=g1", {
+        type: "game.action_applied",
+        gameId: "g1",
+        state: gameState,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(deadline).toBeLessThan(turnDeadline);
+    expect(setAlarmCalls.at(-1)).toBe(turnDeadline);
+    expect(store.get("turnDeadlineAt")).toBe(turnDeadline);
   });
 });

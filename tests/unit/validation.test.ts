@@ -7,6 +7,7 @@ import {
   CreateLobbyInputSchema,
   CurrencyMultiplierSchema,
   GameActionSchema,
+  GameErrorKeys,
   GamePhaseSchema,
   GameRealtimeEventSchema,
   GameStateSchema,
@@ -24,6 +25,8 @@ import {
   SyndicateCharterSchema,
   TileStateSchema,
   TileTypeSchema,
+  TradeErrorKeys,
+  TradeOfferSchema,
   TurnTimeoutSchema,
   UpdateLobbySettingsInputSchema,
   UpdateUserSettingsInputSchema,
@@ -72,6 +75,12 @@ describe("UpdateUserSettingsInputSchema", () => {
       username: "ab",
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("GameErrorKeys", () => {
+  it("includes optimistic state conflict", () => {
+    expect(GameErrorKeys.STATE_CONFLICT).toBe("game.state_conflict");
   });
 });
 
@@ -126,6 +135,15 @@ describe("AI and realtime schemas", () => {
         gameId: "game-1",
         currentPlayerId: "ai:1",
         deadlineAt: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      GameRealtimeEventSchema.safeParse({
+        type: "game.timer",
+        sentAt: 1,
+        gameId: "game-1",
+        deadlineAt: 2,
+        timerKind: "trade_offer",
       }).success,
     ).toBe(true);
   });
@@ -858,6 +876,38 @@ describe("GameActionSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts trade offer actions", () => {
+    expect(
+      GameActionSchema.safeParse({
+        type: "propose_trade",
+        recipientId: "p2",
+        gives: { capital: 100, tilePositions: [3] },
+        receives: { capital: 50, tilePositions: [6] },
+        timeoutMinutes: 5,
+      }).success,
+    ).toBe(true);
+    expect(
+      GameActionSchema.safeParse({
+        type: "accept_trade",
+        offerId: "trade-1",
+      }).success,
+    ).toBe(true);
+    expect(
+      GameActionSchema.safeParse({
+        type: "reject_trade",
+        offerId: "trade-1",
+      }).success,
+    ).toBe(true);
+    expect(
+      GameActionSchema.safeParse({
+        type: "counter_trade",
+        offerId: "trade-1",
+        gives: { capital: 0, tilePositions: [6] },
+        receives: { capital: 100, tilePositions: [] },
+      }).success,
+    ).toBe(true);
+  });
+
   it("accepts form_syndicate", () => {
     const result = GameActionSchema.safeParse({
       type: "form_syndicate",
@@ -871,6 +921,29 @@ describe("GameActionSchema", () => {
       type: "fly_to_moon",
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("TradeOfferSchema", () => {
+  it("accepts a pending trade offer", () => {
+    const result = TradeOfferSchema.safeParse({
+      id: "trade-1",
+      gameId: "game-1",
+      proposerId: "p1",
+      recipientId: "p2",
+      gives: { capital: 100, tilePositions: [3] },
+      receives: { capital: 50, tilePositions: [6] },
+      status: "pending",
+      createdAt: 1,
+      expiresAt: 2,
+      counterCount: 0,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("exports stable trade error keys", () => {
+    expect(TradeErrorKeys.OFFER_EXPIRED).toBe("trade.offer_expired");
+    expect(Object.keys(TradeErrorKeys)).toHaveLength(9);
   });
 });
 

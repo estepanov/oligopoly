@@ -70,6 +70,11 @@ const ACTION_LABELS: Record<string, string> = {
   round_boundary_complete: "Round housekeeping complete",
   debt_interest: "Debt interest accrued",
   new_round: "New round",
+  trade_proposed: "Trade proposed",
+  trade_accepted: "Trade accepted",
+  trade_rejected: "Trade rejected",
+  trade_expired: "Trade expired",
+  trade_countered: "Trade countered",
 };
 
 type GameLogTone =
@@ -353,6 +358,51 @@ function formatMoneyPayloadParts(
   }
 
   return parts;
+}
+
+function formatTradeTransfer(
+  value: unknown,
+  tileNames: Map<string, string>,
+  currencySettings?: CurrencyDisplaySettings,
+): string {
+  if (!value || typeof value !== "object") return "nothing";
+  const transfer = value as Record<string, unknown>;
+  const parts: string[] = [];
+  if (typeof transfer.capital === "number" && transfer.capital > 0) {
+    parts.push(formatCurrencyAmount(transfer.capital, currencySettings));
+  }
+  if (Array.isArray(transfer.tilePositions)) {
+    const tiles = transfer.tilePositions
+      .filter(
+        (position): position is number | string =>
+          typeof position === "number" || typeof position === "string",
+      )
+      .map((position) => tileLabel(position, tileNames));
+    parts.push(...tiles);
+  }
+  return parts.length > 0 ? parts.join(" + ") : "nothing";
+}
+
+function formatTradePayload(
+  record: Record<string, unknown>,
+  tileNames: Map<string, string>,
+  currencySettings?: CurrencyDisplaySettings,
+  playerNames?: Map<string, string>,
+): string {
+  const proposer = formatPlayerId(record.proposerId, playerNames);
+  const recipient = formatPlayerId(record.recipientId, playerNames);
+  const parties =
+    proposer && recipient ? `${proposer} to ${recipient}` : undefined;
+  const gives = formatTradeTransfer(record.gives, tileNames, currencySettings);
+  const receives = formatTradeTransfer(
+    record.receives,
+    tileNames,
+    currencySettings,
+  );
+  const parts = [parties, `gives ${gives}`, `requests ${receives}`].filter(
+    (part): part is string => Boolean(part),
+  );
+  return parts.length > 0 ? ` · ${parts.join(" · ")}` : "";
 }
 
 type PlayerStateLogPartFn = (
@@ -689,6 +739,9 @@ function payloadSuffix(
   }
   if (actionType === "player_state_changed") {
     return formatPlayerStateChange(record, tileNames, currencySettings);
+  }
+  if (actionType.startsWith("trade_")) {
+    return formatTradePayload(record, tileNames, currencySettings, playerNames);
   }
   if (actionType === "roll_dice") {
     return formatDiceRoll(record);

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   logEntriesForBroadcast,
+  persistGameActionResult,
   publicStateForBroadcast,
   toActionResponse,
 } from "../../packages/worker/src/services/gamePersistence.js";
+import { createD1Stub } from "../helpers/workerGameplayHarness.js";
 
 describe("logEntriesForBroadcast", () => {
   it("filters logs marked as non-broadcast while preserving persisted entries", () => {
@@ -56,6 +58,25 @@ describe("logEntriesForBroadcast", () => {
 
     expect(logEntriesForBroadcast(entries)).toEqual([]);
   });
+
+  it("broadcasts trade action entries", () => {
+    const entries = [
+      {
+        playerId: "p1",
+        actionType: "trade_proposed",
+        payload: {
+          offerId: "trade-1",
+          proposerId: "p1",
+          recipientId: "p2",
+          gives: { capital: 100, tilePositions: [3] },
+          receives: { capital: 50, tilePositions: [6] },
+          status: "pending",
+        },
+      },
+    ];
+
+    expect(logEntriesForBroadcast(entries)).toEqual(entries);
+  });
 });
 
 describe("publicStateForBroadcast", () => {
@@ -107,10 +128,25 @@ describe("publicStateForBroadcast", () => {
           messages: [],
         },
       ],
+      tradeOffers: [
+        {
+          id: "trade-1",
+          gameId: "game-1",
+          proposerId: "p1",
+          recipientId: "p2",
+          gives: { capital: 100, tilePositions: [3] },
+          receives: { capital: 50, tilePositions: [6] },
+          status: "pending",
+          createdAt: 1,
+          expiresAt: 2,
+          counterCount: 0,
+        },
+      ],
     } as never);
 
     expect("pendingInsiderPeek" in broadcastState).toBe(false);
     expect("handshakeAgreements" in broadcastState).toBe(false);
+    expect("tradeOffers" in broadcastState).toBe(false);
     expect(
       broadcastState.negotiationThreads?.map((thread) => thread.id),
     ).toEqual(["open-thread"]);
@@ -188,5 +224,35 @@ describe("toActionResponse", () => {
     );
 
     expect(response.logEntries).toEqual([]);
+  });
+});
+
+describe("persistGameActionResult", () => {
+  it("rejects stale state writes before inserting logs", async () => {
+    const db = createD1Stub();
+    db._tables.games.push({
+      id: "game-1",
+      state_json: JSON.stringify({ gameId: "game-1", round: 2 }),
+      status: "active",
+    });
+
+    await expect(
+      persistGameActionResult(
+        db,
+        "game-1",
+        {
+          state: { gameId: "game-1", round: 3 } as never,
+          logEntries: [
+            {
+              playerId: "p1",
+              actionType: "trade_accepted",
+              payload: { offerId: "trade-1" },
+            },
+          ],
+        },
+        { expectedStateJson: JSON.stringify({ gameId: "game-1", round: 1 }) },
+      ),
+    ).rejects.toBe("game.state_conflict");
+    expect(db._tables.game_log).toEqual([]);
   });
 });

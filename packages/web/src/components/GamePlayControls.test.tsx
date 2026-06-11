@@ -329,4 +329,97 @@ describe("GamePlayControls economics dialogs", () => {
       screen.getByRole("button", { name: "Freeze tile (¤500)" }),
     ).toBeInTheDocument();
   });
+
+  it("keeps trade response controls visible during insider peek", () => {
+    const state: GameState = {
+      gameId: "g",
+      round: 1,
+      phase: "waiting_for_insider_peek",
+      currentPlayerIndex: 0,
+      turnOrder: ["drawer", "me"],
+      freeMarketPool: 0,
+      pendingBuyTilePosition: null,
+      lastDiceRoll: null,
+      winnerId: null,
+      eliminatedPlayerIds: [],
+      pendingInsiderPeek: {
+        drawingPlayerId: "drawer",
+        cardId: "optional_insider_trading",
+      },
+      settings: { currencySymbol: "$" },
+      players: [
+        {
+          playerId: "drawer",
+          displayName: "Ada",
+          position: 0,
+          capital: 1000,
+          ownedTilePositions: [3],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 2,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+        {
+          playerId: "me",
+          displayName: "Grace",
+          position: 1,
+          capital: 900,
+          ownedTilePositions: [6],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 0,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+      ],
+      tiles: [
+        {
+          position: 3,
+          ownerId: "drawer",
+          mortgaged: false,
+          developmentTokens: 0,
+        },
+        { position: 6, ownerId: "me", mortgaged: false, developmentTokens: 0 },
+      ],
+      tradeOffers: [
+        {
+          id: "trade-1",
+          gameId: "g",
+          proposerId: "drawer",
+          recipientId: "me",
+          gives: { capital: 100, tilePositions: [3] },
+          receives: { capital: 50, tilePositions: [6] },
+          status: "pending",
+          createdAt: 1,
+          expiresAt: Date.now() + 300_000,
+          counterCount: 0,
+        },
+      ],
+    };
+
+    render(
+      <GamePlayControls
+        state={state}
+        myPlayerId="me"
+        tileNames={
+          new Map([
+            ["3", "Mobile Gaming Inc."],
+            ["6", "Search Engine Corp."],
+          ])
+        }
+        busy={false}
+        onAction={async () => undefined}
+      />,
+    );
+
+    expect(screen.getByText("Insider trading")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /accept trade/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /reject/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /counter/i })).toBeDisabled();
+  });
 });

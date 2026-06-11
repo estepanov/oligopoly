@@ -1,3 +1,4 @@
+import { GameErrorKeys } from "@oligopoly/validation";
 import app from "@oligopoly/worker";
 import { describe, expect, it } from "vitest";
 
@@ -5,8 +6,16 @@ import { describe, expect, it } from "vitest";
 // Minimal D1 stub that holds an in-memory rows map.
 // ---------------------------------------------------------------------------
 type Row = Record<string, unknown>;
+type DbOptions = {
+  forceStateConflictOnStateUpdate?: boolean;
+};
 
-function makeDb(tables: Record<string, Row[]>) {
+function makeDb(tables: Record<string, Row[]>, options: DbOptions = {}) {
+  const mutationState = {
+    lastChanges: 0,
+    forceStateConflictOnStateUpdate:
+      options.forceStateConflictOnStateUpdate ?? false,
+  };
   const makeStmt = (query: string, boundParams: unknown[]) => ({
     bind: (...args: unknown[]) => makeStmt(query, args),
     async first<T>(): Promise<T | null> {
@@ -21,9 +30,9 @@ function makeDb(tables: Record<string, Row[]>) {
       const filtered = applyWhere(rows, query, boundParams);
       return { results: filtered as T[] };
     },
-    async run(): Promise<{ success: boolean }> {
-      applyMutation(query, boundParams, tables);
-      return { success: true };
+    async run(): Promise<{ success: boolean; meta: { changes: number } }> {
+      const changes = applyMutation(query, boundParams, tables, mutationState);
+      return { success: true, meta: { changes } };
     },
   });
 
@@ -59,15 +68,51 @@ function applyMutation(
   query: string,
   params: unknown[],
   tables: Record<string, Row[]>,
-) {
+  mutationState: {
+    lastChanges: number;
+    forceStateConflictOnStateUpdate: boolean;
+  },
+): number {
+  if (
+    /INSERT\s+INTO\s+games\s+\(id,\s*started_at,\s*player_ids_json\)\s+SELECT/i.test(
+      query,
+    )
+  ) {
+    const row = tables.games?.find((r) => r.id === params[0]);
+    if (row && mutationState.lastChanges === 0) {
+      throw new Error("UNIQUE constraint failed: games.id");
+    }
+    return 0;
+  }
+
   if (/UPDATE\s+games/i.test(query) && /state_json/i.test(query)) {
     const stateJson = params[0];
     const id = params[1];
-    const row = tables.games?.find((r) => r.id === id);
+    const expectedStateJson = /AND\s+state_json\s*=\s*\?/i.test(query)
+      ? params[2]
+      : undefined;
+    if (
+      expectedStateJson !== undefined &&
+      mutationState.forceStateConflictOnStateUpdate
+    ) {
+      mutationState.forceStateConflictOnStateUpdate = false;
+      const conflictedRow = tables.games?.find((r) => r.id === id);
+      if (conflictedRow) {
+        conflictedRow.state_json = JSON.stringify({ gameId: id, round: 99 });
+      }
+    }
+    const row = tables.games?.find(
+      (r) =>
+        r.id === id &&
+        (expectedStateJson === undefined || r.state_json === expectedStateJson),
+    );
     if (row) {
       row.state_json = stateJson;
+      mutationState.lastChanges = 1;
+      return 1;
     }
-    return;
+    mutationState.lastChanges = 0;
+    return 0;
   }
 
   if (/INSERT\s+INTO\s+game_log/i.test(query)) {
@@ -89,7 +134,22 @@ function applyMutation(
       payload_json,
       created_at,
     });
+    return 1;
   }
+
+  if (/UPDATE\s+lobbies\s+SET\s+status\s*=\s*'finished'/i.test(query)) {
+    const lobbyId = /SELECT\s+lobby_id\s+FROM\s+games/i.test(query)
+      ? tables.games?.find((r) => r.id === params[0])?.lobby_id
+      : params[0];
+    const row = tables.lobbies?.find((r) => r.id === lobbyId);
+    if (row) {
+      row.status = "finished";
+      return 1;
+    }
+    return 0;
+  }
+
+  return 0;
 }
 
 function applyWhere(rows: Row[], query: string, params: unknown[]): Row[] {
@@ -201,6 +261,24 @@ function makeEnv(extraTables: Record<string, Row[]> = {}) {
       game_log: [cloneRow(logEntry), cloneRow(logEntryCompleted)],
       ...extraTables,
     }),
+  };
+}
+
+function makeEnvWithOptions(
+  extraTables: Record<string, Row[]>,
+  options: DbOptions,
+) {
+  return {
+    DB: makeDb(
+      {
+        users: [cloneRow(userA), cloneRow(userB), cloneRow(outsiderUser)],
+        auth_sessions: [],
+        games: [cloneRow(activeGame), cloneRow(completedGame)],
+        game_log: [cloneRow(logEntry), cloneRow(logEntryCompleted)],
+        ...extraTables,
+      },
+      options,
+    ),
   };
 }
 
@@ -344,6 +422,101 @@ describe("GET /api/games/:id/replay", () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ replay: unknown[] }>();
     expect(Array.isArray(body.replay)).toBe(true);
+  });
+});
+
+describe("POST /api/games/:id/action", () => {
+  it("returns 409 for optimistic state conflicts", async () => {
+    const conflictGame: Row = {
+      id: "game-conflict",
+      status: "active",
+      player_ids_json: JSON.stringify([PLAYER_A, PLAYER_B]),
+      started_at: 2000,
+      ended_at: null,
+      winner_id: null,
+      state_json: JSON.stringify({
+        gameId: "game-conflict",
+        round: 1,
+        phase: "action",
+        currentPlayerIndex: 0,
+        turnOrder: [PLAYER_A, PLAYER_B],
+        freeMarketPool: 0,
+        pendingBuyTilePosition: null,
+        lastDiceRoll: null,
+        winnerId: null,
+        eliminatedPlayerIds: [],
+        settings: { currencySymbol: "$" },
+        players: [
+          {
+            playerId: PLAYER_A,
+            position: 0,
+            capital: 1000,
+            ownedTilePositions: [3],
+            mortgagedTilePositions: [],
+            developmentTokens: {},
+            trustworthiness: 7,
+            actionPointsRemaining: 2,
+            inRegulation: false,
+            doublesCount: 0,
+            isOnDiagonal: false,
+          },
+          {
+            playerId: PLAYER_B,
+            position: 0,
+            capital: 900,
+            ownedTilePositions: [6],
+            mortgagedTilePositions: [],
+            developmentTokens: {},
+            trustworthiness: 7,
+            actionPointsRemaining: 2,
+            inRegulation: false,
+            doublesCount: 0,
+            isOnDiagonal: false,
+          },
+        ],
+        tiles: [
+          {
+            position: 3,
+            ownerId: PLAYER_A,
+            mortgaged: false,
+            developmentTokens: 0,
+          },
+          {
+            position: 6,
+            ownerId: PLAYER_B,
+            mortgaged: false,
+            developmentTokens: 0,
+          },
+        ],
+      }),
+    };
+    const env = makeEnvWithOptions(
+      { games: [conflictGame], game_log: [] },
+      { forceStateConflictOnStateUpdate: true },
+    );
+
+    const res = await app.request(
+      "/api/games/game-conflict/action",
+      {
+        method: "POST",
+        headers: {
+          "x-subject": PLAYER_A,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "propose_trade",
+          recipientId: PLAYER_B,
+          gives: { capital: 100, tilePositions: [3] },
+          receives: { capital: 50, tilePositions: [6] },
+        }),
+      },
+      env,
+    );
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      error: GameErrorKeys.STATE_CONFLICT,
+    });
   });
 });
 

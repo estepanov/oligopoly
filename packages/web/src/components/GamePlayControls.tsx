@@ -14,6 +14,7 @@ import { AuctionPanel } from "./AuctionPanel";
 import { InsiderPeekPanel } from "./InsiderPeekPanel";
 import { OwnedTileEconomicsActions } from "./OwnedTileEconomicsActions";
 import { RateCardPanel } from "./RateCardPanel";
+import { TradeNegotiationPanel } from "./TradeNegotiationPanel";
 
 type GamePlayControlsProps = {
   state: GameState;
@@ -72,27 +73,42 @@ export function GamePlayControls({
   const purchaseTileName = purchaseDecision
     ? tileLabel(purchaseDecision.tilePosition, tileNames)
     : null;
+  const tradePanel = myPlayerId ? (
+    <TradeNegotiationPanel
+      state={state}
+      myPlayerId={myPlayerId}
+      tileNames={tileNames}
+      busy={busy}
+      onAction={onAction}
+    />
+  ) : null;
 
   if (state.phase === "waiting_for_insider_peek") {
     return (
-      <InsiderPeekPanel
-        insiderPeek={insiderPeek}
-        myPlayerId={myPlayerId}
-        busy={busy}
-        onAction={onAction}
-      />
+      <>
+        {tradePanel}
+        <InsiderPeekPanel
+          insiderPeek={insiderPeek}
+          myPlayerId={myPlayerId}
+          busy={busy}
+          onAction={onAction}
+        />
+      </>
     );
   }
 
   if (gameOver) {
     return (
-      <div className="gameOverBanner">
-        <h3>Game over</h3>
-        <p>
-          Winner: <strong>{playerDisplayName(state, state.winnerId)}</strong>
-        </p>
-        {state.winSummary?.reason && <p>{state.winSummary.reason}</p>}
-      </div>
+      <>
+        {tradePanel}
+        <div className="gameOverBanner">
+          <h3>Game over</h3>
+          <p>
+            Winner: <strong>{playerDisplayName(state, state.winnerId)}</strong>
+          </p>
+          {state.winSummary?.reason && <p>{state.winSummary.reason}</p>}
+        </div>
+      </>
     );
   }
 
@@ -170,6 +186,8 @@ export function GamePlayControls({
         busy={busy}
         onAction={onAction}
       />
+
+      {tradePanel}
 
       {myTurn && !auctionActive && (
         <div className="buttonRow">

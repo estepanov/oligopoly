@@ -33,6 +33,7 @@ import type {
   GameActionInput,
   InternalGameState,
   InternalTileState,
+  LogEntry,
 } from "./gameStateTypes.js";
 import {
   handleBreakHandshake,
@@ -61,6 +62,13 @@ import {
 import { handleSetRateCard } from "./rateCardActions.js";
 import { handleFormSyndicate } from "./syndicateActions.js";
 import { handleCallVote } from "./syndicateVoteActions.js";
+import {
+  expirePendingTradeOffers,
+  handleAcceptTrade,
+  handleCounterTrade,
+  handleProposeTrade,
+  handleRejectTrade,
+} from "./tradeActions.js";
 
 export type {
   ApplyActionResult,
@@ -131,6 +139,9 @@ export function normalizeGameState(raw: unknown): InternalGameState {
       state.settings,
     );
   }
+  if (!state.tradeOffers) {
+    state.tradeOffers = [];
+  }
   normalizeMarketEventDeck(state);
   normalizeDisruptionDeck(state);
   if (state.phase === "market_event") {
@@ -156,12 +167,22 @@ type PhaseActionHandler = (
 ) => ApplyActionResult;
 type GameActionType = GameActionInput["type"];
 type NonTurnActionType =
+  | "accept_trade"
   | "accept_disruption"
   | "auction_bid"
   | "auction_pass"
+  | "counter_trade"
   | "insider_discard_market_event"
-  | "insider_keep_market_event";
+  | "insider_keep_market_event"
+  | "reject_trade";
 type TurnActionType = Exclude<GameActionType, NonTurnActionType>;
+
+const ASYNC_TRADE_RESPONSE_ROUTES = {
+  accept_trade: (state, playerId, action) =>
+    handleAcceptTrade(state, playerId, action),
+  reject_trade: (state, playerId, action) =>
+    handleRejectTrade(state, playerId, action),
+} satisfies Record<"accept_trade" | "reject_trade", PhaseActionHandler>;
 
 const PHASE_ACTION_ROUTES: Partial<
   Record<GamePhase, Partial<Record<GameActionType, PhaseActionHandler>>>
@@ -171,21 +192,33 @@ const PHASE_ACTION_ROUTES: Partial<
       handleDisruptionNullifyResponse(state, playerId, action),
     accept_disruption: (state, playerId, action) =>
       handleDisruptionNullifyResponse(state, playerId, action),
+    ...ASYNC_TRADE_RESPONSE_ROUTES,
   },
   waiting_for_insider_peek: {
     insider_keep_market_event: (state, playerId) =>
       handleInsiderKeepMarketEvent(state, playerId),
     insider_discard_market_event: (state, playerId) =>
       handleInsiderDiscardMarketEvent(state, playerId),
+    ...ASYNC_TRADE_RESPONSE_ROUTES,
   },
 };
 
 const GLOBAL_ACTION_ROUTES = {
+  ...ASYNC_TRADE_RESPONSE_ROUTES,
   auction_bid: (state, playerId, action) =>
     handleAuctionBid(state, playerId, action),
   auction_pass: (state, playerId, action) =>
     handleAuctionPass(state, playerId, action),
-} satisfies Record<"auction_bid" | "auction_pass", PhaseActionHandler>;
+  counter_trade: (state, playerId, action) =>
+    handleCounterTrade(state, playerId, action),
+} satisfies Record<
+  | "auction_bid"
+  | "auction_pass"
+  | "accept_trade"
+  | "reject_trade"
+  | "counter_trade",
+  PhaseActionHandler
+>;
 const GLOBAL_ACTION_ROUTES_BY_TYPE: Partial<
   Record<GameActionType, PhaseActionHandler>
 > = GLOBAL_ACTION_ROUTES;
@@ -217,6 +250,8 @@ const TURN_ACTION_ROUTES = {
     handleProposeContract(state, playerId, action),
   sign_contract: (state, playerId, action) =>
     handleSignContract(state, playerId, action),
+  propose_trade: (state, playerId, action) =>
+    handleProposeTrade(state, playerId, action),
   propose_handshake: (state, playerId, action) =>
     handleProposeHandshake(state, playerId, action),
   sign_handshake: (state, playerId, action) =>
@@ -249,6 +284,7 @@ function applySpecialActionRoute(
   if (phaseHandler) {
     return phaseHandler(state, playerId, action);
   }
+
   if (phaseRoutes) {
     throw "game.invalid_phase";
   }
@@ -270,6 +306,19 @@ function finalizePrimaryLogIndex(result: ApplyActionResult): ApplyActionResult {
   return result;
 }
 
+function mergeExpiryLogs(
+  expiryLogs: LogEntry[],
+  result: ApplyActionResult,
+): ApplyActionResult {
+  if (expiryLogs.length === 0) {
+    return result;
+  }
+  return {
+    ...result,
+    logEntries: [...expiryLogs, ...result.logEntries],
+  };
+}
+
 export function applyAction(
   state: InternalGameState,
   playerId: string,
@@ -279,13 +328,21 @@ export function applyAction(
     throw "game.completed";
   }
 
-  const before = snapshotPlayerChanges(state);
-  const specialResult = applySpecialActionRoute(state, playerId, action);
+  const nowMs = Date.now();
+  const expiryResult = expirePendingTradeOffers(state, nowMs);
+  const workingState = expiryResult?.state ?? state;
+  const expiryLogs = expiryResult?.logEntries ?? [];
+
+  const before = snapshotPlayerChanges(workingState);
+  const specialResult = applySpecialActionRoute(workingState, playerId, action);
   if (specialResult !== null) {
-    return withPlayerChangeLogs(before, finalizePrimaryLogIndex(specialResult));
+    return withPlayerChangeLogs(
+      before,
+      mergeExpiryLogs(expiryLogs, finalizePrimaryLogIndex(specialResult)),
+    );
   }
 
-  const currentPid = state.turnOrder[state.currentPlayerIndex];
+  const currentPid = workingState.turnOrder[workingState.currentPlayerIndex];
   if (playerId !== currentPid) {
     throw "game.not_your_turn";
   }
@@ -294,6 +351,9 @@ export function applyAction(
   if (!turnHandler) {
     throw "game.invalid_action";
   }
-  const turnResult = turnHandler(state, playerId, action);
-  return withPlayerChangeLogs(before, finalizePrimaryLogIndex(turnResult));
+  const turnResult = turnHandler(workingState, playerId, action);
+  return withPlayerChangeLogs(
+    before,
+    mergeExpiryLogs(expiryLogs, finalizePrimaryLogIndex(turnResult)),
+  );
 }

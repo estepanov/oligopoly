@@ -38,13 +38,16 @@ export function transferTileOwnership(
     return false;
   }
 
+  const positionKey = String(tilePosition);
+
   if (donor) {
     donor.ownedTilePositions = donor.ownedTilePositions.filter(
-      (pos) => String(pos) !== String(tilePosition),
+      (pos) => String(pos) !== positionKey,
     );
     donor.mortgagedTilePositions = donor.mortgagedTilePositions.filter(
-      (pos) => String(pos) !== String(tilePosition),
+      (pos) => String(pos) !== positionKey,
     );
+    delete donor.developmentTokens[positionKey];
   }
 
   if (
@@ -71,8 +74,14 @@ export function transferTileOwnership(
     }
   } else {
     recipient.mortgagedTilePositions = recipient.mortgagedTilePositions.filter(
-      (pos) => String(pos) !== String(tilePosition),
+      (pos) => String(pos) !== positionKey,
     );
+  }
+
+  if (tileState.developmentTokens > 0) {
+    recipient.developmentTokens[positionKey] = tileState.developmentTokens;
+  } else {
+    delete recipient.developmentTokens[positionKey];
   }
 
   return true;

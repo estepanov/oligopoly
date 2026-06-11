@@ -17,6 +17,7 @@ type PersistOptions = {
   actorId?: string;
   kv?: KVNamespace;
   notify?: boolean;
+  expectedStateJson?: string | null;
   aiMeta?: {
     aiPlayerId: string;
     personality: AiPersonality;
@@ -31,6 +32,7 @@ type BroadcastGameState = Omit<
   | "pendingInsiderPeek"
   | "handshakeAgreements"
   | "negotiationThreads"
+  | "tradeOffers"
 > & {
   pendingAuction?: ReturnType<typeof redactPendingAuctionForBroadcast>;
   negotiationThreads?: ApplyActionResult["state"]["negotiationThreads"];
@@ -149,6 +151,7 @@ export function publicStateForBroadcast(
     pendingInsiderPeek: _peek,
     handshakeAgreements: _handshakes,
     negotiationThreads,
+    tradeOffers: _tradeOffers,
     ...rest
   } = state;
   const openNegotiationThreads = negotiationThreads?.filter(
@@ -188,14 +191,28 @@ export async function persistGameActionResult(
     } satisfies GameLogEntry,
   }));
 
-  const statements = [
-    db
-      .prepare("UPDATE games SET state_json = ? WHERE id = ?")
-      .bind(stateJson, gameId),
-  ];
+  const stateUpdate =
+    options.expectedStateJson === undefined
+      ? db
+          .prepare("UPDATE games SET state_json = ? WHERE id = ?")
+          .bind(stateJson, gameId)
+      : db
+          .prepare(
+            "UPDATE games SET state_json = ? WHERE id = ? AND state_json = ?",
+          )
+          .bind(stateJson, gameId, options.expectedStateJson);
 
+  const stateUpdateResult = await stateUpdate.run();
+  if (options.expectedStateJson !== undefined) {
+    const changes = stateUpdateResult.meta?.changes ?? 0;
+    if (changes === 0) {
+      throw "game.state_conflict";
+    }
+  }
+
+  const followUpStatements: D1PreparedStatement[] = [];
   if (result.state.phase === "game_over" && result.state.winnerId) {
-    statements.push(
+    followUpStatements.push(
       db
         .prepare(
           "UPDATE games SET status = 'completed', winner_id = ?, ended_at = ? WHERE id = ?",
@@ -203,21 +220,17 @@ export async function persistGameActionResult(
         .bind(result.state.winnerId, now, gameId),
     );
 
-    const lobbyRow = await db
-      .prepare("SELECT lobby_id FROM games WHERE id = ?")
-      .bind(gameId)
-      .first<{ lobby_id: string }>();
-    if (lobbyRow) {
-      statements.push(
-        db
-          .prepare("UPDATE lobbies SET status = 'finished' WHERE id = ?")
-          .bind(lobbyRow.lobby_id),
-      );
-    }
+    followUpStatements.push(
+      db
+        .prepare(
+          "UPDATE lobbies SET status = 'finished' WHERE id = (SELECT lobby_id FROM games WHERE id = ?)",
+        )
+        .bind(gameId),
+    );
   }
 
   for (const { apiEntry } of logRows) {
-    statements.push(
+    followUpStatements.push(
       db
         .prepare(
           "INSERT INTO game_log (id, game_id, round, player_id, action_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -234,7 +247,9 @@ export async function persistGameActionResult(
     );
   }
 
-  await db.batch(statements);
+  if (followUpStatements.length > 0) {
+    await db.batch(followUpStatements);
+  }
 
   if (result.state.phase === "game_over" && result.state.winnerId) {
     await processGameCompletion(db, options.kv, gameId, result.state, now);

@@ -75,9 +75,11 @@ export function ActionPhaseExtras({
     );
   }
 
-  if (!myPlayerId || state.phase !== "action" || !myTurn) {
+  if (!myPlayerId) {
     return null;
   }
+
+  if (state.phase !== "action" || !myTurn) return null;
 
   return (
     <div className="actionExtras cardNested">

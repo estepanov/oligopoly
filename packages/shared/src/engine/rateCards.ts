@@ -13,6 +13,10 @@ import {
 
 export const RATE_CARD_RESET_ROUNDS = 3;
 
+export type RateCardRevocationCause =
+  | { type: "mortgage"; position: number | string }
+  | { type: "trade" };
+
 export function syndicateQualifiesForRateCard(
   state: InternalGameState,
   syndicateId: string,
@@ -51,10 +55,10 @@ export function getActiveRateCardMultiplier(
   return card.multiplier;
 }
 
-export function revokeRateCardsForMortgage(
+export function revokeUnqualifiedRateCards(
   state: InternalGameState,
-  position: number | string,
   logs: LogEntry[],
+  cause: RateCardRevocationCause,
 ): InternalGameState {
   const newState = deepClone(state);
   if (!newState.rateCards?.length) return newState;
@@ -71,7 +75,7 @@ export function revokeRateCardsForMortgage(
     logs.push({
       playerId: null,
       actionType: "rate_card_revoked",
-      payload: { position },
+      payload: { cause },
     });
   }
   return newState;

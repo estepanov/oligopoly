@@ -318,6 +318,37 @@ describe("game display helpers", () => {
     );
   });
 
+  it("formats trade action log entries with players and assets", () => {
+    const names = playerNameMap(state);
+
+    expect(
+      formatGameLogEntry(
+        {
+          id: "log-trade",
+          gameId: "g",
+          round: 1,
+          playerId: "human-1",
+          actionType: "trade_proposed",
+          payload: {
+            proposerId: "human-1",
+            recipientId: "ai:one",
+            gives: { capital: 100, tilePositions: [3] },
+            receives: { capital: 50, tilePositions: [6] },
+          },
+          createdAt: 1,
+        },
+        new Map([
+          ["3", "Mobile Gaming Inc."],
+          ["6", "Search Engine Corp."],
+        ]),
+        "$",
+        names,
+      ),
+    ).toBe(
+      "Trade proposed · Ada to Copper Scout · gives $100 + Mobile Gaming Inc. · requests $50 + Search Engine Corp.",
+    );
+  });
+
   it("formats remaining player_state_changed fields", () => {
     const cur = { currencySymbol: "¤", currencyMultiplier: "10" };
     const tileNames = new Map<string, string>([

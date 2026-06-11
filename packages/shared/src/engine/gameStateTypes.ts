@@ -4,6 +4,7 @@ import type {
   GamePhase,
   InGameHandshakeAgreement,
   PendingInsiderPeek,
+  TradeOffer,
 } from "@oligopoly/validation";
 import type {
   AuctionResumePhase,
@@ -93,6 +94,7 @@ export interface InternalGameState {
   rateCards?: RateCardState[];
   activeContracts?: BindingContract[];
   negotiationThreads?: NegotiationThreadState[];
+  tradeOffers?: TradeOfferState[];
   handshakeAgreements?: HandshakeAgreementState[];
   pendingSyndicateVote?: PendingSyndicateVoteState | null;
   pendingInsiderPeek?: PendingInsiderPeekState | null;
@@ -119,6 +121,8 @@ export interface NegotiationThreadState {
   expiresAfterRound: number;
   visibility?: "private" | "open";
 }
+
+export type TradeOfferState = TradeOffer;
 
 export interface InternalAiPlayerState {
   playerId: string;

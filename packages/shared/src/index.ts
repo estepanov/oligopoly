@@ -228,6 +228,7 @@ export type {
   NegotiationThreadState,
   PendingForeclosureState,
   RateCardState,
+  TradeOfferState,
 } from "./engine/gameStateTypes.js";
 export type { MarketEventTrigger } from "./engine/marketEvents.js";
 export {
@@ -316,6 +317,14 @@ export {
   syndicateMarketValue,
   tileOwnedByController,
 } from "./engine/syndicate.js";
+export {
+  DEFAULT_TRADE_TIMEOUT_MINUTES,
+  expirePendingTradeOffers,
+  MAX_TRADE_COUNTERS,
+  nextTradeOfferExpiry,
+  TRADE_OFFER_HISTORY_LIMIT,
+  tradeTransferValue,
+} from "./engine/tradeActions.js";
 export type { TrustworthinessRestrictions } from "./engine/trustworthiness.js";
 export {
   applyHandshakeBreach,

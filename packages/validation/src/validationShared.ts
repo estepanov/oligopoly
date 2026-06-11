@@ -157,6 +157,39 @@ export const NegotiationThreadSchema = z.object({
 export type NegotiationThread = z.infer<typeof NegotiationThreadSchema>;
 
 // ---------------------------------------------------------------------------
+// Trade offers
+// ---------------------------------------------------------------------------
+export const TradeOfferTransferSchema = z.object({
+  capital: z.number().int().min(0),
+  tilePositions: z.array(z.union([z.number().int(), z.string()])),
+});
+export type TradeOfferTransfer = z.infer<typeof TradeOfferTransferSchema>;
+
+export const TradeOfferStatusSchema = z.enum([
+  "pending",
+  "accepted",
+  "rejected",
+  "expired",
+  "countered",
+]);
+export type TradeOfferStatus = z.infer<typeof TradeOfferStatusSchema>;
+
+export const TradeOfferSchema = z.object({
+  id: z.string(),
+  gameId: z.string(),
+  proposerId: z.string(),
+  recipientId: z.string(),
+  gives: TradeOfferTransferSchema,
+  receives: TradeOfferTransferSchema,
+  status: TradeOfferStatusSchema,
+  createdAt: z.number().int(),
+  expiresAt: z.number().int(),
+  counterCount: z.number().int().min(0),
+  parentOfferId: z.string().optional(),
+});
+export type TradeOffer = z.infer<typeof TradeOfferSchema>;
+
+// ---------------------------------------------------------------------------
 // Game status
 // ---------------------------------------------------------------------------
 export const GameStatusSchema = z.enum(["active", "completed"]);
@@ -404,6 +437,7 @@ export const GameErrorKeys = {
   INSUFFICIENT_AP: "game.insufficient_ap",
   TILE_NOT_MORTGAGED: "game.tile_not_mortgaged",
   DB_NOT_CONFIGURED: "game.db_not_configured",
+  STATE_CONFLICT: "game.state_conflict",
 } as const;
 
 export const LobbyErrorKeys = {

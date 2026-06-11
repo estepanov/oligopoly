@@ -6,9 +6,11 @@ import {
 import { toClientGameState } from "../gameStateView.js";
 import { isNotifyRequest } from "../realtime/notify.js";
 import {
+  AI_LOOP_MAX_STEPS,
   applyAuctionBidWindowExpiry,
   applyAuctionSettleExpiry,
   applyTimeoutTakeoverAndStep,
+  applyTradeOfferExpiry,
   runAiTurnLoop,
 } from "../services/gameAi.js";
 import { syncGameRoomTimer } from "../services/gameScheduler.js";
@@ -204,6 +206,8 @@ export class GameRoom extends RealtimeRoom {
 
     await this.state.storage.put("aiLoopRunning", true);
     try {
+      await applyTradeOfferExpiry(this.env.DB, gameId, this.env.GAME_ROOM);
+
       if (timerKind === "auction_bids") {
         await applyAuctionBidWindowExpiry(
           this.env.DB,
@@ -220,6 +224,20 @@ export class GameRoom extends RealtimeRoom {
           this.env.KV,
           this.env,
         );
+      } else if (timerKind === "trade_offer") {
+        const actorId = await this.state.storage.get<string>("turnActorId");
+        const turnDeadline =
+          await this.state.storage.get<number>("turnDeadlineAt");
+        if (actorId && turnDeadline && Date.now() >= turnDeadline) {
+          await applyTimeoutTakeoverAndStep(
+            this.env.DB,
+            gameId,
+            actorId,
+            this.env.GAME_ROOM,
+            this.env.KV,
+            this.env,
+          );
+        }
       } else {
         const actorId = await this.state.storage.get<string>("turnActorId");
         if (!actorId) return;
@@ -325,9 +343,8 @@ export class GameRoom extends RealtimeRoom {
     }
 
     const actorId = currentTurnActorId(state);
-    if (!actorId) return;
-
     if (
+      actorId &&
       isAiControlledActor(state, actorId) &&
       this.env.DB &&
       !(await this.state.storage.get<boolean>("aiLoopRunning"))
@@ -350,7 +367,7 @@ export class GameRoom extends RealtimeRoom {
         this.env.DB,
         gameId,
         this.env.GAME_ROOM,
-        16,
+        AI_LOOP_MAX_STEPS,
         this.env.KV,
         this.env,
       );

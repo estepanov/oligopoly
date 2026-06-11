@@ -52,7 +52,7 @@ import { resolvePostMovePhase } from "./phaseHelpers.js";
 import { advanceToFirstPlayerOfNewRound } from "./rateCardActions.js";
 import {
   recordOpposingSectorLanding,
-  revokeRateCardsForMortgage,
+  revokeUnqualifiedRateCards,
 } from "./rateCards.js";
 import { calculateDevelopmentCost, MAX_DEVELOPMENT_TOKENS } from "./rent.js";
 import { settleRentPayment } from "./rentPayment.js";
@@ -869,7 +869,10 @@ export function handleMortgageTile(
       },
     },
   ];
-  const workingState = revokeRateCardsForMortgage(newState, pos, logs);
+  const workingState = revokeUnqualifiedRateCards(newState, logs, {
+    type: "mortgage",
+    position: pos,
+  });
 
   return { state: workingState, logEntries: logs };
 }

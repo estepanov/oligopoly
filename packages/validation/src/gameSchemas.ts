@@ -9,6 +9,8 @@ import {
   NegotiationThreadStatusSchema,
   SpectatorModeSchema,
   SyndicateFormationCharterSchema,
+  TradeOfferSchema,
+  TradeOfferTransferSchema,
   TurnTimeoutSchema,
 } from "./validationShared.js";
 
@@ -78,6 +80,28 @@ export const GameActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("sign_contract"),
     contractId: z.string(),
+  }),
+  z.object({
+    type: z.literal("propose_trade"),
+    recipientId: z.string(),
+    gives: TradeOfferTransferSchema,
+    receives: TradeOfferTransferSchema,
+    timeoutMinutes: z.number().int().min(1).max(60).optional(),
+  }),
+  z.object({
+    type: z.literal("accept_trade"),
+    offerId: z.string(),
+  }),
+  z.object({
+    type: z.literal("reject_trade"),
+    offerId: z.string(),
+  }),
+  z.object({
+    type: z.literal("counter_trade"),
+    offerId: z.string(),
+    gives: TradeOfferTransferSchema,
+    receives: TradeOfferTransferSchema,
+    timeoutMinutes: z.number().int().min(1).max(60).optional(),
   }),
   z.object({
     type: z.literal("sign_handshake"),
@@ -338,6 +362,7 @@ export const GameStateSchema = z.object({
   kickedPlayerIds: z.array(z.string()).optional(),
   handshakeAgreements: z.array(InGameHandshakeAgreementSchema).optional(),
   negotiationThreads: z.array(GameNegotiationThreadSchema).optional(),
+  tradeOffers: z.array(TradeOfferSchema).optional(),
   pendingInsiderPeek: PendingInsiderPeekSchema.nullable().optional(),
   pendingSyndicateVote: z
     .object({

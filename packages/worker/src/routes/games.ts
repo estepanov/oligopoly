@@ -16,7 +16,11 @@ import {
 } from "../gameStateView.js";
 import { buildEngineActionInput } from "../lib/dice.js";
 import { upgradeWebSocket } from "../realtime/upgrade.js";
-import { stepGameAiTurn } from "../services/gameAi.js";
+import {
+  AI_LOOP_MAX_STEPS,
+  runAiTurnLoop,
+  stepGameAiTurn,
+} from "../services/gameAi.js";
 import { listGames, toGameSummary } from "../services/gameListings.js";
 import {
   notifyGameActionResult,
@@ -433,11 +437,20 @@ gameRoutes.post("/:id/action", async (c) => {
       actorId: subject,
       kv: c.env?.KV,
       notify: false,
+      expectedStateJson: row.state_json,
     });
     timings.push({
       name: "persist",
       duration: nowMs() - persistStartedAt,
     });
+    await runAiTurnLoop(
+      db,
+      id,
+      c.env?.GAME_ROOM,
+      AI_LOOP_MAX_STEPS,
+      c.env?.KV,
+      c.env,
+    );
 
     const notifyStartedAt = nowMs();
     scheduleActionSideEffect(
@@ -462,7 +475,8 @@ gameRoutes.post("/:id/action", async (c) => {
     return response;
   } catch (err) {
     if (typeof err === "string") {
-      return c.json({ error: err }, 400);
+      const status = err === GameErrorKeys.STATE_CONFLICT ? 409 : 400;
+      return c.json({ error: err }, status);
     }
     return c.json(
       { error: GameErrorKeys.INVALID_ACTION, detail: String(err) },

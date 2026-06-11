@@ -141,3 +141,33 @@ describe("toClientGameState handshake visibility", () => {
     ]);
   });
 });
+
+describe("toClientGameState trade offer visibility", () => {
+  it("keeps trade offers visible only to participating players", () => {
+    const state = baseState();
+    state.tradeOffers = [
+      {
+        id: "trade-1",
+        gameId: "game-1",
+        proposerId: "p1",
+        recipientId: "p2",
+        gives: { capital: 100, tilePositions: [3] },
+        receives: { capital: 50, tilePositions: [6] },
+        status: "pending",
+        createdAt: 1,
+        expiresAt: 2,
+        counterCount: 0,
+      },
+    ];
+
+    expect(
+      toClientGameState(state, "player", "p2").tradeOffers?.map(
+        (offer) => offer.id,
+      ),
+    ).toEqual(["trade-1"]);
+    expect(toClientGameState(state, "player", "p3").tradeOffers).toEqual([]);
+    expect(
+      toClientGameState(state, "spectator", "spectator").tradeOffers,
+    ).toEqual([]);
+  });
+});

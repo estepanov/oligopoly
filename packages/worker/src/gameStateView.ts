@@ -4,6 +4,7 @@ import type {
   InGameHandshakeAgreement,
   PendingAuction,
   PendingInsiderPeek,
+  TradeOffer,
 } from "@oligopoly/validation";
 
 /** Persisted `state_json` may include server-only affinity assignments. */
@@ -11,6 +12,7 @@ export type PersistedGameState = GameState & {
   affinityAssignments?: Record<string, string>;
   negotiationThreads?: GameNegotiationThread[];
   handshakeAgreements?: InGameHandshakeAgreement[];
+  tradeOffers?: TradeOffer[];
   pendingInsiderPeek?: PendingInsiderPeek | null;
 };
 
@@ -28,6 +30,7 @@ export type ClientGameState = Omit<
   myAffinityCardId?: string | null;
   negotiationThreads?: PersistedGameState["negotiationThreads"];
   handshakeAgreements?: PersistedGameState["handshakeAgreements"];
+  tradeOffers?: PersistedGameState["tradeOffers"];
   pendingInsiderPeek?: PersistedGameState["pendingInsiderPeek"];
 };
 
@@ -79,6 +82,7 @@ function buildClientGameStateBase(
     pendingAuction?: ClientPendingAuction;
     negotiationThreads: PersistedGameState["negotiationThreads"];
     handshakeAgreements: PersistedGameState["handshakeAgreements"];
+    tradeOffers: PersistedGameState["tradeOffers"];
     myAffinityCardId?: string | null;
     pendingInsiderPeek?: PersistedGameState["pendingInsiderPeek"];
   },
@@ -87,6 +91,7 @@ function buildClientGameStateBase(
     affinityAssignments: _affinity,
     pendingAuction: _auction,
     pendingInsiderPeek: _peek,
+    tradeOffers: _tradeOffers,
     ...rest
   } = state;
   return {
@@ -94,6 +99,7 @@ function buildClientGameStateBase(
     ...(extras.pendingAuction ? { pendingAuction: extras.pendingAuction } : {}),
     negotiationThreads: extras.negotiationThreads,
     handshakeAgreements: extras.handshakeAgreements,
+    tradeOffers: extras.tradeOffers,
     ...(extras.myAffinityCardId !== undefined
       ? { myAffinityCardId: extras.myAffinityCardId }
       : {}),
@@ -128,6 +134,12 @@ export function toClientGameState(
     mode,
   );
 
+  const tradeOffers = filterTradeOffersForViewer(
+    state.tradeOffers,
+    playerId,
+    mode,
+  );
+
   const insiderPeek =
     mode === "player" && state.pendingInsiderPeek?.drawingPlayerId === playerId
       ? state.pendingInsiderPeek
@@ -142,10 +154,23 @@ export function toClientGameState(
     pendingAuction,
     negotiationThreads,
     handshakeAgreements,
+    tradeOffers,
     ...(mode === "player"
       ? { myAffinityCardId, pendingInsiderPeek: insiderPeek }
       : {}),
   });
+}
+
+function filterTradeOffersForViewer(
+  offers: PersistedGameState["tradeOffers"],
+  viewerId: string,
+  mode: "spectator" | "player",
+) {
+  if (!offers?.length) return offers;
+  if (mode === "spectator") return [];
+  return offers.filter(
+    (offer) => offer.proposerId === viewerId || offer.recipientId === viewerId,
+  );
 }
 
 function filterNegotiationThreadsForViewer(

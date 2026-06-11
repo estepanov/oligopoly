@@ -4,6 +4,7 @@ import type {
   GameState,
   GameSummary,
 } from "@oligopoly/validation";
+import { GameErrorKeys } from "@oligopoly/validation";
 import {
   startTransition,
   useCallback,
@@ -168,6 +169,17 @@ export function useGameSession(
       : null;
   }, [myUserId, state?.players]);
 
+  const refresh = useCallback(async () => {
+    if (!gameId) return;
+    const [gameState, log] = await Promise.all([
+      fetchGameState(gameId),
+      loadGameLog(gameId),
+    ]);
+    setState((current) => mergeAuctionClientView(current, gameState));
+    setLogEntries(log);
+    setStatusLine(null);
+  }, [gameId]);
+
   const runAction = useCallback(
     async (label: string, action: GameAction) => {
       if (!gameId) return;
@@ -197,24 +209,20 @@ export function useGameSession(
           }
         });
       } catch (e) {
+        if (
+          e instanceof ApiError &&
+          e.status === 409 &&
+          e.message === GameErrorKeys.STATE_CONFLICT
+        ) {
+          await refresh();
+        }
         setError(e instanceof ApiError ? e.message : "Action failed");
         setPendingAction(null);
         setBusyAction(false);
       }
     },
-    [gameId],
+    [gameId, refresh],
   );
-
-  const refresh = useCallback(async () => {
-    if (!gameId) return;
-    const [gameState, log] = await Promise.all([
-      fetchGameState(gameId),
-      loadGameLog(gameId),
-    ]);
-    setState((current) => mergeAuctionClientView(current, gameState));
-    setLogEntries(log);
-    setStatusLine(null);
-  }, [gameId]);
 
   useEffect(() => {
     if (!gameId || state?.phase === "game_over") return;

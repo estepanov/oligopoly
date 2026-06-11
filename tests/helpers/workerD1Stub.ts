@@ -22,6 +22,7 @@ export function createWorkerD1Stub(): WorkerD1Stub {
     achievements: [],
   };
 
+  let lastChanges = 0;
   const execSql = (sql: string, binds: unknown[]) => {
     const trimmed = sql.replace(/\s+/g, " ").trim();
 
@@ -151,6 +152,18 @@ export function createWorkerD1Stub(): WorkerD1Stub {
         (row) => row !== invite,
       );
       return { results: invite ? [invite] : [], first: invite ?? null };
+    }
+
+    if (
+      trimmed.startsWith(
+        "INSERT INTO games (id, started_at, player_ids_json) SELECT id, started_at, player_ids_json FROM games WHERE id = ? AND changes() = 0",
+      )
+    ) {
+      const row = tables.games.find((r) => r.id === binds[0]);
+      if (lastChanges === 0 && row) {
+        throw new Error("UNIQUE constraint failed: games.id");
+      }
+      return { results: [], success: true, meta: { changes: 0 } };
     }
 
     if (trimmed.startsWith("INSERT INTO games")) {
@@ -354,10 +367,24 @@ export function createWorkerD1Stub(): WorkerD1Stub {
       return { results: row ? [row] : [], first: row };
     }
 
+    if (
+      trimmed.startsWith(
+        "UPDATE games SET state_json = ? WHERE id = ? AND state_json = ?",
+      )
+    ) {
+      const row = tables.games.find(
+        (r) => r.id === binds[1] && r.state_json === binds[2],
+      );
+      if (row) row.state_json = binds[0];
+      lastChanges = row ? 1 : 0;
+      return { meta: { changes: row ? 1 : 0 } };
+    }
+
     if (trimmed.startsWith("UPDATE games SET state_json = ? WHERE id = ?")) {
       const row = tables.games.find((r) => r.id === binds[1]);
       if (row) row.state_json = binds[0];
-      return { results: [], success: true };
+      lastChanges = row ? 1 : 0;
+      return { results: [], success: true, meta: { changes: row ? 1 : 0 } };
     }
 
     if (trimmed.startsWith("UPDATE games SET status = 'completed'")) {
@@ -377,7 +404,10 @@ export function createWorkerD1Stub(): WorkerD1Stub {
     }
 
     if (trimmed.startsWith("UPDATE lobbies SET status = 'finished'")) {
-      const row = tables.lobbies.find((r) => r.id === binds[0]);
+      const lobbyId = trimmed.includes("(SELECT lobby_id FROM games")
+        ? tables.games.find((r) => r.id === binds[0])?.lobby_id
+        : binds[0];
+      const row = tables.lobbies.find((r) => r.id === lobbyId);
       if (row) row.status = "finished";
       return { results: [], success: true };
     }
@@ -638,6 +668,7 @@ export function createWorkerD1Stub(): WorkerD1Stub {
         return (result.first ?? result.results[0] ?? null) as T | null;
       },
       _exec: () => execSql(sql, boundValues),
+      _sql: sql,
     };
     return stmt;
   };
