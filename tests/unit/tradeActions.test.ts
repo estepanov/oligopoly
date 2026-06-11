@@ -245,6 +245,68 @@ describe("trade actions", () => {
     expect(rejected.state.tradeOffers?.[0].status).toBe("rejected");
   });
 
+  it("allows accepting a trade during insider peek phase", () => {
+    const proposed = applyAction(baseState(), "p1", {
+      type: "propose_trade",
+      recipientId: "p2",
+      gives: { capital: 10, tilePositions: [] },
+      receives: { capital: 0, tilePositions: [6] },
+    });
+    const peekState = {
+      ...proposed.state,
+      phase: "waiting_for_insider_peek" as const,
+      pendingInsiderPeek: {
+        cardId: "card-1",
+        trigger: "turn_start" as const,
+        playerId: "p1",
+      },
+    };
+
+    const accepted = applyAction(peekState, "p2", {
+      type: "accept_trade",
+      offerId: "trade-trade-game-1",
+    });
+
+    expect(accepted.state.tradeOffers?.[0].status).toBe("accepted");
+    // Special phase is preserved — accepting a trade does not advance it.
+    expect(accepted.state.phase).toBe("waiting_for_insider_peek");
+  });
+
+  it("allows trade responses during disruption nullify phase", () => {
+    const proposed = applyAction(baseState(), "p1", {
+      type: "propose_trade",
+      recipientId: "p2",
+      gives: { capital: 10, tilePositions: [] },
+      receives: { capital: 0, tilePositions: [6] },
+    });
+    const nullifyState = {
+      ...proposed.state,
+      phase: "waiting_for_disruption_nullify" as const,
+    };
+
+    const rejected = applyAction(nullifyState, "p2", {
+      type: "reject_trade",
+      offerId: "trade-trade-game-1",
+    });
+
+    expect(rejected.state.tradeOffers?.[0].status).toBe("rejected");
+  });
+
+  it("throws invalid_phase when proposing outside the action phase", () => {
+    const waitingState = {
+      ...baseState(),
+      phase: "waiting_for_roll" as const,
+    };
+    expect(() =>
+      applyAction(waitingState, "p1", {
+        type: "propose_trade",
+        recipientId: "p2",
+        gives: { capital: 10, tilePositions: [] },
+        receives: { capital: 0, tilePositions: [6] },
+      }),
+    ).toThrow("game.invalid_phase");
+  });
+
   it("prunes resolved offers while keeping pending offers", () => {
     let state = baseState();
     for (let index = 0; index < TRADE_OFFER_HISTORY_LIMIT + 3; index += 1) {

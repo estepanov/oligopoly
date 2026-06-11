@@ -141,6 +141,21 @@ function applyDarkPoolTransferRedaction<
   };
 }
 
+/**
+ * Trade-offer redaction contract (two paths — keep in sync):
+ *
+ * 1. Realtime broadcast: `publicStateForBroadcast` strips `tradeOffers`
+ *    ENTIRELY. The broadcast carries no offer terms; GameRoom fans the event
+ *    out to each connected client and re-derives the per-viewer slice via
+ *    `toClientGameState` (see `filterTradeOffersForViewer`), so only the
+ *    proposer/recipient ever receive their own offers.
+ * 2. HTTP responses: `toActionResponse` calls `toClientGameState` DIRECTLY for
+ *    the requesting player, applying the same party-scoped filter.
+ *
+ * Because path (1) relies on GameRoom for per-viewer filtering, any caller that
+ * broadcasts a full state WITHOUT going through GameRoom + `toClientGameState`
+ * must keep `tradeOffers` stripped, or it will leak private offer terms.
+ */
 export function publicStateForBroadcast(
   state: ApplyActionResult["state"],
   logEntries: ApplyActionResult["logEntries"] = [],

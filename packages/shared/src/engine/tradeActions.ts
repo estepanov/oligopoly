@@ -44,7 +44,7 @@ export function handleProposeTrade(
   playerId: string,
   action: GameActionInput,
 ): ApplyActionResult {
-  if (state.phase !== "action") throw "game.invalid_action";
+  if (state.phase !== "action") throw "game.invalid_phase";
 
   const recipientId = action.recipientId;
   if (!recipientId || recipientId === playerId) {
@@ -179,7 +179,7 @@ export function handleCounterTrade(
   playerId: string,
   action: GameActionInput,
 ): ApplyActionResult {
-  if (state.phase !== "action") throw "game.invalid_action";
+  if (state.phase !== "action") throw "game.invalid_phase";
 
   const nowMs = Date.now();
   const offer = pendingOfferForResponse(state, playerId, action.offerId, nowMs);
