@@ -3,6 +3,7 @@ import {
   isAiControlledActor,
   normalizeGameState,
 } from "@oligopoly/shared";
+import { GameErrorKeys } from "@oligopoly/validation";
 import {
   redactLogEntriesForViewer,
   toClientGameState,
@@ -208,6 +209,11 @@ export class GameRoom extends RealtimeRoom {
     }
   }
 
+  private async turnDeadlineReached(): Promise<boolean> {
+    const turnDeadline = await this.state.storage.get<number>("turnDeadlineAt");
+    return turnDeadline !== undefined && Date.now() >= turnDeadline;
+  }
+
   async alarm(): Promise<void> {
     const gameId = await this.state.storage.get<string>("gameId");
     if (!gameId || !this.env.DB) return;
@@ -242,23 +248,15 @@ export class GameRoom extends RealtimeRoom {
           this.env.KV,
           this.env,
         );
-      } else if (timerKind === "trade_offer") {
-        const actorId = await this.state.storage.get<string>("turnActorId");
-        const turnDeadline =
-          await this.state.storage.get<number>("turnDeadlineAt");
-        if (actorId && turnDeadline && Date.now() >= turnDeadline) {
-          await applyTimeoutTakeoverAndStep(
-            this.env.DB,
-            gameId,
-            actorId,
-            this.env.GAME_ROOM,
-            this.env.KV,
-            this.env,
-          );
-        }
       } else {
         const actorId = await this.state.storage.get<string>("turnActorId");
-        if (actorId) {
+        // For a `trade_offer` alarm the offer-expiry above is the primary work;
+        // the turn itself may not be expired yet, so only take over the actor's
+        // turn when its own deadline has also passed. For a plain `turn` alarm
+        // the alarm IS the turn deadline, so takeover always applies.
+        const turnExpired =
+          timerKind !== "trade_offer" || (await this.turnDeadlineReached());
+        if (actorId && turnExpired) {
           await applyTimeoutTakeoverAndStep(
             this.env.DB,
             gameId,
@@ -274,7 +272,7 @@ export class GameRoom extends RealtimeRoom {
       // `game.state_conflict` when another writer advanced the game first. That
       // is benign here: the other writer already moved state forward, so we just
       // resync + reschedule below rather than letting the alarm tick fail.
-      if (err !== "game.state_conflict") throw err;
+      if (err !== GameErrorKeys.STATE_CONFLICT) throw err;
     } finally {
       await this.state.storage.delete("aiLoopRunning");
       await this.resyncFromDatabase(gameId);

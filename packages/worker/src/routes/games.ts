@@ -446,10 +446,22 @@ gameRoutes.post("/:id/action", async (c) => {
       name: "persist",
       duration: nowMs() - persistStartedAt,
     });
-    // The AI follow-up loop is best-effort: the human action above already
-    // committed. An AI step that hits an optimistic-concurrency conflict (or any
-    // other error) must never surface as a failure of the human's request, so we
-    // swallow it here rather than letting it propagate into the 409/400 catch.
+    // The AI follow-up loop runs inline (awaited) on purpose. The Durable Object
+    // (`GameRoom.syncAfterStateChange`) ALSO drives `runAiTurnLoop` when it
+    // receives this action's broadcast, but that path is (a) only wired when
+    // `GAME_ROOM` is bound and (b) driven off the response via `waitUntil`, so it
+    // is not observable to a caller that immediately reads back state. Several
+    // flows — and the e2e/integration harness, which has no `GAME_ROOM` binding
+    // at all — depend on the AI having already acted by the time this request
+    // returns, so the inline await is the authoritative driver. Running from both
+    // places is safe: each step persists under an optimistic-concurrency guard,
+    // so whichever driver loses the race simply gets `STATE_CONFLICT` and stops
+    // (handled in `runAiTurnLoop` and the DO) rather than double-applying.
+    //
+    // The loop is also best-effort: the human action above already committed, so
+    // an AI step that conflicts (or otherwise throws) must never surface as a
+    // failure of the human's request. We swallow it here rather than letting it
+    // propagate into the 409/400 catch below.
     try {
       await runAiTurnLoop(
         db,
@@ -481,7 +493,14 @@ gameRoutes.post("/:id/action", async (c) => {
       name: "total",
       duration: nowMs() - actionStartedAt,
     });
-    const response = c.json(toActionResponse(result, subject, { logEntries }));
+    // Redact private trade log entries (e.g. `trade_expired` from
+    // `expirePendingTradeOffers`) so a non-participant who triggers another
+    // pair's offer expiry never receives their private terms in the HTTP body.
+    const response = c.json(
+      toActionResponse(result, subject, {
+        logEntries: redactLogEntriesForViewer(logEntries, subject),
+      }),
+    );
     response.headers.set("Server-Timing", formatServerTiming(timings));
     return response;
   } catch (err) {

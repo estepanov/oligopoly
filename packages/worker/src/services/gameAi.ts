@@ -13,6 +13,7 @@ import {
   replaceKickedPlayerWithAi,
 } from "@oligopoly/shared";
 import type { AiPersonality } from "@oligopoly/validation";
+import { GameErrorKeys } from "@oligopoly/validation";
 import { withPathChoiceDie } from "../lib/dice.js";
 import { broadcastGameEvent } from "../realtime/notify.js";
 import { persistGameActionResult } from "./gamePersistence.js";
@@ -163,7 +164,7 @@ export async function runAiTurnLoop(
       // An optimistic-concurrency conflict means another writer advanced the
       // game between our read and persist. The AI loop is best-effort; stop
       // rather than propagating (the other writer / next tick will continue).
-      if (err === "game.state_conflict") break;
+      if (err === GameErrorKeys.STATE_CONFLICT) break;
       throw err;
     }
     if (!step.applied) break;

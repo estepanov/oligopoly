@@ -4,6 +4,7 @@ import type {
   GameAction,
   GameLogEntry,
 } from "@oligopoly/validation";
+import { GameErrorKeys } from "@oligopoly/validation";
 import {
   type PersistedGameState,
   redactPendingAuctionForBroadcast,
@@ -277,7 +278,7 @@ export async function persistGameActionResult(
   if (guarded) {
     const changes = batchResults[0]?.meta?.changes ?? 0;
     if (changes === 0) {
-      throw "game.state_conflict";
+      throw GameErrorKeys.STATE_CONFLICT;
     }
   }
 

@@ -607,6 +607,125 @@ describe("POST /api/games/:id/action", () => {
       error: GameErrorKeys.STATE_CONFLICT,
     });
   });
+
+  // ADV2-1: `expirePendingTradeOffers` runs at the start of every action and
+  // emits `trade_expired` entries carrying the full offer terms. A non-party
+  // participant who merely triggers another pair's expiry (e.g. by ending their
+  // turn) must never receive those terms in the action HTTP response.
+  it("redacts another pair's expired-trade terms from the actor's response", async () => {
+    const player = (
+      id: string,
+      capital: number,
+      ownedTilePositions: number[],
+    ) => ({
+      playerId: id,
+      position: 0,
+      capital,
+      ownedTilePositions,
+      mortgagedTilePositions: [],
+      developmentTokens: {},
+      trustworthiness: 7,
+      actionPointsRemaining: 2,
+      inRegulation: false,
+      doublesCount: 0,
+      isOnDiagonal: false,
+    });
+    const expiringGame: Row = {
+      id: "game-expire",
+      status: "active",
+      player_ids_json: JSON.stringify([PLAYER_A, PLAYER_B, "player-c"]),
+      started_at: 3000,
+      ended_at: null,
+      winner_id: null,
+      state_json: JSON.stringify({
+        gameId: "game-expire",
+        round: 1,
+        phase: "action",
+        currentPlayerIndex: 0,
+        turnOrder: [PLAYER_A, PLAYER_B, "player-c"],
+        freeMarketPool: 0,
+        pendingBuyTilePosition: null,
+        lastDiceRoll: null,
+        winnerId: null,
+        eliminatedPlayerIds: [],
+        settings: { currencySymbol: "$" },
+        players: [
+          player(PLAYER_A, 1000, [3]),
+          player(PLAYER_B, 900, [6]),
+          player("player-c", 800, [9]),
+        ],
+        tiles: [
+          {
+            position: 3,
+            ownerId: PLAYER_A,
+            mortgaged: false,
+            developmentTokens: 0,
+          },
+          {
+            position: 6,
+            ownerId: PLAYER_B,
+            mortgaged: false,
+            developmentTokens: 0,
+          },
+          {
+            position: 9,
+            ownerId: "player-c",
+            mortgaged: false,
+            developmentTokens: 0,
+          },
+        ],
+        // A pending B<->C offer that already expired (expiresAt in the past).
+        tradeOffers: [
+          {
+            id: "trade-game-expire-1",
+            gameId: "game-expire",
+            proposerId: PLAYER_B,
+            recipientId: "player-c",
+            gives: { capital: 4242, tilePositions: [6] },
+            receives: { capital: 9191, tilePositions: [9] },
+            status: "pending",
+            createdAt: 1,
+            expiresAt: 1,
+            counterCount: 0,
+          },
+        ],
+      }),
+    };
+    const env = makeEnv({
+      games: [cloneRow(expiringGame)],
+      game_log: [],
+      users: [
+        cloneRow(userA),
+        cloneRow(userB),
+        { id: "player-c", username: "player-c", role: "user" },
+      ],
+    });
+
+    // Player A (not a party to the B<->C trade) ends their turn, which triggers
+    // the offer's expiry inside applyAction.
+    const res = await app.request(
+      "/api/games/game-expire/action",
+      {
+        method: "POST",
+        headers: { "x-subject": PLAYER_A, "content-type": "application/json" },
+        body: JSON.stringify({ type: "end_turn" }),
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      logEntries?: Array<{ actionType: string }>;
+    }>();
+    // The private trade entry must be dropped for the non-party actor, and the
+    // offer terms must not appear anywhere in the response body.
+    expect(
+      (body.logEntries ?? []).some((e) => e.actionType === "trade_expired"),
+    ).toBe(false);
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("4242");
+    expect(serialized).not.toContain("9191");
+  });
 });
 
 // ---------------------------------------------------------------------------

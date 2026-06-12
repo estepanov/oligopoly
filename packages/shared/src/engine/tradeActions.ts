@@ -124,6 +124,11 @@ export function handleAcceptTrade(
   workingOffer.status = "accepted";
   newState.tradeOffers = pruneTradeOffers(newState.tradeOffers ?? []);
 
+  // Intentional: although the asset transfers are publicly observable in state,
+  // the `trade_accepted` log line carries the full terms and stays private to the
+  // two parties (redacted by `redactLogEntriesForViewer`). We deliberately do not
+  // emit a public "trade completed" line — keeping the negotiated terms private is
+  // the conservative choice.
   const logs: LogEntry[] = [
     {
       playerId,
@@ -423,6 +428,15 @@ function pendingOfferForResponse(
   if (!offer) throw TradeErrorKeys.OFFER_NOT_FOUND;
   if (offer.status !== "pending") throw TradeErrorKeys.OFFER_NOT_PENDING;
   if (offer.recipientId !== playerId) throw TradeErrorKeys.INVALID_PARTY;
+  // Mirror propose/counter: a settled/responded offer must not involve an
+  // eliminated party (latent today — `eliminatedPlayerIds` isn't populated yet —
+  // but kept consistent so accept/reject/counter all reject eliminated parties).
+  if (
+    isEliminated(state, offer.proposerId) ||
+    isEliminated(state, offer.recipientId)
+  ) {
+    throw TradeErrorKeys.INVALID_PARTY;
+  }
   if (!options.allowExpired && isOfferExpired(offer, nowMs)) {
     throw TradeErrorKeys.OFFER_EXPIRED;
   }
