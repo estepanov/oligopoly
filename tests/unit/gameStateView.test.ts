@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type PersistedGameState,
+  redactLogEntriesForViewer,
   toClientGameState,
 } from "../../packages/worker/src/gameStateView";
 
@@ -169,5 +170,66 @@ describe("toClientGameState trade offer visibility", () => {
     expect(
       toClientGameState(state, "spectator", "spectator").tradeOffers,
     ).toEqual([]);
+  });
+});
+
+describe("redactLogEntriesForViewer (private trade terms)", () => {
+  const tradeEntry = {
+    actionType: "trade_proposed",
+    payload: {
+      offerId: "trade-1",
+      proposerId: "p1",
+      recipientId: "p2",
+      gives: { capital: 100, tilePositions: [3] },
+      receives: { capital: 50, tilePositions: [6] },
+      status: "pending",
+    },
+  };
+  const publicEntry = {
+    actionType: "buy_tile",
+    payload: { playerId: "p1", tilePosition: 3 },
+  };
+
+  it("delivers private trade entries to the proposer and recipient", () => {
+    expect(redactLogEntriesForViewer([tradeEntry, publicEntry], "p1")).toEqual([
+      tradeEntry,
+      publicEntry,
+    ]);
+    expect(redactLogEntriesForViewer([tradeEntry, publicEntry], "p2")).toEqual([
+      tradeEntry,
+      publicEntry,
+    ]);
+  });
+
+  it("hides private trade terms from non-participants", () => {
+    const redacted = redactLogEntriesForViewer([tradeEntry, publicEntry], "p3");
+    expect(redacted).toEqual([publicEntry]);
+    // The non-participant must not receive gives/receives or party ids at all.
+    const leaked = JSON.stringify(redacted);
+    expect(leaked).not.toContain("gives");
+    expect(leaked).not.toContain("receives");
+    expect(leaked).not.toContain("proposerId");
+  });
+
+  it("hides private trade terms from spectators (null viewer)", () => {
+    expect(redactLogEntriesForViewer([tradeEntry, publicEntry], null)).toEqual([
+      publicEntry,
+    ]);
+  });
+
+  it("redacts every private trade action type", () => {
+    const actions = [
+      "trade_proposed",
+      "trade_accepted",
+      "trade_rejected",
+      "trade_expired",
+      "trade_countered",
+    ];
+    const entries = actions.map((actionType) => ({
+      actionType,
+      payload: { proposerId: "p1", recipientId: "p2", gives: {}, receives: {} },
+    }));
+    expect(redactLogEntriesForViewer(entries, "p3")).toEqual([]);
+    expect(redactLogEntriesForViewer(entries, "p1")).toEqual(entries);
   });
 });

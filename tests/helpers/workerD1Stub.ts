@@ -23,8 +23,20 @@ export function createWorkerD1Stub(): WorkerD1Stub {
   };
 
   let lastChanges = 0;
+
+  // Follow-up writes in persistGameActionResult are gated on the games row
+  // already holding the freshly-written state (an `AND EXISTS (SELECT 1 FROM
+  // games WHERE id = ? AND state_json = ?)` predicate). Mirror that here so the
+  // batch's optimistic-conflict semantics hold: when the guard fails the
+  // follow-up is a no-op, exactly as in real D1.
+  const appliedGuardSatisfied = (gameId: unknown, stateJson: unknown) =>
+    tables.games.some((r) => r.id === gameId && r.state_json === stateJson);
+
   const execSql = (sql: string, binds: unknown[]) => {
     const trimmed = sql.replace(/\s+/g, " ").trim();
+    const hasAppliedGuard = trimmed.includes(
+      "EXISTS (SELECT 1 FROM games WHERE id = ? AND state_json = ?)",
+    );
 
     if (trimmed.startsWith("INSERT INTO lobbies")) {
       const [
@@ -188,7 +200,15 @@ export function createWorkerD1Stub(): WorkerD1Stub {
     }
 
     if (trimmed.startsWith("INSERT INTO game_log")) {
-      if (binds.length === 7) {
+      // Guarded log inserts append [gameId, stateJson] for the EXISTS predicate.
+      const insertBinds = hasAppliedGuard ? binds.slice(0, -2) : binds;
+      if (hasAppliedGuard) {
+        const [guardGameId, guardStateJson] = binds.slice(-2);
+        if (!appliedGuardSatisfied(guardGameId, guardStateJson)) {
+          return { results: [], success: true, meta: { changes: 0 } };
+        }
+      }
+      if (insertBinds.length === 7) {
         const [
           id,
           game_id,
@@ -197,7 +217,7 @@ export function createWorkerD1Stub(): WorkerD1Stub {
           action_type,
           payload_json,
           created_at,
-        ] = binds as [
+        ] = insertBinds as [
           string,
           string,
           number,
@@ -216,7 +236,7 @@ export function createWorkerD1Stub(): WorkerD1Stub {
           created_at,
         });
       } else {
-        const [id, game_id, payload_json, created_at] = binds as [
+        const [id, game_id, payload_json, created_at] = insertBinds as [
           string,
           string,
           string,
@@ -338,7 +358,9 @@ export function createWorkerD1Stub(): WorkerD1Stub {
       return { results: row ? [row] : [], first: row };
     }
 
-    if (trimmed.includes("SELECT lobby_id FROM games WHERE id = ?")) {
+    // Use startsWith so this does not also intercept UPDATE statements that
+    // embed `SELECT lobby_id FROM games WHERE id = ?` as a subquery.
+    if (trimmed.startsWith("SELECT lobby_id FROM games WHERE id = ?")) {
       const row = tables.games.find((r) => r.id === binds[0]) ?? null;
       return {
         results: row ? [row] : [],
@@ -388,6 +410,9 @@ export function createWorkerD1Stub(): WorkerD1Stub {
     }
 
     if (trimmed.startsWith("UPDATE games SET status = 'completed'")) {
+      if (hasAppliedGuard && !appliedGuardSatisfied(binds[3], binds[4])) {
+        return { results: [], success: true, meta: { changes: 0 } };
+      }
       const row = tables.games.find((r) => r.id === binds[2]);
       if (row) {
         row.status = "completed";
@@ -404,6 +429,9 @@ export function createWorkerD1Stub(): WorkerD1Stub {
     }
 
     if (trimmed.startsWith("UPDATE lobbies SET status = 'finished'")) {
+      if (hasAppliedGuard && !appliedGuardSatisfied(binds[1], binds[2])) {
+        return { results: [], success: true, meta: { changes: 0 } };
+      }
       const lobbyId = trimmed.includes("(SELECT lobby_id FROM games")
         ? tables.games.find((r) => r.id === binds[0])?.lobby_id
         : binds[0];

@@ -1,4 +1,5 @@
 import type {
+  GameLogEntry,
   GameNegotiationThread,
   GameState,
   InGameHandshakeAgreement,
@@ -6,6 +7,46 @@ import type {
   PendingInsiderPeek,
   TradeOffer,
 } from "@oligopoly/validation";
+
+/**
+ * Log action types whose payloads carry private trade terms (capital/tiles and
+ * the two party ids). Only the proposer and recipient may see these entries;
+ * everyone else (other players + spectators) must not receive them at all —
+ * mirroring how `filterTradeOffersForViewer` hides offer state itself.
+ */
+const PRIVATE_TRADE_LOG_ACTIONS = new Set([
+  "trade_proposed",
+  "trade_accepted",
+  "trade_rejected",
+  "trade_expired",
+  "trade_countered",
+]);
+
+function isTradeParticipant(
+  payload: GameLogEntry["payload"],
+  viewerId: string,
+): boolean {
+  if (!payload || typeof payload !== "object") return false;
+  const { proposerId, recipientId } = payload as {
+    proposerId?: unknown;
+    recipientId?: unknown;
+  };
+  return proposerId === viewerId || recipientId === viewerId;
+}
+
+/**
+ * Drop private trade log entries for viewers that are not a party to the trade.
+ * `viewerId` is the player id for player views, or `null`/spectator for
+ * spectators (who never participate, so all private trade entries are removed).
+ */
+export function redactLogEntriesForViewer<
+  TEntry extends Pick<GameLogEntry, "actionType" | "payload">,
+>(entries: TEntry[], viewerId: string | null): TEntry[] {
+  return entries.filter((entry) => {
+    if (!PRIVATE_TRADE_LOG_ACTIONS.has(entry.actionType)) return true;
+    return viewerId !== null && isTradeParticipant(entry.payload, viewerId);
+  });
+}
 
 /** Persisted `state_json` may include server-only affinity assignments. */
 export type PersistedGameState = GameState & {

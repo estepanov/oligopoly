@@ -26,7 +26,6 @@ export function tradeableTilesForPlayer(
 }
 
 export function selectedTransferValue(
-  _tiles: TradeableTile[],
   selectedPositions: string[],
   capital: number,
 ): number {

@@ -192,14 +192,12 @@ const PHASE_ACTION_ROUTES: Partial<
       handleDisruptionNullifyResponse(state, playerId, action),
     accept_disruption: (state, playerId, action) =>
       handleDisruptionNullifyResponse(state, playerId, action),
-    ...ASYNC_TRADE_RESPONSE_ROUTES,
   },
   waiting_for_insider_peek: {
     insider_keep_market_event: (state, playerId) =>
       handleInsiderKeepMarketEvent(state, playerId),
     insider_discard_market_event: (state, playerId) =>
       handleInsiderDiscardMarketEvent(state, playerId),
-    ...ASYNC_TRADE_RESPONSE_ROUTES,
   },
 };
 
@@ -285,15 +283,20 @@ function applySpecialActionRoute(
     return phaseHandler(state, playerId, action);
   }
 
+  // Global async responses (auction bids/passes, trade accept/reject/counter)
+  // are valid in any phase, including the special "waiting_for_*" phases — so
+  // consult them BEFORE the phase-gated throw. This keeps the trade-response
+  // routing in one place instead of re-spreading it into each special phase.
+  const globalHandler = GLOBAL_ACTION_ROUTES_BY_TYPE[action.type];
+  if (globalHandler) {
+    return globalHandler(state, playerId, action);
+  }
+
   if (phaseRoutes) {
     throw "game.invalid_phase";
   }
 
-  const globalHandler = GLOBAL_ACTION_ROUTES_BY_TYPE[action.type];
-  if (!globalHandler) {
-    return null;
-  }
-  return globalHandler(state, playerId, action);
+  return null;
 }
 
 function finalizePrimaryLogIndex(result: ApplyActionResult): ApplyActionResult {

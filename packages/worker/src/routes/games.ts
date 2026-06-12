@@ -12,6 +12,7 @@ import {
 import { type Context, Hono } from "hono";
 import {
   type PersistedGameState,
+  redactLogEntriesForViewer,
   toClientGameState,
 } from "../gameStateView.js";
 import { buildEngineActionInput } from "../lib/dice.js";
@@ -280,7 +281,9 @@ gameRoutes.get("/:id/log", async (c) => {
     createdAt: row.created_at,
   }));
 
-  return c.json({ log });
+  // Private trade terms must only reach the proposer/recipient, never other
+  // players in the same game (mirrors the realtime broadcast redaction).
+  return c.json({ log: redactLogEntriesForViewer(log, subject) });
 });
 
 // ---------------------------------------------------------------------------
@@ -344,7 +347,7 @@ gameRoutes.get("/:id/replay", async (c) => {
     createdAt: row.created_at,
   }));
 
-  return c.json({ replay });
+  return c.json({ replay: redactLogEntriesForViewer(replay, subject) });
 });
 
 // ---------------------------------------------------------------------------
@@ -443,14 +446,22 @@ gameRoutes.post("/:id/action", async (c) => {
       name: "persist",
       duration: nowMs() - persistStartedAt,
     });
-    await runAiTurnLoop(
-      db,
-      id,
-      c.env?.GAME_ROOM,
-      AI_LOOP_MAX_STEPS,
-      c.env?.KV,
-      c.env,
-    );
+    // The AI follow-up loop is best-effort: the human action above already
+    // committed. An AI step that hits an optimistic-concurrency conflict (or any
+    // other error) must never surface as a failure of the human's request, so we
+    // swallow it here rather than letting it propagate into the 409/400 catch.
+    try {
+      await runAiTurnLoop(
+        db,
+        id,
+        c.env?.GAME_ROOM,
+        AI_LOOP_MAX_STEPS,
+        c.env?.KV,
+        c.env,
+      );
+    } catch (aiErr) {
+      console.error("ai follow-up loop failed", { gameId: id, error: aiErr });
+    }
 
     const notifyStartedAt = nowMs();
     scheduleActionSideEffect(

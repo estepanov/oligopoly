@@ -156,7 +156,16 @@ export async function runAiTurnLoop(
 ): Promise<number> {
   let steps = 0;
   for (let i = 0; i < maxSteps; i++) {
-    const step = await stepGameAiTurn(db, gameId, gameRoom, kv, aiEnv);
+    let step: StepAiTurnResult;
+    try {
+      step = await stepGameAiTurn(db, gameId, gameRoom, kv, aiEnv);
+    } catch (err) {
+      // An optimistic-concurrency conflict means another writer advanced the
+      // game between our read and persist. The AI loop is best-effort; stop
+      // rather than propagating (the other writer / next tick will continue).
+      if (err === "game.state_conflict") break;
+      throw err;
+    }
     if (!step.applied) break;
     steps += 1;
     if (step.result.state.phase === "game_over") break;

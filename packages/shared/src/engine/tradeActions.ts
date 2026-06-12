@@ -54,6 +54,9 @@ export function handleProposeTrade(
   const proposer = getPlayer(state, playerId);
   const recipient = getPlayer(state, recipientId);
   if (!proposer || !recipient) throw TradeErrorKeys.INVALID_PARTY;
+  if (isEliminated(state, playerId) || isEliminated(state, recipientId)) {
+    throw TradeErrorKeys.INVALID_PARTY;
+  }
   if (proposer.actionPointsRemaining < ACTION_COSTS.PROPOSE_TRADE) {
     throw "game.insufficient_ap";
   }
@@ -190,6 +193,9 @@ export function handleCounterTrade(
   const proposer = getPlayer(state, playerId);
   const recipient = getPlayer(state, offer.proposerId);
   if (!proposer || !recipient) throw TradeErrorKeys.INVALID_PARTY;
+  if (isEliminated(state, playerId) || isEliminated(state, offer.proposerId)) {
+    throw TradeErrorKeys.INVALID_PARTY;
+  }
 
   const gives = normalizeTransfer(action.gives);
   const receives = normalizeTransfer(action.receives);
@@ -432,6 +438,10 @@ function findTradeOffer(
   offerId: string,
 ): TradeOffer | undefined {
   return state.tradeOffers?.find((offer) => offer.id === offerId);
+}
+
+function isEliminated(state: InternalGameState, playerId: string): boolean {
+  return (state.eliminatedPlayerIds ?? []).includes(playerId);
 }
 
 function hasTransferValue(transfer: TradeOfferTransfer): boolean {

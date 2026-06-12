@@ -159,9 +159,17 @@ export type NegotiationThread = z.infer<typeof NegotiationThreadSchema>;
 // ---------------------------------------------------------------------------
 // Trade offers
 // ---------------------------------------------------------------------------
+// Upper bound on tiles per side of a trade. No player can ever own more than
+// the number of ownable board tiles, so this is a generous cap that still
+// prevents unbounded-array DoS via crafted action payloads. Kept local to avoid
+// a dependency from @oligopoly/validation onto @oligopoly/shared's board config.
+export const MAX_TRADE_TILE_POSITIONS = 40;
+
 export const TradeOfferTransferSchema = z.object({
   capital: z.number().int().min(0),
-  tilePositions: z.array(z.union([z.number().int(), z.string()])),
+  tilePositions: z
+    .array(z.union([z.number().int(), z.string()]))
+    .max(MAX_TRADE_TILE_POSITIONS),
 });
 export type TradeOfferTransfer = z.infer<typeof TradeOfferTransferSchema>;
 

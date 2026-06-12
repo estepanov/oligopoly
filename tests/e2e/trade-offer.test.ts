@@ -177,6 +177,52 @@ describe("e2e trade offers", () => {
     ]);
   });
 
+  // ADV-2 / TN-2: a conflict in the best-effort AI follow-up loop must NOT fail
+  // the human's already-committed action with a 409.
+  it("returns 200 for the human action even when the AI follow-up loop conflicts", async () => {
+    const db = createD1Stub() as HarnessDb;
+    const { gameId, humanId, aiId } = await createSoloAiGame(db);
+    seedTradeReadyState(db, gameId, [humanId, aiId]);
+
+    // Wrap batch() so the FIRST guarded batch (the human's commit) succeeds and
+    // every subsequent guarded batch (the AI follow-up step's persist) throws
+    // the bare optimistic-conflict string the engine uses.
+    const realBatch = db.batch.bind(db) as (
+      stmts: unknown[],
+    ) => Promise<unknown[]>;
+    let guardedBatches = 0;
+    (
+      db as unknown as { batch: (stmts: unknown[]) => Promise<unknown[]> }
+    ).batch = async (stmts: unknown[]) => {
+      const isGuarded = stmts.some((s) =>
+        String((s as { _sql?: string })._sql ?? "").includes(
+          "EXISTS (SELECT 1 FROM games",
+        ),
+      );
+      if (isGuarded) {
+        guardedBatches += 1;
+        if (guardedBatches > 1) throw "game.state_conflict";
+      }
+      return realBatch(stmts);
+    };
+
+    const offer = await requestWithEnv(`/api/games/${gameId}/action`, {
+      method: "POST",
+      headers: { "x-subject": humanId },
+      body: {
+        type: "propose_trade",
+        recipientId: aiId,
+        gives: { capital: 300, tilePositions: [] },
+        receives: { capital: 0, tilePositions: [6] },
+      },
+      db,
+    });
+
+    // The human's proposal committed; the AI conflict must not turn it into 409.
+    expect(offer.status).toBe(200);
+    expect(guardedBatches).toBeGreaterThan(1);
+  });
+
   it("lets AI accept favorable trade offers and records the action in the game log", async () => {
     const db = createD1Stub() as HarnessDb;
     const { gameId, humanId, aiId } = await createSoloAiGame(db);

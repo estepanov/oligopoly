@@ -206,49 +206,59 @@ export async function persistGameActionResult(
     } satisfies GameLogEntry,
   }));
 
-  const stateUpdate =
-    options.expectedStateJson === undefined
-      ? db
-          .prepare("UPDATE games SET state_json = ? WHERE id = ?")
-          .bind(stateJson, gameId)
-      : db
-          .prepare(
-            "UPDATE games SET state_json = ? WHERE id = ? AND state_json = ?",
-          )
-          .bind(stateJson, gameId, options.expectedStateJson);
+  // Atomicity: the guarded state UPDATE and all follow-up writes (log INSERTs,
+  // game-over/winner/lobby UPDATEs) must commit together or not at all. D1 runs
+  // `batch()` as a single implicit transaction (all succeed or all roll back),
+  // but it does NOT conditionally skip statements based on an earlier result.
+  // To preserve optimistic-concurrency semantics we therefore gate every
+  // follow-up on the row having actually been advanced to `stateJson` — when the
+  // guard fails, statement[0] is a no-op, the row still holds the old state, and
+  // every follow-up's `WHERE EXISTS (... state_json = stateJson)` predicate also
+  // fails, so the whole batch is effectively a no-op while remaining atomic.
+  const guarded = options.expectedStateJson !== undefined;
 
-  const stateUpdateResult = await stateUpdate.run();
-  if (options.expectedStateJson !== undefined) {
-    const changes = stateUpdateResult.meta?.changes ?? 0;
-    if (changes === 0) {
-      throw "game.state_conflict";
-    }
-  }
+  const stateUpdate = guarded
+    ? db
+        .prepare(
+          "UPDATE games SET state_json = ? WHERE id = ? AND state_json = ?",
+        )
+        .bind(stateJson, gameId, options.expectedStateJson)
+    : db
+        .prepare("UPDATE games SET state_json = ? WHERE id = ?")
+        .bind(stateJson, gameId);
 
-  const followUpStatements: D1PreparedStatement[] = [];
+  // Predicate that is only true once the state row holds the freshly-written
+  // state. Used to gate follow-ups so a lost optimistic race writes nothing.
+  const appliedGuardSql = guarded
+    ? " AND EXISTS (SELECT 1 FROM games WHERE id = ? AND state_json = ?)"
+    : "";
+  const appliedGuardBinds = guarded ? [gameId, stateJson] : [];
+
+  const batchStatements: D1PreparedStatement[] = [stateUpdate];
+
   if (result.state.phase === "game_over" && result.state.winnerId) {
-    followUpStatements.push(
+    batchStatements.push(
       db
         .prepare(
-          "UPDATE games SET status = 'completed', winner_id = ?, ended_at = ? WHERE id = ?",
+          `UPDATE games SET status = 'completed', winner_id = ?, ended_at = ? WHERE id = ?${appliedGuardSql}`,
         )
-        .bind(result.state.winnerId, now, gameId),
+        .bind(result.state.winnerId, now, gameId, ...appliedGuardBinds),
     );
 
-    followUpStatements.push(
+    batchStatements.push(
       db
         .prepare(
-          "UPDATE lobbies SET status = 'finished' WHERE id = (SELECT lobby_id FROM games WHERE id = ?)",
+          `UPDATE lobbies SET status = 'finished' WHERE id = (SELECT lobby_id FROM games WHERE id = ?)${appliedGuardSql}`,
         )
-        .bind(gameId),
+        .bind(gameId, ...appliedGuardBinds),
     );
   }
 
   for (const { apiEntry } of logRows) {
-    followUpStatements.push(
+    batchStatements.push(
       db
         .prepare(
-          "INSERT INTO game_log (id, game_id, round, player_id, action_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          `INSERT INTO game_log (id, game_id, round, player_id, action_type, payload_json, created_at) SELECT ?, ?, ?, ?, ?, ?, ? WHERE 1=1${appliedGuardSql}`,
         )
         .bind(
           apiEntry.id,
@@ -258,12 +268,17 @@ export async function persistGameActionResult(
           apiEntry.actionType,
           apiEntry.payload ? JSON.stringify(apiEntry.payload) : null,
           apiEntry.createdAt,
+          ...appliedGuardBinds,
         ),
     );
   }
 
-  if (followUpStatements.length > 0) {
-    await db.batch(followUpStatements);
+  const batchResults = await db.batch(batchStatements);
+  if (guarded) {
+    const changes = batchResults[0]?.meta?.changes ?? 0;
+    if (changes === 0) {
+      throw "game.state_conflict";
+    }
   }
 
   if (result.state.phase === "game_over" && result.state.winnerId) {

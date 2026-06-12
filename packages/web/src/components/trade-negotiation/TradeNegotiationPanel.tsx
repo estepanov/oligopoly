@@ -63,13 +63,8 @@ export function TradeNegotiationPanel({
   );
   const giveCapital = parseCapital(draft.giveCapital);
   const receiveCapital = parseCapital(draft.receiveCapital);
-  const giveValue = selectedTransferValue(
-    myTiles,
-    draft.giveTilePositions,
-    giveCapital,
-  );
+  const giveValue = selectedTransferValue(draft.giveTilePositions, giveCapital);
   const receiveValue = selectedTransferValue(
-    targetTiles,
     draft.receiveTilePositions,
     receiveCapital,
   );

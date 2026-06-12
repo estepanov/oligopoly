@@ -116,6 +116,12 @@ function applyMutation(
   }
 
   if (/INSERT\s+INTO\s+game_log/i.test(query)) {
+    // Guarded inserts append [gameId, stateJson] for the EXISTS predicate; they
+    // must no-op when the games row was not advanced to that state (lost race).
+    const guarded = appliedGuardPresent(query);
+    if (guarded && !appliedGuardSatisfied(tables, params)) {
+      return 0;
+    }
     const [
       id,
       game_id,
@@ -138,6 +144,9 @@ function applyMutation(
   }
 
   if (/UPDATE\s+lobbies\s+SET\s+status\s*=\s*'finished'/i.test(query)) {
+    if (appliedGuardPresent(query) && !appliedGuardSatisfied(tables, params)) {
+      return 0;
+    }
     const lobbyId = /SELECT\s+lobby_id\s+FROM\s+games/i.test(query)
       ? tables.games?.find((r) => r.id === params[0])?.lobby_id
       : params[0];
@@ -150,6 +159,24 @@ function applyMutation(
   }
 
   return 0;
+}
+
+function appliedGuardPresent(query: string): boolean {
+  return /EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+games\s+WHERE\s+id\s*=\s*\?\s+AND\s+state_json\s*=\s*\?\s*\)/i.test(
+    query,
+  );
+}
+
+// The guard binds [gameId, stateJson] are always the last two params.
+function appliedGuardSatisfied(
+  tables: Record<string, Row[]>,
+  params: unknown[],
+): boolean {
+  const stateJson = params[params.length - 1];
+  const gameId = params[params.length - 2];
+  return (tables.games ?? []).some(
+    (r) => r.id === gameId && r.state_json === stateJson,
+  );
 }
 
 function applyWhere(rows: Row[], query: string, params: unknown[]): Row[] {
@@ -388,6 +415,68 @@ describe("GET /api/games/:id/log", () => {
       makeEnv(),
     );
     expect(res.status).toBe(404);
+  });
+
+  // ADV-1: private trade terms must reach only the proposer/recipient — never
+  // other participants of the same game.
+  it("hides private trade log entries from non-party participants", async () => {
+    const threePlayerGame: Row = {
+      id: "game-trade",
+      status: "active",
+      player_ids_json: JSON.stringify([PLAYER_A, PLAYER_B, "player-c"]),
+      started_at: 1000,
+      ended_at: null,
+      winner_id: null,
+      state_json: JSON.stringify({ gameId: "game-trade", round: 1 }),
+    };
+    const tradeLog: Row = {
+      id: "log-trade",
+      game_id: "game-trade",
+      round: 1,
+      player_id: PLAYER_A,
+      action_type: "trade_proposed",
+      payload_json: JSON.stringify({
+        offerId: "trade-1",
+        proposerId: PLAYER_A,
+        recipientId: PLAYER_B,
+        gives: { capital: 100, tilePositions: [3] },
+        receives: { capital: 50, tilePositions: [6] },
+        status: "pending",
+      }),
+      created_at: 1001,
+    };
+    const env = makeEnv({
+      games: [cloneRow(threePlayerGame)],
+      game_log: [cloneRow(tradeLog)],
+      users: [
+        cloneRow(userA),
+        cloneRow(userB),
+        { id: "player-c", username: "player-c", role: "user" },
+      ],
+    });
+
+    // A participant in the trade sees the full entry.
+    const partyRes = await app.request(
+      "/api/games/game-trade/log",
+      { headers: { "x-subject": PLAYER_B } },
+      env,
+    );
+    const partyBody = await partyRes.json<{
+      log: Array<{ actionType: string; payload: Record<string, unknown> }>;
+    }>();
+    expect(partyBody.log).toHaveLength(1);
+    expect(partyBody.log[0].payload.gives).toBeDefined();
+
+    // A non-party participant must NOT see the entry or its terms.
+    const outsiderRes = await app.request(
+      "/api/games/game-trade/log",
+      { headers: { "x-subject": "player-c" } },
+      env,
+    );
+    const outsiderBody = await outsiderRes.json<{ log: unknown[] }>();
+    expect(outsiderBody.log).toEqual([]);
+    expect(JSON.stringify(outsiderBody)).not.toContain("gives");
+    expect(JSON.stringify(outsiderBody)).not.toContain("receives");
   });
 });
 

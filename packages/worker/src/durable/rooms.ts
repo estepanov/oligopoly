@@ -3,7 +3,10 @@ import {
   isAiControlledActor,
   normalizeGameState,
 } from "@oligopoly/shared";
-import { toClientGameState } from "../gameStateView.js";
+import {
+  redactLogEntriesForViewer,
+  toClientGameState,
+} from "../gameStateView.js";
 import { isNotifyRequest } from "../realtime/notify.js";
 import {
   AI_LOOP_MAX_STEPS,
@@ -140,6 +143,12 @@ export class GameRoom extends RealtimeRoom {
         event.type === "game.snapshot") &&
       event.state
     ) {
+      const logEntries = Array.isArray(event.logEntries)
+        ? (event.logEntries as Array<{
+            actionType: string;
+            payload: Record<string, unknown> | null;
+          }>)
+        : null;
       for (const session of this.sessions) {
         const url = this.sessionUrls.get(session);
         const spectator = url?.searchParams.get("spectator") === "1";
@@ -150,8 +159,17 @@ export class GameRoom extends RealtimeRoom {
         const scopedState = spectator
           ? toClientGameState(state as never, "spectator", viewerId)
           : toClientGameState(state as never, "player", viewerId);
+        const scopedLogEntries = logEntries
+          ? redactLogEntriesForViewer(logEntries, spectator ? null : viewerId)
+          : undefined;
         try {
-          session.send(JSON.stringify({ ...event, state: scopedState }));
+          session.send(
+            JSON.stringify({
+              ...event,
+              state: scopedState,
+              ...(scopedLogEntries ? { logEntries: scopedLogEntries } : {}),
+            }),
+          );
         } catch {
           this.sessions.delete(session);
           this.sessionUrls.delete(session);
@@ -240,16 +258,23 @@ export class GameRoom extends RealtimeRoom {
         }
       } else {
         const actorId = await this.state.storage.get<string>("turnActorId");
-        if (!actorId) return;
-        await applyTimeoutTakeoverAndStep(
-          this.env.DB,
-          gameId,
-          actorId,
-          this.env.GAME_ROOM,
-          this.env.KV,
-          this.env,
-        );
+        if (actorId) {
+          await applyTimeoutTakeoverAndStep(
+            this.env.DB,
+            gameId,
+            actorId,
+            this.env.GAME_ROOM,
+            this.env.KV,
+            this.env,
+          );
+        }
       }
+    } catch (err) {
+      // An expiry/takeover helper persists with an optimistic guard and throws
+      // `game.state_conflict` when another writer advanced the game first. That
+      // is benign here: the other writer already moved state forward, so we just
+      // resync + reschedule below rather than letting the alarm tick fail.
+      if (err !== "game.state_conflict") throw err;
     } finally {
       await this.state.storage.delete("aiLoopRunning");
       await this.resyncFromDatabase(gameId);

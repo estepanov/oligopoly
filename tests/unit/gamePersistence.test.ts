@@ -255,4 +255,101 @@ describe("persistGameActionResult", () => {
     ).rejects.toBe("game.state_conflict");
     expect(db._tables.game_log).toEqual([]);
   });
+
+  // TN-1: on the happy path the guarded state update, the log inserts, and the
+  // game-over/winner/lobby updates all commit together.
+  it("commits state, logs, and game-over follow-ups atomically", async () => {
+    const db = createD1Stub();
+    const expected = JSON.stringify({ gameId: "game-1", round: 1 });
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      state_json: expected,
+      status: "active",
+      player_ids_json: JSON.stringify(["p1", "p2"]),
+    });
+    db._tables.lobbies.push({ id: "lobby-1", status: "in_game" });
+
+    await persistGameActionResult(
+      db,
+      "game-1",
+      {
+        state: {
+          gameId: "game-1",
+          round: 2,
+          phase: "game_over",
+          winnerId: "p1",
+          players: [
+            { playerId: "p1", capital: 100, ownedTilePositions: [] },
+            { playerId: "p2", capital: 50, ownedTilePositions: [] },
+          ],
+          tiles: [],
+          syndicates: [],
+          kickedPlayerIds: [],
+        } as never,
+        logEntries: [
+          {
+            playerId: "p1",
+            actionType: "trade_accepted",
+            payload: { offerId: "trade-1" },
+          },
+          {
+            playerId: null,
+            actionType: "game_won",
+            payload: { winnerId: "p1" },
+          },
+        ],
+      },
+      { expectedStateJson: expected, notify: false },
+    );
+
+    const game = db._tables.games.find((row) => row.id === "game-1");
+    expect(game?.status).toBe("completed");
+    expect(game?.winner_id).toBe("p1");
+    expect(db._tables.lobbies.find((row) => row.id === "lobby-1")?.status).toBe(
+      "finished",
+    );
+    expect(db._tables.game_log).toHaveLength(2);
+  });
+
+  // TN-1: a conflicting game-over write rolls back every follow-up — no log
+  // rows, no status/winner change.
+  it("writes nothing on a conflicting game-over persist", async () => {
+    const db = createD1Stub();
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      state_json: JSON.stringify({ gameId: "game-1", round: 2 }),
+      status: "active",
+    });
+    db._tables.lobbies.push({ id: "lobby-1", status: "in_game" });
+
+    await expect(
+      persistGameActionResult(
+        db,
+        "game-1",
+        {
+          state: {
+            gameId: "game-1",
+            round: 3,
+            phase: "game_over",
+            winnerId: "p1",
+          } as never,
+          logEntries: [{ playerId: null, actionType: "game_won", payload: {} }],
+        },
+        {
+          expectedStateJson: JSON.stringify({ gameId: "game-1", round: 1 }),
+          notify: false,
+        },
+      ),
+    ).rejects.toBe("game.state_conflict");
+
+    const game = db._tables.games.find((row) => row.id === "game-1");
+    expect(game?.status).toBe("active");
+    expect(game?.winner_id ?? null).toBeNull();
+    expect(db._tables.lobbies.find((row) => row.id === "lobby-1")?.status).toBe(
+      "in_game",
+    );
+    expect(db._tables.game_log).toEqual([]);
+  });
 });
