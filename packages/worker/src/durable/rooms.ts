@@ -237,6 +237,9 @@ export class GameRoom extends RealtimeRoom {
 
     await this.state.storage.put("aiLoopRunning", true);
     try {
+      // Trade-offer expiry runs on every tick regardless of which kind won the
+      // alarm race — it is idempotent and only acts on offers that are actually
+      // expired.
       await applyTradeOfferExpiry(this.env.DB, gameId, this.env.GAME_ROOM);
 
       if (timerKind === "auction_bids") {
@@ -255,24 +258,24 @@ export class GameRoom extends RealtimeRoom {
           this.env.KV,
           this.env,
         );
-      } else {
-        const actorId = await this.state.storage.get<string>("turnActorId");
-        // For a `trade_offer` alarm the offer-expiry above is the primary work;
-        // the turn itself may not be expired yet, so only take over the actor's
-        // turn when its own deadline has also passed. For a plain `turn` alarm
-        // the alarm IS the turn deadline, so takeover always applies.
-        const turnExpired =
-          timerKind !== "trade_offer" || (await this.turnDeadlineReached());
-        if (actorId && turnExpired) {
-          await applyTimeoutTakeoverAndStep(
-            this.env.DB,
-            gameId,
-            actorId,
-            this.env.GAME_ROOM,
-            this.env.KV,
-            this.env,
-          );
-        }
+      }
+
+      // Independently of which kind won the alarm, take over the current turn
+      // whenever the TURN deadline has actually passed. A plain `turn` alarm IS
+      // the turn deadline, so this fires for it; a `trade_offer` alarm only
+      // takes over once the turn deadline (not just the trade deadline) has also
+      // elapsed. Auction phases clear `turnActorId`/`turnDeadlineAt`, so this is
+      // a no-op for the auction kinds above.
+      const actorId = await this.state.storage.get<string>("turnActorId");
+      if (actorId && (await this.turnDeadlineReached())) {
+        await applyTimeoutTakeoverAndStep(
+          this.env.DB,
+          gameId,
+          actorId,
+          this.env.GAME_ROOM,
+          this.env.KV,
+          this.env,
+        );
       }
     } catch (err) {
       // An expiry/takeover helper persists with an optimistic guard and throws

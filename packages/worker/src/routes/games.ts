@@ -1,5 +1,6 @@
 import {
   applyAction,
+  hasAiWork,
   isLoopbackUrl,
   normalizeGameState,
 } from "@oligopoly/shared";
@@ -446,6 +447,49 @@ gameRoutes.post("/:id/action", async (c) => {
       name: "persist",
       duration: nowMs() - persistStartedAt,
     });
+    // Broadcast the human action result. Ordering matters: the inline AI loop
+    // below persists AND broadcasts each follow-up step (NEWER state) during this
+    // request. `hasAiWork` predicts whether that loop will act:
+    //   - No AI work: defer the human notify off the response path (`waitUntil`)
+    //     for low latency — it is the only broadcast, so there is nothing to
+    //     race with.
+    //   - AI will act: broadcast the human result inline (awaited) BEFORE the
+    //     loop so realtime clients see human-state (with the human action's own
+    //     log entries, e.g. `trade_proposed`) and then the AI's newer state —
+    //     monotonic, no rewind. Deferring it here would let the loop's broadcasts
+    //     land first and then rewind clients to pre-AI state while dropping the
+    //     human action's log entries (the client appends realtime log deltas; it
+    //     does not refetch).
+    // Either way the notify is best-effort and a no-op when `GAME_ROOM` is
+    // unbound (tests / non-realtime).
+    const notifyStartedAt = nowMs();
+    const aiWillFollow = hasAiWork(result.state);
+    if (aiWillFollow) {
+      await notifyGameActionResult(id, result, logEntries, {
+        gameRoom: c.env?.GAME_ROOM,
+        actorId: subject,
+        kv: c.env?.KV,
+      }).catch((err) =>
+        console.error("Failed to notify game action result", {
+          gameId: id,
+          error: err,
+        }),
+      );
+    } else {
+      scheduleActionSideEffect(
+        c,
+        notifyGameActionResult(id, result, logEntries, {
+          gameRoom: c.env?.GAME_ROOM,
+          actorId: subject,
+          kv: c.env?.KV,
+        }),
+      );
+    }
+    timings.push({
+      name: "notify_schedule",
+      duration: nowMs() - notifyStartedAt,
+    });
+
     // The AI follow-up loop runs inline (awaited) on purpose. The Durable Object
     // (`GameRoom.syncAfterStateChange`) ALSO drives `runAiTurnLoop` when it
     // receives this action's broadcast, but that path is (a) only wired when
@@ -474,20 +518,6 @@ gameRoutes.post("/:id/action", async (c) => {
     } catch (aiErr) {
       console.error("ai follow-up loop failed", { gameId: id, error: aiErr });
     }
-
-    const notifyStartedAt = nowMs();
-    scheduleActionSideEffect(
-      c,
-      notifyGameActionResult(id, result, logEntries, {
-        gameRoom: c.env?.GAME_ROOM,
-        actorId: subject,
-        kv: c.env?.KV,
-      }),
-    );
-    timings.push({
-      name: "notify_schedule",
-      duration: nowMs() - notifyStartedAt,
-    });
 
     timings.push({
       name: "total",

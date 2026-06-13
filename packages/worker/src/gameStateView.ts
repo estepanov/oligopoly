@@ -202,15 +202,36 @@ export function toClientGameState(
   });
 }
 
+/**
+ * Shared party/spectator visibility filter. Returns the input untouched when it
+ * is empty/undefined; otherwise keeps each item that `isVisible(item, viewerId,
+ * mode)` accepts. Each item's predicate decides whether spectators see it (so
+ * e.g. open negotiation threads stay visible to spectators while private trade
+ * offers/handshakes are hidden).
+ */
+function filterVisibleToViewer<TItem>(
+  items: TItem[] | undefined,
+  viewerId: string,
+  mode: "spectator" | "player",
+  isVisible: (
+    item: TItem,
+    viewerId: string,
+    mode: "spectator" | "player",
+  ) => boolean,
+): TItem[] | undefined {
+  if (!items?.length) return items;
+  return items.filter((item) => isVisible(item, viewerId, mode));
+}
+
 function filterTradeOffersForViewer(
   offers: PersistedGameState["tradeOffers"],
   viewerId: string,
   mode: "spectator" | "player",
 ) {
-  if (!offers?.length) return offers;
-  if (mode === "spectator") return [];
-  return offers.filter(
-    (offer) => offer.proposerId === viewerId || offer.recipientId === viewerId,
+  return filterVisibleToViewer(offers, viewerId, mode, (offer, id, m) =>
+    m === "spectator"
+      ? false
+      : offer.proposerId === id || offer.recipientId === id,
   );
 }
 
@@ -219,13 +240,10 @@ function filterNegotiationThreadsForViewer(
   viewerId: string,
   mode: "spectator" | "player",
 ) {
-  if (!threads?.length) return threads;
-  if (mode === "spectator") {
-    return threads.filter((thread) => thread.visibility === "open");
-  }
-  return threads.filter(
-    (thread) =>
-      thread.visibility === "open" || thread.partyIds.includes(viewerId),
+  return filterVisibleToViewer(threads, viewerId, mode, (thread, id, m) =>
+    m === "spectator"
+      ? thread.visibility === "open"
+      : thread.visibility === "open" || thread.partyIds.includes(id),
   );
 }
 
@@ -234,9 +252,7 @@ function filterHandshakesForViewer(
   viewerId: string,
   mode: "spectator" | "player",
 ) {
-  if (!handshakes?.length) return handshakes;
-  if (mode === "spectator") return [];
-  return handshakes.filter(
-    (entry) => entry.partyA === viewerId || entry.partyB === viewerId,
+  return filterVisibleToViewer(handshakes, viewerId, mode, (entry, id, m) =>
+    m === "spectator" ? false : entry.partyA === id || entry.partyB === id,
   );
 }
