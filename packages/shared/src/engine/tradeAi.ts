@@ -13,7 +13,11 @@ import { getTileByPosition } from "../config/board.js";
 import { isAiControlledActor } from "./aiControl.js";
 import type { InternalGameState } from "./gameStateTypes.js";
 import { ACTION_COSTS, ACTION_POINTS_PER_TURN } from "./setup.js";
-import { MAX_TRADE_COUNTERS, tradeTransferValue } from "./tradeActions.js";
+import {
+  listTradeableTilePositions,
+  MAX_TRADE_COUNTERS,
+  tradeTransferValue,
+} from "./tradeActions.js";
 
 function tradeMarginForRecipient(offer: TradeOffer): number {
   return tradeTransferValue(offer.gives) - tradeTransferValue(offer.receives);
@@ -169,25 +173,17 @@ export function aiTradeProposalAction(
   const target = state.players.find(
     (player) =>
       player.playerId !== actorId &&
-      !state.eliminatedPlayerIds.includes(player.playerId) &&
-      player.ownedTilePositions.some((position) => {
-        const tile = state.tiles.find(
-          (entry) => String(entry.position) === String(position),
-        );
-        return tile?.ownerId === player.playerId && !tile.mortgaged;
-      }),
+      !(state.eliminatedPlayerIds ?? []).includes(player.playerId) &&
+      // Use the canonical tradeability predicate so the AI never targets a
+      // mortgaged or contract-locked tile (which the engine would reject with
+      // `INVALID_TERMS`, wasting the propose).
+      listTradeableTilePositions(state, player.playerId).length > 0,
   );
   if (!target) return null;
 
-  const targetTile = target.ownedTilePositions
+  const targetTile = listTradeableTilePositions(state, target.playerId)
     .map((position) => {
-      const tileState = state.tiles.find(
-        (entry) => String(entry.position) === String(position),
-      );
       const tile = getTileByPosition(position);
-      if (tileState?.ownerId !== target.playerId || tileState.mortgaged) {
-        return null;
-      }
       if (!tile?.cost) return null;
       return { position, cost: tile.cost };
     })

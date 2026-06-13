@@ -2,6 +2,8 @@ import {
   applyAction,
   expirePendingTradeOffers,
   initTileStates,
+  isTileTradeable,
+  listTradeableTilePositions,
   normalizeGameState,
   TRADE_OFFER_HISTORY_LIMIT,
   tradeTransferValue,
@@ -861,5 +863,80 @@ describe("trade actions", () => {
       state = rejected.state;
     }
     expect(allIds.size).toBe(TRADE_OFFER_HISTORY_LIMIT + 5);
+  });
+});
+
+describe("tile-tradeability predicate", () => {
+  function sellLock(state: ReturnType<typeof baseState>, tileId: string) {
+    state.activeContracts = [
+      {
+        id: "contract-1",
+        gameId: "trade-game",
+        partyA: "p1",
+        partyB: "p2",
+        terms: [{ type: "cannot_sell_tile", tileId, boundPlayerId: "p1" }],
+        status: "active",
+        startsRound: 1,
+        expiresRound: null,
+        signedAt: 1,
+        fulfilledAt: null,
+        breachedAt: null,
+      },
+    ];
+  }
+
+  it("isTileTradeable accepts an owned, unmortgaged, unlocked tile", () => {
+    expect(isTileTradeable(baseState(), "p1", 3)).toBe(true);
+  });
+
+  it("isTileTradeable rejects a tile owned by another player", () => {
+    expect(isTileTradeable(baseState(), "p1", 6)).toBe(false);
+  });
+
+  it("isTileTradeable rejects a mortgaged tile", () => {
+    const state = baseState();
+    const tile = state.tiles.find((t) => String(t.position) === "3");
+    if (tile) tile.mortgaged = true;
+    expect(isTileTradeable(state, "p1", 3)).toBe(false);
+  });
+
+  it("isTileTradeable rejects a contract-locked tile", () => {
+    const state = baseState();
+    sellLock(state, "3");
+    expect(isTileTradeable(state, "p1", 3)).toBe(false);
+  });
+
+  it("listTradeableTilePositions excludes mortgaged and contract-locked tiles", () => {
+    const state = baseState();
+    // give p1 a second tradeable tile so we can confirm filtering, not emptiness
+    const tile9 = state.tiles.find((t) => String(t.position) === "9");
+    if (tile9) tile9.ownerId = "p1";
+    const p1 = state.players.find((p) => p.playerId === "p1");
+    p1?.ownedTilePositions.push(9);
+
+    // mortgage 3 and lock 9 -> nothing tradeable
+    const tile3 = state.tiles.find((t) => String(t.position) === "3");
+    if (tile3) tile3.mortgaged = true;
+    state.activeContracts = [
+      {
+        id: "contract-9",
+        gameId: "trade-game",
+        partyA: "p1",
+        partyB: "p2",
+        terms: [{ type: "cannot_sell_tile", tileId: "9", boundPlayerId: "p1" }],
+        status: "active",
+        startsRound: 1,
+        expiresRound: null,
+        signedAt: 1,
+        fulfilledAt: null,
+        breachedAt: null,
+      },
+    ];
+
+    expect(listTradeableTilePositions(state, "p1").map(String)).toEqual([]);
+
+    // unmortgage 3: it becomes the only tradeable position (9 still locked)
+    if (tile3) tile3.mortgaged = false;
+    expect(listTradeableTilePositions(state, "p1").map(String)).toEqual(["3"]);
   });
 });

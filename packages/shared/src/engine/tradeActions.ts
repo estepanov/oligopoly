@@ -16,6 +16,7 @@ import { isActionBlockedByContracts } from "./negotiation.js";
 import { revokeUnqualifiedRateCards } from "./rateCards.js";
 import { ACTION_COSTS } from "./setup.js";
 import { deepClone, getPlayer, transferTileOwnership } from "./stateUtils.js";
+import type { BindingContract } from "./types.js";
 import { applyWinIfThresholdCrossed } from "./winResolution.js";
 
 export const DEFAULT_TRADE_TIMEOUT_MINUTES = 5;
@@ -389,6 +390,65 @@ function validateTradeTerms(
   validateTransferTiles(state, recipient.playerId, receives);
 }
 
+/**
+ * Minimal structural shape needed to evaluate tile-tradeability. Both the
+ * engine's `InternalGameState` and the client `GameState` satisfy it, so the web
+ * trade desk can call the shared predicate without an unsafe cast.
+ */
+type TradeableTileStateView = {
+  tiles?: Array<{
+    position: number | string;
+    ownerId?: string | null;
+    mortgaged?: boolean;
+  }>;
+  activeContracts?: BindingContract[];
+  players?: Array<{
+    playerId: string;
+    ownedTilePositions: Array<number | string>;
+  }>;
+};
+
+/**
+ * Single canonical tile-tradeability contract: a tile may be put on the trade
+ * desk only when `playerId` owns it, it is not mortgaged, and it is not blocked
+ * from sale by an active binding `sell_tile` contract. This is the positive
+ * predicate behind `validateTransferTiles` (which throws specific error keys),
+ * the web trade-desk helper, and the trade AI's target selection — so the rules
+ * live in ONE place and can't drift.
+ */
+export function isTileTradeable(
+  state: TradeableTileStateView,
+  playerId: string,
+  position: number | string,
+): boolean {
+  const tileState = state.tiles?.find(
+    (tile) => String(tile.position) === String(position),
+  );
+  if (!tileState || tileState.ownerId !== playerId || tileState.mortgaged) {
+    return false;
+  }
+  return !isActionBlockedByContracts(state.activeContracts ?? [], {
+    type: "sell_tile",
+    playerId,
+    tileId: String(position),
+  }).blocked;
+}
+
+/**
+ * All positions `playerId` could legally offer in a trade (owned, not
+ * mortgaged, not contract-locked), preserving the player's ownership order.
+ */
+export function listTradeableTilePositions(
+  state: TradeableTileStateView,
+  playerId: string,
+): Array<number | string> {
+  const player = state.players?.find((entry) => entry.playerId === playerId);
+  if (!player) return [];
+  return player.ownedTilePositions.filter((position) =>
+    isTileTradeable(state, playerId, position),
+  );
+}
+
 function validateTransferTiles(
   state: InternalGameState,
   ownerId: string,
@@ -404,13 +464,10 @@ function validateTransferTiles(
     if (tileState.mortgaged) {
       throw TradeErrorKeys.TILE_MORTGAGED;
     }
-    if (
-      isActionBlockedByContracts(state.activeContracts ?? [], {
-        type: "sell_tile",
-        playerId: ownerId,
-        tileId: String(tilePosition),
-      }).blocked
-    ) {
+    // Remaining eligibility (contract lock) shares the canonical predicate so
+    // the boolean rules live in one place; the per-key throws above stay here so
+    // callers still get the specific TILE_NOT_OWNED / TILE_MORTGAGED reasons.
+    if (!isTileTradeable(state, ownerId, tilePosition)) {
       throw TradeErrorKeys.INVALID_TERMS;
     }
   }

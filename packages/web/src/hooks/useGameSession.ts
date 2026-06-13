@@ -83,6 +83,14 @@ export function useGameSession(
   );
 
   const applySessionUpdate = useCallback((update: GameSessionUpdate) => {
+    // `mergeAuctionClientView` exists because auctions hold client-LOCAL state
+    // (the optimistic `mySubmission`) that a server broadcast would otherwise
+    // wipe. `tradeOffers` deliberately has NO symmetric merge: there is no
+    // client-local trade state to preserve — every broadcast carries the
+    // viewer's own offers (the DO re-injects them per viewer via
+    // `filterTradeOffersForViewer`), so we always take the server's `tradeOffers`
+    // verbatim. If a future broadcast path ever omitted `tradeOffers`, that would
+    // be a server-side bug to fix at the source, not something to patch here.
     setState((current) => mergeAuctionClientView(current, update.state));
     if (update.logEntries?.length) {
       setLogEntries((current) => appendLogEntries(current, update.logEntries));

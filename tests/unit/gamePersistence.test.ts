@@ -3,6 +3,7 @@ import {
   logEntriesForBroadcast,
   notifyGameActionResult,
   persistGameActionResult,
+  prepareGameBroadcastPayload,
   publicStateForBroadcast,
   toActionResponse,
 } from "../../packages/worker/src/services/gamePersistence.js";
@@ -242,6 +243,56 @@ describe("toActionResponse", () => {
     );
 
     expect(response.logEntries).toEqual([]);
+  });
+});
+
+describe("prepareGameBroadcastPayload", () => {
+  const offers = [
+    {
+      id: "trade-1",
+      gameId: "game-1",
+      proposerId: "p1",
+      recipientId: "p2",
+      gives: { capital: 100, tilePositions: [3] },
+      receives: { capital: 50, tilePositions: [6] },
+      status: "pending",
+      createdAt: 1,
+      expiresAt: 2,
+      counterCount: 0,
+    },
+  ];
+
+  it("strips tradeOffers off the state and carries them separately", () => {
+    const { state, tradeOffers } = prepareGameBroadcastPayload({
+      gameId: "game-1",
+      round: 1,
+      tradeOffers: offers,
+    });
+
+    expect("tradeOffers" in state).toBe(false);
+    expect(state).toEqual({ gameId: "game-1", round: 1 });
+    expect(tradeOffers).toEqual(offers);
+  });
+
+  it("omits the tradeOffers field entirely when there are none", () => {
+    const result = prepareGameBroadcastPayload({ gameId: "game-1", round: 1 });
+
+    expect("tradeOffers" in result).toBe(false);
+    expect(result.state).toEqual({ gameId: "game-1", round: 1 });
+  });
+
+  it("preserves an empty tradeOffers array (matching the original spread)", () => {
+    const result = prepareGameBroadcastPayload({
+      gameId: "game-1",
+      round: 1,
+      tradeOffers: [],
+    });
+
+    // An array is truthy regardless of length, so the helper mirrors the
+    // pre-existing `...(tradeOffers ? { tradeOffers } : {})` behaviour and keeps
+    // an empty `tradeOffers: []` on the side channel.
+    expect(result.tradeOffers).toEqual([]);
+    expect("tradeOffers" in result.state).toBe(false);
   });
 });
 

@@ -2,7 +2,7 @@ import { hasAiWork, normalizeGameState } from "@oligopoly/shared";
 import { GameErrorKeys } from "@oligopoly/validation";
 import {
   redactLogEntriesForViewer,
-  toClientGameState,
+  toClientGameStateFromInternal,
 } from "../gameStateView.js";
 import { isNotifyRequest } from "../realtime/notify.js";
 import {
@@ -13,6 +13,7 @@ import {
   applyTradeOfferExpiry,
   runAiTurnLoop,
 } from "../services/gameAi.js";
+import { prepareGameBroadcastPayload } from "../services/gamePersistence.js";
 import { syncGameRoomTimer } from "../services/gameScheduler.js";
 import {
   buildLobbyResponse,
@@ -165,8 +166,8 @@ export class GameRoom extends RealtimeRoom {
           : (event.state as Record<string, unknown>);
         const state = normalizeGameState(rawState);
         const scopedState = spectator
-          ? toClientGameState(state as never, "spectator", viewerId)
-          : toClientGameState(state as never, "player", viewerId);
+          ? toClientGameStateFromInternal(state, "spectator", viewerId)
+          : toClientGameStateFromInternal(state, "player", viewerId);
         const scopedLogEntries = logEntries
           ? redactLogEntriesForViewer(logEntries, spectator ? null : viewerId)
           : undefined;
@@ -323,8 +324,8 @@ export class GameRoom extends RealtimeRoom {
     const raw = JSON.parse(row.state_json) as Record<string, unknown>;
     const gameState = normalizeGameState(raw);
     return spectator
-      ? toClientGameState(gameState as never, "spectator", viewerId)
-      : toClientGameState(gameState as never, "player", viewerId);
+      ? toClientGameStateFromInternal(gameState, "spectator", viewerId)
+      : toClientGameStateFromInternal(gameState, "player", viewerId);
   }
 
   private async resyncFromDatabase(gameId: string) {
@@ -397,8 +398,9 @@ export class GameRoom extends RealtimeRoom {
           JSON.parse(row.state_json) as Record<string, unknown>,
         );
         // Carry trade-offer terms separately from `state` (see
-        // `notifyGameActionResult`) so non-participants never receive them.
-        const { tradeOffers, ...latestWithoutTradeOffers } = latest;
+        // `prepareGameBroadcastPayload`) so non-participants never receive them.
+        const { state: latestWithoutTradeOffers, tradeOffers } =
+          prepareGameBroadcastPayload(latest);
         this.broadcast(
           jsonEvent("game.schedule", {
             gameId,

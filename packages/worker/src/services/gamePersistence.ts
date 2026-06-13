@@ -187,6 +187,27 @@ export function publicStateForBroadcast(
   return applyDarkPoolTransferRedaction(publicState, logEntries);
 }
 
+/**
+ * Single canonical broadcast-payload splitter for the trade-offer privacy
+ * contract (see the doc comment above `publicStateForBroadcast`). Strips private
+ * `tradeOffers` terms off the state that travels on the wire and returns them on
+ * a SEPARATE field that `GameRoom.broadcast` re-injects only into the matching
+ * viewer's slice (via `filterTradeOffersForViewer`). Every realtime emit path —
+ * `notifyGameActionResult`, `notifyGameSchedule`, and the DO alarm/AI-loop emit
+ * in `rooms.ts` — MUST go through this so the redaction can never drift.
+ */
+export function prepareGameBroadcastPayload<
+  TState extends { tradeOffers?: unknown },
+>(
+  state: TState,
+): { state: Omit<TState, "tradeOffers">; tradeOffers?: TState["tradeOffers"] } {
+  const { tradeOffers, ...stateWithoutTradeOffers } = state;
+  return {
+    state: stateWithoutTradeOffers,
+    ...(tradeOffers ? { tradeOffers } : {}),
+  };
+}
+
 export async function persistGameActionResult(
   db: D1Database,
   gameId: string,
@@ -311,14 +332,12 @@ export async function notifyGameActionResult(
   const baseState = hiddenTransfer
     ? applyDarkPoolTransferRedaction(result.state, result.logEntries)
     : result.state;
-  // Safe-by-construction: strip private `tradeOffers` terms from the state that
-  // travels on the wire, and carry them in a SEPARATE `tradeOffers` field that
-  // `GameRoom.broadcast` re-injects only into the matching viewer's slice (via
-  // `filterTradeOffersForViewer`). Even if a future caller forwards `event.state`
-  // without the DO's per-viewer override, no offer terms leak. Other per-viewer
-  // fields (insider peek, handshakes, affinity, private negotiation threads)
-  // still ride on `state` and are redacted per-viewer by `toClientGameState`.
-  const { tradeOffers, ...stateWithoutTradeOffers } = baseState;
+  // Strip private `tradeOffers` terms off the wire state and carry them on a
+  // separate field (see `prepareGameBroadcastPayload`). Other per-viewer fields
+  // (insider peek, handshakes, affinity, private negotiation threads) still ride
+  // on `state` and are redacted per-viewer by `toClientGameState`.
+  const { state: stateWithoutTradeOffers, tradeOffers } =
+    prepareGameBroadcastPayload(baseState);
   const broadcastLogEntries = hiddenTransfer
     ? []
     : persistedLogEntries.filter(

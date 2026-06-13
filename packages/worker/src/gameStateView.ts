@@ -1,3 +1,4 @@
+import type { InternalGameState } from "@oligopoly/shared";
 import type {
   GameLogEntry,
   GameNegotiationThread,
@@ -148,6 +149,30 @@ function buildClientGameStateBase(
       ? { pendingInsiderPeek: extras.pendingInsiderPeek }
       : {}),
   };
+}
+
+/**
+ * Typed bridge from the engine's `InternalGameState` (what `normalizeGameState`
+ * returns) to the client view. `InternalGameState` is a structural superset of
+ * `PersistedGameState` — it carries every wire field, but a handful of branches
+ * use looser server-internal typings (e.g. `BindingContract.partySignatures` is
+ * `Partial<Record<…>>` internally vs `Record<…>` on the validation type, and
+ * `pendingAuction`/`settings` are engine variants). `toClientGameState` only
+ * reads the redaction-relevant fields, which are wire-identical, so we reconcile
+ * the difference ONCE here at the normalization boundary instead of casting at
+ * every per-viewer broadcast iteration (where casting at the privacy boundary is
+ * risky). This is the single sanctioned bridge between the two type families.
+ */
+export function toClientGameStateFromInternal(
+  state: InternalGameState,
+  mode: "spectator" | "player",
+  playerId: string,
+): ClientGameState {
+  return toClientGameState(
+    state as unknown as PersistedGameState,
+    mode,
+    playerId,
+  );
 }
 
 /**

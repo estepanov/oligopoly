@@ -16,7 +16,10 @@ import type { AiPersonality } from "@oligopoly/validation";
 import { GameErrorKeys } from "@oligopoly/validation";
 import { withPathChoiceDie } from "../lib/dice.js";
 import { broadcastGameEvent } from "../realtime/notify.js";
-import { persistGameActionResult } from "./gamePersistence.js";
+import {
+  persistGameActionResult,
+  prepareGameBroadcastPayload,
+} from "./gamePersistence.js";
 import {
   chooseOpenRouterAiDecision,
   type OpenRouterAiEnv,
@@ -380,8 +383,9 @@ export async function notifyGameSchedule(
   // Strip private trade-offer terms from the broadcast state and carry them on a
   // separate field so `GameRoom.broadcast` can re-derive each viewer's own slice
   // without ever putting another player's terms on the wire (see
-  // `notifyGameActionResult` for the full contract).
-  const { tradeOffers, ...stateWithoutTradeOffers } = state;
+  // `prepareGameBroadcastPayload` for the full contract).
+  const { state: stateWithoutTradeOffers, tradeOffers } =
+    prepareGameBroadcastPayload(state);
   await broadcastGameEvent(gameRoom, gameId, {
     type: "game.schedule",
     sentAt: Date.now(),

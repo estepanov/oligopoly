@@ -68,6 +68,7 @@ import {
   handleCounterTrade,
   handleProposeTrade,
   handleRejectTrade,
+  nextTradeOfferExpiry,
 } from "./tradeActions.js";
 
 export type {
@@ -178,13 +179,6 @@ type NonTurnActionType =
   | "reject_trade";
 type TurnActionType = Exclude<GameActionType, NonTurnActionType>;
 
-const ASYNC_TRADE_RESPONSE_ROUTES = {
-  accept_trade: (state, playerId, action, nowMs) =>
-    handleAcceptTrade(state, playerId, action, nowMs),
-  reject_trade: (state, playerId, action, nowMs) =>
-    handleRejectTrade(state, playerId, action, nowMs),
-} satisfies Record<"accept_trade" | "reject_trade", PhaseActionHandler>;
-
 const PHASE_ACTION_ROUTES: Partial<
   Record<GamePhase, Partial<Record<GameActionType, PhaseActionHandler>>>
 > = {
@@ -202,8 +196,15 @@ const PHASE_ACTION_ROUTES: Partial<
   },
 };
 
+// Async responses valid in any phase: auction bids/passes and trade
+// accept/reject/counter. Consulted before the phase-gated throw in
+// `applySpecialActionRoute` so trade responses route from the special
+// `waiting_for_*` phases too.
 const GLOBAL_ACTION_ROUTES = {
-  ...ASYNC_TRADE_RESPONSE_ROUTES,
+  accept_trade: (state, playerId, action, nowMs) =>
+    handleAcceptTrade(state, playerId, action, nowMs),
+  reject_trade: (state, playerId, action, nowMs) =>
+    handleRejectTrade(state, playerId, action, nowMs),
   auction_bid: (state, playerId, action) =>
     handleAuctionBid(state, playerId, action),
   auction_pass: (state, playerId, action) =>
@@ -352,6 +353,54 @@ function targetsOfferExpiredByPreAction(
   );
 }
 
+/**
+ * Single canonical pre-action trade-expiry pass. Reconciles any pending trade
+ * offers whose deadline has passed BEFORE the action is routed, using the one
+ * `nowMs` clock the whole action observes — so "stale pending offers until the
+ * alarm fires" never leaks into action handling.
+ *
+ * Perf: only does the expiry pass (which deep-clones) when an offer is actually
+ * due (`nextTradeOfferExpiry(state) <= nowMs`); otherwise it passes `state`
+ * through untouched.
+ *
+ * The subtle response-vs-expiry race lives here: when a trade RESPONSE targets
+ * an offer this pass just expired, the response is a no-op but the expiry must
+ * still persist, so `shortCircuitResult` carries the expiry result for the
+ * caller to return directly (routing the response handler would throw
+ * `OFFER_NOT_PENDING` and discard the persisted `expired` status + log).
+ */
+function reconcileTradeExpiryBeforeAction(
+  state: InternalGameState,
+  action: GameActionInput,
+  nowMs: number,
+): {
+  workingState: InternalGameState;
+  expiryLogs: LogEntry[];
+  shortCircuitResult?: ApplyActionResult;
+} {
+  const nextExpiry = nextTradeOfferExpiry(state);
+  const expiryResult =
+    nextExpiry !== null && nextExpiry <= nowMs
+      ? expirePendingTradeOffers(state, nowMs)
+      : null;
+  if (!expiryResult) {
+    return { workingState: state, expiryLogs: [] };
+  }
+
+  if (targetsOfferExpiredByPreAction(action, expiryResult)) {
+    return {
+      workingState: expiryResult.state,
+      expiryLogs: [],
+      shortCircuitResult: finalizePrimaryLogIndex(expiryResult),
+    };
+  }
+
+  return {
+    workingState: expiryResult.state,
+    expiryLogs: expiryResult.logEntries,
+  };
+}
+
 export function applyAction(
   state: InternalGameState,
   playerId: string,
@@ -361,22 +410,11 @@ export function applyAction(
     throw "game.completed";
   }
 
-  // Single canonical pre-action expiry pass: reconcile any pending trade offers
-  // whose deadline has passed BEFORE routing the action, using one `nowMs` clock
-  // for the whole action. This keeps "stale pending offers until the alarm
-  // fires" from leaking into action handling, and is threaded into the trade
-  // handlers below so a single action observes a single clock.
   const nowMs = Date.now();
-  const expiryResult = expirePendingTradeOffers(state, nowMs);
-  const workingState = expiryResult?.state ?? state;
-  const expiryLogs = expiryResult?.logEntries ?? [];
-
-  // If a trade RESPONSE targets an offer the pre-action pass just expired, the
-  // response is a no-op — but the expiry must still persist. Return the expiry
-  // result rather than routing the response handler (which would throw
-  // `OFFER_NOT_PENDING` and discard the persisted `expired` status + log).
-  if (expiryResult && targetsOfferExpiredByPreAction(action, expiryResult)) {
-    return finalizePrimaryLogIndex(expiryResult);
+  const { workingState, expiryLogs, shortCircuitResult } =
+    reconcileTradeExpiryBeforeAction(state, action, nowMs);
+  if (shortCircuitResult) {
+    return shortCircuitResult;
   }
 
   const before = snapshotPlayerChanges(workingState);
