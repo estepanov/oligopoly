@@ -422,4 +422,40 @@ describe("GamePlayControls economics dialogs", () => {
     expect(screen.getByRole("button", { name: /reject/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /counter/i })).toBeDisabled();
   });
+
+  it("keeps the trade desk visible after game over", () => {
+    const state = baseGameState({
+      phase: "game_over",
+      winnerId: "me",
+      tradeOffers: [
+        {
+          id: "trade-1",
+          gameId: "g",
+          proposerId: "me",
+          recipientId: "opponent",
+          gives: { capital: 100, tilePositions: [] },
+          receives: { capital: 50, tilePositions: [] },
+          status: "pending",
+          createdAt: 1,
+          expiresAt: Date.now() + 300_000,
+          counterCount: 0,
+        },
+      ],
+    });
+
+    render(
+      <GamePlayControls
+        state={state}
+        myPlayerId="me"
+        tileNames={tileNames}
+        busy={false}
+        onAction={async () => undefined}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Game over" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /trade desk/i })).toBeVisible();
+  });
 });
