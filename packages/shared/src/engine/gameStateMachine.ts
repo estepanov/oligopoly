@@ -405,12 +405,15 @@ export function applyAction(
   state: InternalGameState,
   playerId: string,
   action: GameActionInput,
+  // Injectable clock: defaults to wall time, but callers (and tests) can pass a
+  // fixed `nowMs` so trade-offer expiry reconciliation is deterministic and
+  // consistent with scheduler-driven expiry.
+  nowMs: number = Date.now(),
 ): ApplyActionResult {
   if (state.phase === "game_over") {
     throw "game.completed";
   }
 
-  const nowMs = Date.now();
   const { workingState, expiryLogs, shortCircuitResult } =
     reconcileTradeExpiryBeforeAction(state, action, nowMs);
   if (shortCircuitResult) {

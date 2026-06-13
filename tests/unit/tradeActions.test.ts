@@ -191,6 +191,44 @@ describe("trade actions", () => {
     }
   });
 
+  it("expires pending offers deterministically via an injected clock", () => {
+    const proposed = applyAction(baseState(), "p1", {
+      type: "propose_trade",
+      recipientId: "p2",
+      gives: { capital: 10, tilePositions: [] },
+      receives: { capital: 0, tilePositions: [6] },
+    });
+    const offer = proposed.state.tradeOffers?.[0];
+    const offerId = offer?.id;
+    const expiresAt = offer?.expiresAt ?? 0;
+
+    // Drive a later action with an injected `nowMs` past the offer's deadline:
+    // the pre-action expiry reconciliation must flip it to `expired` without any
+    // reliance on wall-clock time.
+    const afterExpiry = applyAction(
+      proposed.state,
+      "p1",
+      { type: "end_turn" },
+      expiresAt + 1,
+    );
+    expect(
+      afterExpiry.state.tradeOffers?.find((entry) => entry.id === offerId)
+        ?.status,
+    ).toBe("expired");
+
+    // The same action just before the deadline leaves the offer pending.
+    const beforeExpiry = applyAction(
+      proposed.state,
+      "p1",
+      { type: "end_turn" },
+      expiresAt - 1,
+    );
+    expect(
+      beforeExpiry.state.tradeOffers?.find((entry) => entry.id === offerId)
+        ?.status,
+    ).toBe("pending");
+  });
+
   it("caps counter offers at two before the offer must resolve", () => {
     const first = applyAction(baseState(), "p1", {
       type: "propose_trade",
