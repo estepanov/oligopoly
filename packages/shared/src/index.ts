@@ -108,8 +108,10 @@ export type { AiDecision } from "./engine/ai.js";
 export {
   chooseAiAction,
   chooseAiActionForPlayer,
+  findNextAiActor,
   findNextAiActorForPhase,
   findNextAiAuctionActor,
+  hasAiWork,
 } from "./engine/ai.js";
 export {
   applyTimeoutTakeover,

@@ -377,10 +377,16 @@ export async function notifyGameSchedule(
   gameId: string,
   state: Record<string, unknown>,
 ): Promise<void> {
+  // Strip private trade-offer terms from the broadcast state and carry them on a
+  // separate field so `GameRoom.broadcast` can re-derive each viewer's own slice
+  // without ever putting another player's terms on the wire (see
+  // `notifyGameActionResult` for the full contract).
+  const { tradeOffers, ...stateWithoutTradeOffers } = state;
   await broadcastGameEvent(gameRoom, gameId, {
     type: "game.schedule",
     sentAt: Date.now(),
     gameId,
-    state,
+    state: stateWithoutTradeOffers,
+    ...(tradeOffers ? { tradeOffers } : {}),
   });
 }

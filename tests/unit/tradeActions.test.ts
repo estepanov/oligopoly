@@ -151,7 +151,7 @@ describe("trade actions", () => {
     expect(rejected.state.tradeOffers?.[0].status).toBe("rejected");
   });
 
-  it("blocks trade responses after applyAction reconciles expired offers", () => {
+  it("persists the pre-action expiry when a trade response targets a just-expired offer", () => {
     const proposed = applyAction(baseState(), "p1", {
       type: "propose_trade",
       recipientId: "p2",
@@ -166,12 +166,27 @@ describe("trade actions", () => {
       ),
     };
 
-    expect(() =>
-      applyAction(expiredPending, "p2", {
-        type: "reject_trade",
+    // The pre-action expiry pass flips this offer to `expired`; the response is
+    // then a no-op, but the expiry itself (status + `trade_expired` log) must
+    // persist rather than being discarded by a thrown `OFFER_NOT_PENDING`.
+    for (const responseType of ["accept_trade", "reject_trade"] as const) {
+      const result = applyAction(expiredPending, "p2", {
+        type: responseType,
         offerId,
-      }),
-    ).toThrow(TradeErrorKeys.OFFER_NOT_PENDING);
+      });
+      const offer = result.state.tradeOffers?.find(
+        (entry) => entry.id === offerId,
+      );
+      expect(offer?.status).toBe("expired");
+      expect(
+        result.logEntries.some((entry) => entry.actionType === "trade_expired"),
+      ).toBe(true);
+      // No assets moved — the trade did not settle.
+      expect(
+        result.state.players.find((player) => player.playerId === "p1")
+          ?.ownedTilePositions,
+      ).toEqual([3]);
+    }
   });
 
   it("caps counter offers at two before the offer must resolve", () => {

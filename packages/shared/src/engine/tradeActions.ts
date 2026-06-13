@@ -43,6 +43,7 @@ export function handleProposeTrade(
   state: InternalGameState,
   playerId: string,
   action: GameActionInput,
+  nowMs: number = Date.now(),
 ): ApplyActionResult {
   if (state.phase !== "action") throw "game.invalid_phase";
 
@@ -65,7 +66,6 @@ export function handleProposeTrade(
   const receives = normalizeTransfer(action.receives);
   validateTradeTerms(state, { proposer, recipient, gives, receives });
 
-  const nowMs = Date.now();
   const offer = buildTradeOffer(state, {
     proposerId: playerId,
     recipientId,
@@ -101,8 +101,8 @@ export function handleAcceptTrade(
   state: InternalGameState,
   playerId: string,
   action: GameActionInput,
+  nowMs: number = Date.now(),
 ): ApplyActionResult {
-  const nowMs = Date.now();
   const offer = pendingOfferForResponse(state, playerId, action.offerId, nowMs);
 
   const proposer = getPlayer(state, offer.proposerId);
@@ -148,8 +148,8 @@ export function handleRejectTrade(
   state: InternalGameState,
   playerId: string,
   action: GameActionInput,
+  nowMs: number = Date.now(),
 ): ApplyActionResult {
-  const nowMs = Date.now();
   const offer = pendingOfferForResponse(
     state,
     playerId,
@@ -186,10 +186,10 @@ export function handleCounterTrade(
   state: InternalGameState,
   playerId: string,
   action: GameActionInput,
+  nowMs: number = Date.now(),
 ): ApplyActionResult {
   if (state.phase !== "action") throw "game.invalid_phase";
 
-  const nowMs = Date.now();
   const offer = pendingOfferForResponse(state, playerId, action.offerId, nowMs);
   if (offer.counterCount >= MAX_TRADE_COUNTERS) {
     throw TradeErrorKeys.COUNTER_LIMIT_REACHED;

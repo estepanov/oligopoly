@@ -1,8 +1,4 @@
-import {
-  findNextAiActorForPhase,
-  isAiControlledActor,
-  normalizeGameState,
-} from "@oligopoly/shared";
+import { hasAiWork, normalizeGameState } from "@oligopoly/shared";
 import { GameErrorKeys } from "@oligopoly/validation";
 import {
   redactLogEntriesForViewer,
@@ -24,7 +20,6 @@ import {
   type LobbyRow,
 } from "../services/lobbyResponses.js";
 import type { OpenRouterAiEnv } from "../services/openRouterAi.js";
-import { currentTurnActorId } from "../services/turnTimeout.js";
 
 type RoomEnv = OpenRouterAiEnv & {
   DB?: D1Database;
@@ -150,13 +145,25 @@ export class GameRoom extends RealtimeRoom {
             payload: Record<string, unknown> | null;
           }>)
         : null;
+      // Trade-offer terms are stripped from `event.state` at the broadcast
+      // source and carried separately so they never leak to non-participants.
+      // Re-inject them here before `toClientGameState`, which redacts them down
+      // to each viewer's own offers via `filterTradeOffersForViewer`. Falls back
+      // to any `tradeOffers` still on `event.state` for legacy/other callers.
+      const carriedTradeOffers = Array.isArray(event.tradeOffers)
+        ? event.tradeOffers
+        : null;
       for (const session of this.sessions) {
         const url = this.sessionUrls.get(session);
         const spectator = url?.searchParams.get("spectator") === "1";
         const viewerId = url?.searchParams.get("viewerId") ?? "spectator";
-        const state = normalizeGameState(
-          event.state as Record<string, unknown>,
-        );
+        const rawState = carriedTradeOffers
+          ? {
+              ...(event.state as Record<string, unknown>),
+              tradeOffers: carriedTradeOffers,
+            }
+          : (event.state as Record<string, unknown>);
+        const state = normalizeGameState(rawState);
         const scopedState = spectator
           ? toClientGameState(state as never, "spectator", viewerId)
           : toClientGameState(state as never, "player", viewerId);
@@ -346,31 +353,14 @@ export class GameRoom extends RealtimeRoom {
       return;
     }
 
+    // One canonical "is there AI work?" predicate (auction phase actors,
+    // off-turn trade-inbox recipients, AND current-turn AI) so the DO reliably
+    // wakes trade AI too — not just auction/current-turn AI. Mirrors the inline
+    // `chooseAiAction` discovery so the DO is the reliable orchestration owner.
     if (
       this.env.DB &&
       !(await this.state.storage.get<boolean>("aiLoopRunning")) &&
-      findNextAiActorForPhase(state)
-    ) {
-      await this.runAiLoop(gameId);
-      return;
-    }
-
-    if (
-      state.phase === "waiting_for_auction_bids" ||
-      state.phase === "waiting_for_auction_settle"
-    ) {
-      await syncGameRoomTimer(this.state.storage, gameId, state, (message) =>
-        this.broadcast(message),
-      );
-      return;
-    }
-
-    const actorId = currentTurnActorId(state);
-    if (
-      actorId &&
-      isAiControlledActor(state, actorId) &&
-      this.env.DB &&
-      !(await this.state.storage.get<boolean>("aiLoopRunning"))
+      hasAiWork(state)
     ) {
       await this.runAiLoop(gameId);
       return;
@@ -403,10 +393,14 @@ export class GameRoom extends RealtimeRoom {
         const latest = normalizeGameState(
           JSON.parse(row.state_json) as Record<string, unknown>,
         );
+        // Carry trade-offer terms separately from `state` (see
+        // `notifyGameActionResult`) so non-participants never receive them.
+        const { tradeOffers, ...latestWithoutTradeOffers } = latest;
         this.broadcast(
           jsonEvent("game.schedule", {
             gameId,
-            state: latest,
+            state: latestWithoutTradeOffers,
+            ...(tradeOffers ? { tradeOffers } : {}),
           }),
         );
         await syncGameRoomTimer(this.state.storage, gameId, latest, (message) =>

@@ -239,13 +239,16 @@ describe("chooseAiAction", () => {
     ).toBeGreaterThan(10);
   });
 
-  it("finds AI trade actors during auction phases", () => {
+  it("bids in the auction window instead of answering a pending inbox trade", () => {
+    // Priority inversion guard: while the auction phase owns its own deadline,
+    // the AI must keep bidding rather than answer an off-turn inbox trade, which
+    // would stall the auction window.
     const state = {
       ...tradeReadyState(),
       phase: "waiting_for_auction_bids" as const,
       pendingAuction: {
         tilePosition: 6,
-        auctionType: "decline" as const,
+        auctionType: "sealed_bids" as const,
         initiatorId: "human-1",
         eligiblePlayerIds: ["human-1", "ai:bot"],
         bidDeadlineAt: Date.now() + 60_000,
@@ -268,10 +271,7 @@ describe("chooseAiAction", () => {
     };
 
     expect(findNextAiActorForPhase(state)).toBe("ai:bot");
-    expect(chooseAiAction(state)?.action).toMatchObject({
-      type: "accept_trade",
-      offerId: "trade-1",
-    });
+    expect(chooseAiAction(state)?.action.type).toBe("auction_bid");
   });
 
   it("proposes a cash-for-property trade on an AI action phase", () => {

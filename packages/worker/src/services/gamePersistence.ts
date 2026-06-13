@@ -145,17 +145,18 @@ function applyDarkPoolTransferRedaction<
 /**
  * Trade-offer redaction contract (two paths — keep in sync):
  *
- * 1. Realtime broadcast: `publicStateForBroadcast` strips `tradeOffers`
- *    ENTIRELY. The broadcast carries no offer terms; GameRoom fans the event
- *    out to each connected client and re-derives the per-viewer slice via
- *    `toClientGameState` (see `filterTradeOffersForViewer`), so only the
- *    proposer/recipient ever receive their own offers.
+ * 1. Realtime broadcast: the state that travels on `broadcastGameEvent`
+ *    (`event.state`) NEVER carries `tradeOffers`. `notifyGameActionResult` (and
+ *    the `game.schedule` emitters) strip the offers from `state` and place them
+ *    on a SEPARATE `event.tradeOffers` field. `GameRoom.broadcast` re-injects
+ *    that field into each viewer's state and runs `toClientGameState`, whose
+ *    `filterTradeOffersForViewer` keeps only the viewer's own offers. So the
+ *    redaction is safe-by-construction: even if a future caller forwarded
+ *    `event.state` without the GameRoom override, no offer terms leak.
  * 2. HTTP responses: `toActionResponse` calls `toClientGameState` DIRECTLY for
- *    the requesting player, applying the same party-scoped filter.
- *
- * Because path (1) relies on GameRoom for per-viewer filtering, any caller that
- * broadcasts a full state WITHOUT going through GameRoom + `toClientGameState`
- * must keep `tradeOffers` stripped, or it will leak private offer terms.
+ *    the requesting player, applying the same party-scoped filter. The
+ *    no-subject fallback goes through `publicStateForBroadcast`, which also
+ *    strips `tradeOffers` entirely.
  */
 export function publicStateForBroadcast(
   state: ApplyActionResult["state"],
@@ -307,9 +308,17 @@ export async function notifyGameActionResult(
   sentAt: number = Date.now(),
 ): Promise<void> {
   const hiddenTransfer = darkPoolTransferPayload(result.logEntries);
-  const broadcastState = hiddenTransfer
+  const baseState = hiddenTransfer
     ? applyDarkPoolTransferRedaction(result.state, result.logEntries)
     : result.state;
+  // Safe-by-construction: strip private `tradeOffers` terms from the state that
+  // travels on the wire, and carry them in a SEPARATE `tradeOffers` field that
+  // `GameRoom.broadcast` re-injects only into the matching viewer's slice (via
+  // `filterTradeOffersForViewer`). Even if a future caller forwards `event.state`
+  // without the DO's per-viewer override, no offer terms leak. Other per-viewer
+  // fields (insider peek, handshakes, affinity, private negotiation threads)
+  // still ride on `state` and are redacted per-viewer by `toClientGameState`.
+  const { tradeOffers, ...stateWithoutTradeOffers } = baseState;
   const broadcastLogEntries = hiddenTransfer
     ? []
     : persistedLogEntries.filter(
@@ -322,7 +331,8 @@ export async function notifyGameActionResult(
     gameId,
     actorId: options.actorId ?? options.aiMeta?.aiPlayerId ?? "system",
     logEntries: broadcastLogEntries,
-    state: broadcastState,
+    state: stateWithoutTradeOffers,
+    ...(tradeOffers ? { tradeOffers } : {}),
   });
 }
 

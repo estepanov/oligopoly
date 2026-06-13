@@ -164,6 +164,7 @@ type PhaseActionHandler = (
   state: InternalGameState,
   playerId: string,
   action: GameActionInput,
+  nowMs: number,
 ) => ApplyActionResult;
 type GameActionType = GameActionInput["type"];
 type NonTurnActionType =
@@ -178,10 +179,10 @@ type NonTurnActionType =
 type TurnActionType = Exclude<GameActionType, NonTurnActionType>;
 
 const ASYNC_TRADE_RESPONSE_ROUTES = {
-  accept_trade: (state, playerId, action) =>
-    handleAcceptTrade(state, playerId, action),
-  reject_trade: (state, playerId, action) =>
-    handleRejectTrade(state, playerId, action),
+  accept_trade: (state, playerId, action, nowMs) =>
+    handleAcceptTrade(state, playerId, action, nowMs),
+  reject_trade: (state, playerId, action, nowMs) =>
+    handleRejectTrade(state, playerId, action, nowMs),
 } satisfies Record<"accept_trade" | "reject_trade", PhaseActionHandler>;
 
 const PHASE_ACTION_ROUTES: Partial<
@@ -207,8 +208,8 @@ const GLOBAL_ACTION_ROUTES = {
     handleAuctionBid(state, playerId, action),
   auction_pass: (state, playerId, action) =>
     handleAuctionPass(state, playerId, action),
-  counter_trade: (state, playerId, action) =>
-    handleCounterTrade(state, playerId, action),
+  counter_trade: (state, playerId, action, nowMs) =>
+    handleCounterTrade(state, playerId, action, nowMs),
 } satisfies Record<
   | "auction_bid"
   | "auction_pass"
@@ -248,8 +249,8 @@ const TURN_ACTION_ROUTES = {
     handleProposeContract(state, playerId, action),
   sign_contract: (state, playerId, action) =>
     handleSignContract(state, playerId, action),
-  propose_trade: (state, playerId, action) =>
-    handleProposeTrade(state, playerId, action),
+  propose_trade: (state, playerId, action, nowMs) =>
+    handleProposeTrade(state, playerId, action, nowMs),
   propose_handshake: (state, playerId, action) =>
     handleProposeHandshake(state, playerId, action),
   sign_handshake: (state, playerId, action) =>
@@ -276,11 +277,12 @@ function applySpecialActionRoute(
   state: InternalGameState,
   playerId: string,
   action: GameActionInput,
+  nowMs: number,
 ): ApplyActionResult | null {
   const phaseRoutes = PHASE_ACTION_ROUTES[state.phase];
   const phaseHandler = phaseRoutes?.[action.type];
   if (phaseHandler) {
-    return phaseHandler(state, playerId, action);
+    return phaseHandler(state, playerId, action, nowMs);
   }
 
   // Global async responses (auction bids/passes, trade accept/reject/counter)
@@ -289,7 +291,7 @@ function applySpecialActionRoute(
   // routing in one place instead of re-spreading it into each special phase.
   const globalHandler = GLOBAL_ACTION_ROUTES_BY_TYPE[action.type];
   if (globalHandler) {
-    return globalHandler(state, playerId, action);
+    return globalHandler(state, playerId, action, nowMs);
   }
 
   if (phaseRoutes) {
@@ -322,6 +324,34 @@ function mergeExpiryLogs(
   };
 }
 
+const TRADE_RESPONSE_ACTION_TYPES = new Set<GameActionType>([
+  "accept_trade",
+  "reject_trade",
+  "counter_trade",
+]);
+
+/**
+ * True when `action` is a trade response targeting an offer that the
+ * pre-action expiry pass just flipped to `expired`. The player's response is a
+ * no-op against a now-expired offer, but the expiry itself must still persist —
+ * see `applyAction` for why we return the expiry result instead of routing the
+ * (doomed) response handler, which would throw `OFFER_NOT_PENDING` and discard
+ * the expiry.
+ */
+function targetsOfferExpiredByPreAction(
+  action: GameActionInput,
+  expiryResult: ApplyActionResult | null,
+): boolean {
+  if (!expiryResult || !TRADE_RESPONSE_ACTION_TYPES.has(action.type)) {
+    return false;
+  }
+  const offerId = action.offerId;
+  if (!offerId) return false;
+  return (expiryResult.state.tradeOffers ?? []).some(
+    (offer) => offer.id === offerId && offer.status === "expired",
+  );
+}
+
 export function applyAction(
   state: InternalGameState,
   playerId: string,
@@ -331,13 +361,31 @@ export function applyAction(
     throw "game.completed";
   }
 
+  // Single canonical pre-action expiry pass: reconcile any pending trade offers
+  // whose deadline has passed BEFORE routing the action, using one `nowMs` clock
+  // for the whole action. This keeps "stale pending offers until the alarm
+  // fires" from leaking into action handling, and is threaded into the trade
+  // handlers below so a single action observes a single clock.
   const nowMs = Date.now();
   const expiryResult = expirePendingTradeOffers(state, nowMs);
   const workingState = expiryResult?.state ?? state;
   const expiryLogs = expiryResult?.logEntries ?? [];
 
+  // If a trade RESPONSE targets an offer the pre-action pass just expired, the
+  // response is a no-op — but the expiry must still persist. Return the expiry
+  // result rather than routing the response handler (which would throw
+  // `OFFER_NOT_PENDING` and discard the persisted `expired` status + log).
+  if (expiryResult && targetsOfferExpiredByPreAction(action, expiryResult)) {
+    return finalizePrimaryLogIndex(expiryResult);
+  }
+
   const before = snapshotPlayerChanges(workingState);
-  const specialResult = applySpecialActionRoute(workingState, playerId, action);
+  const specialResult = applySpecialActionRoute(
+    workingState,
+    playerId,
+    action,
+    nowMs,
+  );
   if (specialResult !== null) {
     return withPlayerChangeLogs(
       before,
@@ -354,7 +402,7 @@ export function applyAction(
   if (!turnHandler) {
     throw "game.invalid_action";
   }
-  const turnResult = turnHandler(workingState, playerId, action);
+  const turnResult = turnHandler(workingState, playerId, action, nowMs);
   return withPlayerChangeLogs(
     before,
     mergeExpiryLogs(expiryLogs, finalizePrimaryLogIndex(turnResult)),
