@@ -49,6 +49,28 @@ function isMoreUrgent(candidate: TradeOffer, current: TradeOffer): boolean {
 }
 
 /**
+ * Walk `tradeOffers`, keep only pending + unexpired offers that match
+ * `predicate`, and pick the most urgent (min `expiresAt`, tie-broken by earliest
+ * `createdAt`). The single place the pending/expiry guard and deterministic
+ * tie-breaking live, so offer- and actor-selection can't drift.
+ */
+function selectMostUrgentPendingOffer(
+  state: InternalGameState,
+  nowMs: number,
+  predicate: (offer: TradeOffer) => boolean,
+): TradeOffer | null {
+  let selected: TradeOffer | null = null;
+  for (const offer of state.tradeOffers ?? []) {
+    if (offer.status !== "pending" || offer.expiresAt <= nowMs) continue;
+    if (!predicate(offer)) continue;
+    if (!selected || isMoreUrgent(offer, selected)) {
+      selected = offer;
+    }
+  }
+  return selected;
+}
+
+/**
  * The most urgent pending offer addressed to `actorId` (earliest `expiresAt`,
  * tie-broken by `createdAt`) — the single offer the AI should answer.
  */
@@ -57,15 +79,11 @@ function mostUrgentIncomingTradeForAi(
   actorId: string,
   nowMs: number,
 ): TradeOffer | null {
-  let selected: TradeOffer | null = null;
-  for (const offer of state.tradeOffers ?? []) {
-    if (offer.status !== "pending" || offer.expiresAt <= nowMs) continue;
-    if (offer.recipientId !== actorId) continue;
-    if (!selected || isMoreUrgent(offer, selected)) {
-      selected = offer;
-    }
-  }
-  return selected;
+  return selectMostUrgentPendingOffer(
+    state,
+    nowMs,
+    (offer) => offer.recipientId === actorId,
+  );
 }
 
 /**
@@ -78,14 +96,9 @@ export function findNextAiTradeActor(
   state: InternalGameState,
   nowMs: number = Date.now(),
 ): string | null {
-  let selected: TradeOffer | null = null;
-  for (const offer of state.tradeOffers ?? []) {
-    if (offer.status !== "pending" || offer.expiresAt <= nowMs) continue;
-    if (!isAiControlledActor(state, offer.recipientId)) continue;
-    if (!selected || isMoreUrgent(offer, selected)) {
-      selected = offer;
-    }
-  }
+  const selected = selectMostUrgentPendingOffer(state, nowMs, (offer) =>
+    isAiControlledActor(state, offer.recipientId),
+  );
   return selected?.recipientId ?? null;
 }
 

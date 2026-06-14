@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type PersistedGameState,
   redactLogEntriesForViewer,
+  scopeGameEventForViewer,
   toClientGameState,
 } from "../../packages/worker/src/gameStateView";
 
@@ -170,6 +171,109 @@ describe("toClientGameState trade offer visibility", () => {
     expect(
       toClientGameState(state, "spectator", "spectator").tradeOffers,
     ).toEqual([]);
+  });
+});
+
+describe("scopeGameEventForViewer", () => {
+  const offer = {
+    id: "trade-1",
+    gameId: "game-1",
+    proposerId: "p1",
+    recipientId: "p2",
+    gives: { capital: 100, tilePositions: [3] },
+    receives: { capital: 50, tilePositions: [6] },
+    status: "pending",
+    createdAt: 1,
+    expiresAt: Date.now() + 300_000,
+    counterCount: 0,
+  };
+
+  function baseEvent() {
+    return {
+      type: "game.action_applied",
+      sentAt: 123,
+      gameId: "game-1",
+      // tradeOffers travel on a SEPARATE carried field (see
+      // prepareGameBroadcastPayload); state itself never carries them.
+      state: { ...baseState() },
+      tradeOffers: [offer],
+    };
+  }
+
+  it("re-injects only the viewer's own offers for a participant", () => {
+    const scoped = scopeGameEventForViewer(baseEvent(), {
+      viewerId: "p2",
+      spectator: false,
+    });
+    const state = scoped.state as PersistedGameState;
+    expect(state.tradeOffers?.map((o) => o.id)).toEqual(["trade-1"]);
+    // Carried raw offers must never ride on the wire alongside the scoped state.
+    expect("tradeOffers" in scoped).toBe(false);
+  });
+
+  it("hides foreign trade-offer terms from a non-participant", () => {
+    const scoped = scopeGameEventForViewer(baseEvent(), {
+      viewerId: "p3",
+      spectator: false,
+    });
+    const state = scoped.state as PersistedGameState;
+    expect(state.tradeOffers).toEqual([]);
+    // No party ids or terms anywhere in the payload a non-party would receive.
+    const wire = JSON.stringify(scoped);
+    expect(wire).not.toContain("gives");
+    expect(wire).not.toContain("receives");
+    expect(wire).not.toContain("proposerId");
+  });
+
+  it("hides trade-offer terms from spectators", () => {
+    const scoped = scopeGameEventForViewer(baseEvent(), {
+      viewerId: "spectator",
+      spectator: true,
+    });
+    const state = scoped.state as PersistedGameState;
+    expect(state.tradeOffers).toEqual([]);
+    expect(JSON.stringify(scoped)).not.toContain("proposerId");
+  });
+
+  it("redacts private trade log entries per viewer", () => {
+    const event = {
+      ...baseEvent(),
+      logEntries: [
+        {
+          actionType: "trade_proposed",
+          payload: { proposerId: "p1", recipientId: "p2", gives: {} },
+        },
+        { actionType: "buy_tile", payload: { playerId: "p1" } },
+      ],
+    };
+    const participant = scopeGameEventForViewer(event, {
+      viewerId: "p1",
+      spectator: false,
+    });
+    const outsider = scopeGameEventForViewer(event, {
+      viewerId: "p3",
+      spectator: false,
+    });
+    expect(
+      (participant.logEntries as Array<{ actionType: string }>).map(
+        (e) => e.actionType,
+      ),
+    ).toEqual(["trade_proposed", "buy_tile"]);
+    expect(
+      (outsider.logEntries as Array<{ actionType: string }>).map(
+        (e) => e.actionType,
+      ),
+    ).toEqual(["buy_tile"]);
+  });
+
+  it("preserves non-redacted event fields", () => {
+    const scoped = scopeGameEventForViewer(baseEvent(), {
+      viewerId: "p2",
+      spectator: false,
+    });
+    expect(scoped.type).toBe("game.action_applied");
+    expect(scoped.sentAt).toBe(123);
+    expect(scoped.gameId).toBe("game-1");
   });
 });
 

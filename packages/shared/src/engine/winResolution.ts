@@ -10,6 +10,7 @@ import {
   sumOwnedTileMarketValue,
   syndicateMarketValue,
 } from "./syndicate.js";
+import { expirePendingTradeOffersForGameOver } from "./tradeActions.js";
 import {
   checkSoloWin,
   checkSyndicateWin,
@@ -246,6 +247,11 @@ function finalizeWin(
     actionType: "game_won",
     payload: { ...summary },
   });
+  // Game over: terminate any still-pending trade offers so none dangle forever
+  // (applyAction rejects further actions once completed, and the DO clears
+  // trade-offer alarms). This runs for EVERY win path because finalizeWin is the
+  // single chokepoint for the game_over transition.
+  expirePendingTradeOffersForGameOver(state, logs);
   return state;
 }
 

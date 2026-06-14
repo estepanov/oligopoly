@@ -1,7 +1,9 @@
 import { hasAiWork, normalizeGameState } from "@oligopoly/shared";
 import { GameErrorKeys } from "@oligopoly/validation";
 import {
-  redactLogEntriesForViewer,
+  type BroadcastViewer,
+  type ScopableGameEvent,
+  scopeGameEventForViewer,
   toClientGameStateFromInternal,
 } from "../gameStateView.js";
 import { isNotifyRequest } from "../realtime/notify.js";
@@ -11,9 +13,9 @@ import {
   applyAuctionSettleExpiry,
   applyTimeoutTakeoverAndStep,
   applyTradeOfferExpiry,
+  buildGameScheduleEvent,
   runAiTurnLoop,
 } from "../services/gameAi.js";
-import { prepareGameBroadcastPayload } from "../services/gamePersistence.js";
 import { syncGameRoomTimer } from "../services/gameScheduler.js";
 import {
   buildLobbyResponse,
@@ -125,6 +127,14 @@ export class LobbyRoom extends RealtimeRoom {
 }
 
 export class GameRoom extends RealtimeRoom {
+  private sessionMeta(session: WebSocket): BroadcastViewer {
+    const url = this.sessionUrls.get(session);
+    return {
+      spectator: url?.searchParams.get("spectator") === "1",
+      viewerId: url?.searchParams.get("viewerId") ?? "spectator",
+    };
+  }
+
   protected broadcast(message: string) {
     let event: Record<string, unknown> | null = null;
     try {
@@ -140,44 +150,16 @@ export class GameRoom extends RealtimeRoom {
         event.type === "game.snapshot") &&
       event.state
     ) {
-      const logEntries = Array.isArray(event.logEntries)
-        ? (event.logEntries as Array<{
-            actionType: string;
-            payload: Record<string, unknown> | null;
-          }>)
-        : null;
-      // Trade-offer terms are stripped from `event.state` at the broadcast
-      // source and carried separately so they never leak to non-participants.
-      // Re-inject them here before `toClientGameState`, which redacts them down
-      // to each viewer's own offers via `filterTradeOffersForViewer`. Falls back
-      // to any `tradeOffers` still on `event.state` for legacy/other callers.
-      const carriedTradeOffers = Array.isArray(event.tradeOffers)
-        ? event.tradeOffers
-        : null;
+      // Per-viewer scoping (trade-offer re-injection + redaction, log redaction)
+      // lives entirely in `scopeGameEventForViewer`; the transport just fans the
+      // scoped event out to each session.
+      const scopable = event as ScopableGameEvent;
       for (const session of this.sessions) {
-        const url = this.sessionUrls.get(session);
-        const spectator = url?.searchParams.get("spectator") === "1";
-        const viewerId = url?.searchParams.get("viewerId") ?? "spectator";
-        const rawState = carriedTradeOffers
-          ? {
-              ...(event.state as Record<string, unknown>),
-              tradeOffers: carriedTradeOffers,
-            }
-          : (event.state as Record<string, unknown>);
-        const state = normalizeGameState(rawState);
-        const scopedState = spectator
-          ? toClientGameStateFromInternal(state, "spectator", viewerId)
-          : toClientGameStateFromInternal(state, "player", viewerId);
-        const scopedLogEntries = logEntries
-          ? redactLogEntriesForViewer(logEntries, spectator ? null : viewerId)
-          : undefined;
         try {
           session.send(
-            JSON.stringify({
-              ...event,
-              state: scopedState,
-              ...(scopedLogEntries ? { logEntries: scopedLogEntries } : {}),
-            }),
+            JSON.stringify(
+              scopeGameEventForViewer(scopable, this.sessionMeta(session)),
+            ),
           );
         } catch {
           this.sessions.delete(session);
@@ -397,16 +379,15 @@ export class GameRoom extends RealtimeRoom {
         const latest = normalizeGameState(
           JSON.parse(row.state_json) as Record<string, unknown>,
         );
-        // Carry trade-offer terms separately from `state` (see
-        // `prepareGameBroadcastPayload`) so non-participants never receive them.
-        const { state: latestWithoutTradeOffers, tradeOffers } =
-          prepareGameBroadcastPayload(latest);
+        // Same strip-and-carry as the worker→DO schedule POST, built by the one
+        // shared helper so the trade-offer privacy contract can't drift.
         this.broadcast(
-          jsonEvent("game.schedule", {
-            gameId,
-            state: latestWithoutTradeOffers,
-            ...(tradeOffers ? { tradeOffers } : {}),
-          }),
+          JSON.stringify(
+            buildGameScheduleEvent(
+              gameId,
+              latest as unknown as Record<string, unknown>,
+            ),
+          ),
         );
         await syncGameRoomTimer(this.state.storage, gameId, latest, (message) =>
           this.broadcast(message),

@@ -322,6 +322,7 @@ export {
 export {
   DEFAULT_TRADE_TIMEOUT_MINUTES,
   expirePendingTradeOffers,
+  expirePendingTradeOffersForGameOver,
   isTileTradeable,
   listTradeableTilePositions,
   MAX_TRADE_COUNTERS,

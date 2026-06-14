@@ -8,8 +8,7 @@ import {
   tradeableTilesForPlayer,
   tradeStatusLabel,
 } from "./helpers";
-import { TradeOfferCard } from "./TradeOfferCard";
-import { TradeSentOfferCard } from "./TradeSentOfferCard";
+import { TradeOfferDisplayCard } from "./TradeOfferDisplayCard";
 import { TradeSideEditor } from "./TradeSideEditor";
 import {
   EMPTY_DRAFT,
@@ -26,6 +25,9 @@ export function TradeNegotiationPanel({
   onAction,
 }: TradeNegotiationPanelProps) {
   const [draft, setDraft] = useState<TradeDraft>(EMPTY_DRAFT);
+  // Once the game is over the server has terminated every pending offer, so the
+  // desk must not present any response actions for them.
+  const gameOver = state.phase === "game_over";
   const myTurn = isMyTurn(state, myPlayerId);
   const myPlayer = playerById(state, myPlayerId);
   const canPropose =
@@ -263,30 +265,34 @@ export function TradeNegotiationPanel({
       {pendingIncoming.length > 0 && (
         <div className="tradeOfferStack">
           {pendingIncoming.map((offer) => (
-            <TradeOfferCard
+            <TradeOfferDisplayCard
               key={offer.id}
               offer={offer}
               state={state}
               myPlayerId={myPlayerId}
               tileNames={tileNames}
-              busy={busy}
-              canCounter={
-                state.phase === "action" &&
-                offer.counterCount < MAX_TRADE_COUNTERS
+              variant="incoming"
+              actions={
+                gameOver
+                  ? undefined
+                  : {
+                      busy,
+                      canCounter:
+                        state.phase === "action" &&
+                        offer.counterCount < MAX_TRADE_COUNTERS,
+                      onAccept: () =>
+                        onAction(
+                          `Accepted trade from ${playerDisplayName(state, offer.proposerId, { myPlayerId })}`,
+                          { type: "accept_trade", offerId: offer.id },
+                        ),
+                      onReject: () =>
+                        onAction(
+                          `Rejected trade from ${playerDisplayName(state, offer.proposerId, { myPlayerId })}`,
+                          { type: "reject_trade", offerId: offer.id },
+                        ),
+                      onCounter: () => startCounter(offer),
+                    }
               }
-              onAccept={() =>
-                onAction(
-                  `Accepted trade from ${playerDisplayName(state, offer.proposerId, { myPlayerId })}`,
-                  { type: "accept_trade", offerId: offer.id },
-                )
-              }
-              onReject={() =>
-                onAction(
-                  `Rejected trade from ${playerDisplayName(state, offer.proposerId, { myPlayerId })}`,
-                  { type: "reject_trade", offerId: offer.id },
-                )
-              }
-              onCounter={() => startCounter(offer)}
             />
           ))}
         </div>
@@ -295,12 +301,13 @@ export function TradeNegotiationPanel({
       {pendingOutgoing.length > 0 && (
         <section className="tradeOfferStack" aria-label="Sent trade offers">
           {pendingOutgoing.map((offer) => (
-            <TradeSentOfferCard
+            <TradeOfferDisplayCard
               key={offer.id}
               offer={offer}
               state={state}
               myPlayerId={myPlayerId}
               tileNames={tileNames}
+              variant="outgoing"
             />
           ))}
         </section>

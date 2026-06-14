@@ -188,6 +188,49 @@ describe("TradeNegotiationPanel", () => {
     expect(sentOffers).toHaveTextContent("Search Engine Corp.");
   });
 
+  it("does not render response actions for a pending incoming offer once the game is over", () => {
+    const state = tradeState({
+      phase: "game_over",
+      winnerId: "me",
+      tradeOffers: [
+        {
+          id: "trade-1",
+          gameId: "g",
+          proposerId: "me",
+          recipientId: "opponent",
+          gives: { capital: 100, tilePositions: [3] },
+          receives: { capital: 50, tilePositions: [6] },
+          status: "pending",
+          createdAt: 1,
+          expiresAt: Date.now() + 300_000,
+          counterCount: 0,
+        },
+      ],
+    });
+
+    render(
+      <TradeNegotiationPanel
+        state={state}
+        myPlayerId="opponent"
+        tileNames={tileNames}
+        busy={false}
+        onAction={async () => undefined}
+      />,
+    );
+
+    // The offer card still renders, but no Accept/Reject/Counter controls.
+    expect(screen.getByText(/offer from ada/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /accept trade/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^reject$/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^counter$/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("hides the proposal composer when the current player has no action points", () => {
     const base = tradeState();
     const state = tradeState({

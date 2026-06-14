@@ -264,6 +264,31 @@ export function expirePendingTradeOffers(
   return { state: newState, logEntries: logs };
 }
 
+/**
+ * Terminate every still-`pending` trade offer when the game ends. Called from
+ * `finalizeWin` (the single chokepoint for ALL win paths) so no offer is left
+ * dangling after `game_over` — `applyAction` rejects every later action with
+ * `game.completed`, and the DO clears trade-offer alarms, so without this an
+ * offer could stay `pending` forever. Mutates `state` in place and appends a
+ * `trade_expired` log entry per offer (a terminal status already understood by
+ * the trade desk and redacted to the two parties by `redactLogEntriesForViewer`).
+ */
+export function expirePendingTradeOffersForGameOver(
+  state: InternalGameState,
+  logs: LogEntry[],
+): void {
+  for (const offer of state.tradeOffers ?? []) {
+    if (offer.status !== "pending") continue;
+    offer.status = "expired";
+    logs.push({
+      playerId: null,
+      actionType: "trade_expired",
+      payload: tradeLogPayload(offer),
+    });
+  }
+  state.tradeOffers = pruneTradeOffers(state.tradeOffers ?? []);
+}
+
 export function nextTradeOfferExpiry(state: InternalGameState): number | null {
   const expiries = (state.tradeOffers ?? [])
     .filter((offer) => offer.status === "pending")

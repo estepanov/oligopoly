@@ -1,4 +1,5 @@
 import type { InternalGameState } from "@oligopoly/shared";
+import { normalizeGameState } from "@oligopoly/shared";
 import type {
   GameLogEntry,
   GameNegotiationThread,
@@ -280,4 +281,73 @@ function filterHandshakesForViewer(
   return filterVisibleToViewer(handshakes, viewerId, mode, (entry, id, m) =>
     m === "spectator" ? false : entry.partyA === id || entry.partyB === id,
   );
+}
+
+/** Identifies the WebSocket session a broadcast event is being scoped for. */
+export interface BroadcastViewer {
+  viewerId: string;
+  spectator: boolean;
+}
+
+/**
+ * A realtime game event as it travels on the wire BEFORE per-viewer scoping. The
+ * broadcast source strips private `tradeOffers` terms off `state` and carries
+ * them on the separate `tradeOffers` field (see `prepareGameBroadcastPayload`);
+ * `scopeGameEventForViewer` re-injects them per viewer and redacts everything
+ * down to the viewer's own slice. Extra event fields (type, sentAt, gameId, …)
+ * are preserved untouched.
+ */
+export interface ScopableGameEvent {
+  state: Record<string, unknown>;
+  tradeOffers?: unknown;
+  logEntries?: Array<Pick<GameLogEntry, "actionType" | "payload">>;
+  [key: string]: unknown;
+}
+
+/**
+ * Single per-viewer scoping algorithm for game broadcasts. Re-injects the
+ * separately-carried `tradeOffers` into the viewer's state, normalizes it, runs
+ * `toClientGameStateFromInternal` (which redacts trade offers / auctions /
+ * handshakes / negotiation threads / affinity to the viewer's slice), and
+ * redacts the log entries for the viewer. Returns a new event with `state` (and
+ * `logEntries`, when present) replaced by the scoped versions; all other event
+ * fields pass through unchanged. This is the ONE implementation of the DO
+ * fan-out scoping so the transport layer never re-derives the redaction.
+ */
+export function scopeGameEventForViewer(
+  event: ScopableGameEvent,
+  viewer: BroadcastViewer,
+): Record<string, unknown> {
+  // Re-inject the separately-carried trade offers so the per-viewer filter can
+  // keep each viewer's own slice. Falls back to any `tradeOffers` already on
+  // `state` for legacy/other callers.
+  const carriedTradeOffers = Array.isArray(event.tradeOffers)
+    ? event.tradeOffers
+    : null;
+  const rawState = carriedTradeOffers
+    ? { ...event.state, tradeOffers: carriedTradeOffers }
+    : event.state;
+  const state = normalizeGameState(rawState);
+  const scopedState = toClientGameStateFromInternal(
+    state,
+    viewer.spectator ? "spectator" : "player",
+    viewer.viewerId,
+  );
+  const scopedLogEntries = event.logEntries
+    ? redactLogEntriesForViewer(
+        event.logEntries,
+        viewer.spectator ? null : viewer.viewerId,
+      )
+    : undefined;
+
+  // Drop the side-channel `tradeOffers` (the carried array holds EVERY party's
+  // terms) from the wire — each viewer's own offers now live, redacted, inside
+  // `scopedState.tradeOffers`. Keeping the raw array would leak foreign terms to
+  // every recipient.
+  const { tradeOffers: _carried, ...rest } = event;
+  return {
+    ...rest,
+    state: scopedState,
+    ...(scopedLogEntries ? { logEntries: scopedLogEntries } : {}),
+  };
 }

@@ -375,22 +375,37 @@ export async function kickPlayerToAiReplacement(
   return nextState;
 }
 
-export async function notifyGameSchedule(
-  gameRoom: DurableObjectNamespace | undefined,
+/**
+ * Build the `game.schedule` broadcast event with the trade-offer strip-and-carry
+ * applied ONCE (private terms stripped off `state` onto a separate `tradeOffers`
+ * field, which `GameRoom.broadcast` re-injects per viewer — see
+ * `prepareGameBroadcastPayload`). Both emit paths — `notifyGameSchedule` (the
+ * worker→DO POST) and the in-DO AI-loop fan-out in `rooms.ts` — go through this
+ * so the pattern has a single implementation.
+ */
+export function buildGameScheduleEvent(
   gameId: string,
   state: Record<string, unknown>,
-): Promise<void> {
-  // Strip private trade-offer terms from the broadcast state and carry them on a
-  // separate field so `GameRoom.broadcast` can re-derive each viewer's own slice
-  // without ever putting another player's terms on the wire (see
-  // `prepareGameBroadcastPayload` for the full contract).
+): Record<string, unknown> {
   const { state: stateWithoutTradeOffers, tradeOffers } =
     prepareGameBroadcastPayload(state);
-  await broadcastGameEvent(gameRoom, gameId, {
+  return {
     type: "game.schedule",
     sentAt: Date.now(),
     gameId,
     state: stateWithoutTradeOffers,
     ...(tradeOffers ? { tradeOffers } : {}),
-  });
+  };
+}
+
+export async function notifyGameSchedule(
+  gameRoom: DurableObjectNamespace | undefined,
+  gameId: string,
+  state: Record<string, unknown>,
+): Promise<void> {
+  await broadcastGameEvent(
+    gameRoom,
+    gameId,
+    buildGameScheduleEvent(gameId, state),
+  );
 }
