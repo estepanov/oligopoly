@@ -156,6 +156,11 @@ export function aiTradeResponseAction(
   return { type: "reject_trade", offerId: offer.id };
 }
 
+// AI-only heuristic: an AI won't stack a second outgoing proposal while one is
+// still pending. This is intentionally NOT enforced in `handleProposeTrade` for
+// humans — humans are naturally throttled because each `propose_trade` costs 1
+// action point (the engine cap), whereas an AI's proposal is free of that loop
+// gate, so it self-limits here to avoid spamming offers.
 function hasPendingOutgoingTrade(state: InternalGameState, actorId: string) {
   return (state.tradeOffers ?? []).some(
     (offer) => offer.status === "pending" && offer.proposerId === actorId,
