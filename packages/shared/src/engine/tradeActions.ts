@@ -189,10 +189,15 @@ export function handleCounterTrade(
   action: GameActionInput,
   nowMs: number = Date.now(),
 ): ApplyActionResult {
-  // No phase gate: countering is a recipient's RESPONSE to a pending offer (same
-  // category as accept/reject), valid off-turn in any phase. Unlike
-  // `handleProposeTrade`, it does not spend an action point, so it is registered
-  // in `GLOBAL_ACTION_ROUTES` rather than the turn/action route table.
+  // Per the game rules, a recipient may accept/reject a pending offer at ANY
+  // time (even off-turn), but may only propose a COUNTER "while the game is in
+  // an action phase" (see oligopoly_game_rules.md). So `counter_trade` is
+  // registered in `GLOBAL_ACTION_ROUTES` (the recipient need not be the active
+  // player) yet is additionally gated to the action phase here — that
+  // combination is intentional, matches the trade-desk UI (which only enables
+  // counter during the action phase), and must not be "simplified" away.
+  // Countering charges no action point (unlike `handleProposeTrade`).
+  if (state.phase !== "action") throw "game.invalid_phase";
   const offer = pendingOfferForResponse(state, playerId, action.offerId, nowMs);
   if (offer.counterCount >= MAX_TRADE_COUNTERS) {
     throw TradeErrorKeys.COUNTER_LIMIT_REACHED;

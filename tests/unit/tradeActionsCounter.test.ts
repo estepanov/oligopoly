@@ -35,7 +35,7 @@ describe("trade actions - counter and counter cap", () => {
     ).toThrow(TradeErrorKeys.COUNTER_LIMIT_REACHED);
   });
 
-  it("allows the recipient to counter a trade in a non-action phase", () => {
+  it("rejects a counter outside the action phase (per the game rules)", () => {
     const proposed = applyAction(baseState(), "p1", {
       type: "propose_trade",
       recipientId: "p2",
@@ -52,29 +52,17 @@ describe("trade actions - counter and counter cap", () => {
       },
     };
 
-    // Countering is a recipient RESPONSE (like accept/reject): valid off-turn in
-    // any phase, registered globally, and does not require the action phase.
-    const countered = applyAction(peekState, "p2", {
-      type: "counter_trade",
-      offerId: "trade-trade-game-1",
-      gives: { capital: 0, tilePositions: [6] },
-      receives: { capital: 20, tilePositions: [] },
-    });
-
-    expect(countered.state.tradeOffers?.[0].status).toBe("countered");
-    const counterOffer = countered.state.tradeOffers?.find(
-      (offer) => offer.status === "pending",
-    );
-    expect(counterOffer?.proposerId).toBe("p2");
-    expect(counterOffer?.recipientId).toBe("p1");
-    expect(counterOffer?.counterCount).toBe(1);
-    // The special phase is preserved — countering does not advance it.
-    expect(countered.state.phase).toBe("waiting_for_insider_peek");
-    expect(
-      countered.logEntries.some(
-        (entry) => entry.actionType === "trade_countered",
-      ),
-    ).toBe(true);
+    // The rules allow accept/reject at any time, but a COUNTER only "while the
+    // game is in an action phase" — so countering during a special phase must be
+    // rejected (the trade desk also only enables counter in the action phase).
+    expect(() =>
+      applyAction(peekState, "p2", {
+        type: "counter_trade",
+        offerId: "trade-trade-game-1",
+        gives: { capital: 0, tilePositions: [6] },
+        receives: { capital: 20, tilePositions: [] },
+      }),
+    ).toThrow("game.invalid_phase");
   });
 
   it("does not charge an action point when countering off-turn", () => {
