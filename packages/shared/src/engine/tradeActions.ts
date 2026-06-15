@@ -239,27 +239,44 @@ export function handleCounterTrade(
   };
 }
 
-export function expirePendingTradeOffers(
+/**
+ * Shared "flip pending→expired + emit `trade_expired` log + prune" loop, in
+ * place on `state`. The two public expiry paths differ ONLY in which pending
+ * offers they select (timed expiry vs game-over expires all), so both delegate
+ * here. Returns the number of offers expired.
+ */
+function expireSelectedTradeOffers(
   state: InternalGameState,
-  nowMs: number = Date.now(),
-): ApplyActionResult | null {
-  const pendingOffers = (state.tradeOffers ?? []).filter(
-    (offer) => offer.status === "pending" && offer.expiresAt <= nowMs,
-  );
-  if (pendingOffers.length === 0) return null;
-
-  const newState = deepClone(state);
-  const logs: LogEntry[] = [];
-  for (const offer of newState.tradeOffers ?? []) {
-    if (offer.status !== "pending" || offer.expiresAt > nowMs) continue;
+  shouldExpire: (offer: TradeOffer) => boolean,
+  logs: LogEntry[],
+): number {
+  let expired = 0;
+  for (const offer of state.tradeOffers ?? []) {
+    if (offer.status !== "pending" || !shouldExpire(offer)) continue;
     offer.status = "expired";
+    expired += 1;
     logs.push({
       playerId: null,
       actionType: "trade_expired",
       payload: tradeLogPayload(offer),
     });
   }
-  newState.tradeOffers = pruneTradeOffers(newState.tradeOffers ?? []);
+  state.tradeOffers = pruneTradeOffers(state.tradeOffers ?? []);
+  return expired;
+}
+
+export function expirePendingTradeOffers(
+  state: InternalGameState,
+  nowMs: number = Date.now(),
+): ApplyActionResult | null {
+  const newState = deepClone(state);
+  const logs: LogEntry[] = [];
+  const expired = expireSelectedTradeOffers(
+    newState,
+    (offer) => offer.expiresAt <= nowMs,
+    logs,
+  );
+  if (expired === 0) return null;
 
   return { state: newState, logEntries: logs };
 }
@@ -277,16 +294,8 @@ export function expirePendingTradeOffersForGameOver(
   state: InternalGameState,
   logs: LogEntry[],
 ): void {
-  for (const offer of state.tradeOffers ?? []) {
-    if (offer.status !== "pending") continue;
-    offer.status = "expired";
-    logs.push({
-      playerId: null,
-      actionType: "trade_expired",
-      payload: tradeLogPayload(offer),
-    });
-  }
-  state.tradeOffers = pruneTradeOffers(state.tradeOffers ?? []);
+  // Game over expires EVERY pending offer regardless of `expiresAt`.
+  expireSelectedTradeOffers(state, () => true, logs);
 }
 
 export function nextTradeOfferExpiry(state: InternalGameState): number | null {
@@ -480,6 +489,10 @@ function validateTransferTiles(
   transfer: TradeOfferTransfer,
 ): void {
   for (const tilePosition of transfer.tilePositions) {
+    // Eligibility is decided once by the canonical predicate; only when a tile
+    // is rejected do we look at its state to throw the SPECIFIC reason callers
+    // and tests distinguish (not-owned vs mortgaged vs contract-locked).
+    if (isTileTradeable(state, ownerId, tilePosition)) continue;
     const tileState = state.tiles.find(
       (tile) => String(tile.position) === String(tilePosition),
     );
@@ -489,12 +502,8 @@ function validateTransferTiles(
     if (tileState.mortgaged) {
       throw TradeErrorKeys.TILE_MORTGAGED;
     }
-    // Remaining eligibility (contract lock) shares the canonical predicate so
-    // the boolean rules live in one place; the per-key throws above stay here so
-    // callers still get the specific TILE_NOT_OWNED / TILE_MORTGAGED reasons.
-    if (!isTileTradeable(state, ownerId, tilePosition)) {
-      throw TradeErrorKeys.INVALID_TERMS;
-    }
+    // Owned + un-mortgaged but still not tradeable ⇒ blocked by a sell contract.
+    throw TradeErrorKeys.INVALID_TERMS;
   }
 }
 

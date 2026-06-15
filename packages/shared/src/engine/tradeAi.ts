@@ -29,8 +29,12 @@ function acceptanceMargin(personality: AiPersonality): number {
       return 0;
     case "disruptor":
       return -25;
-    default:
+    case "opportunist":
       return 10;
+    default: {
+      const _exhaustive: never = personality;
+      return _exhaustive;
+    }
   }
 }
 
@@ -164,8 +168,12 @@ function tradeDiscountForPersonality(personality: AiPersonality): number {
       return 1;
     case "disruptor":
       return 0.65;
-    default:
+    case "opportunist":
       return 0.8;
+    default: {
+      const _exhaustive: never = personality;
+      return _exhaustive;
+    }
   }
 }
 

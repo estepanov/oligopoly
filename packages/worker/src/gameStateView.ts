@@ -299,8 +299,16 @@ export interface BroadcastViewer {
  */
 export interface ScopableGameEvent {
   state: Record<string, unknown>;
-  tradeOffers?: unknown;
+  /**
+   * The side-channel array of EVERY party's offers (re-injected into `state` by
+   * `prepareScopableGameEvent` before normalization). Typed as the offer array
+   * rather than `unknown` since that is the only payload the broadcast carries
+   * here; `prepareScopableGameEvent` still guards with `Array.isArray`.
+   */
+  tradeOffers?: TradeOffer[];
   logEntries?: Array<Pick<GameLogEntry, "actionType" | "payload">>;
+  // Broadcast events carry extra transport fields (type, gameId, sentAt, …) that
+  // pass through untouched, so an open index signature is intentional here.
   [key: string]: unknown;
 }
 
