@@ -189,8 +189,10 @@ export function handleCounterTrade(
   action: GameActionInput,
   nowMs: number = Date.now(),
 ): ApplyActionResult {
-  if (state.phase !== "action") throw "game.invalid_phase";
-
+  // No phase gate: countering is a recipient's RESPONSE to a pending offer (same
+  // category as accept/reject), valid off-turn in any phase. Unlike
+  // `handleProposeTrade`, it does not spend an action point, so it is registered
+  // in `GLOBAL_ACTION_ROUTES` rather than the turn/action route table.
   const offer = pendingOfferForResponse(state, playerId, action.offerId, nowMs);
   if (offer.counterCount >= MAX_TRADE_COUNTERS) {
     throw TradeErrorKeys.COUNTER_LIMIT_REACHED;

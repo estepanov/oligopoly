@@ -288,6 +288,39 @@ const ACTION_PRESENTATION: Record<string, ActionLogPresentation> = {
     eyebrow: "Round",
     tone: "system",
   },
+  trade_proposed: {
+    badge: "Offer",
+    description:
+      "A player proposed a trade. The terms list what each side gives and requests.",
+    eyebrow: "Trade",
+    tone: "deal",
+  },
+  trade_accepted: {
+    badge: "Done",
+    description:
+      "A trade was accepted. Cash and tile ownership transferred between the two parties.",
+    eyebrow: "Trade",
+    tone: "deal",
+  },
+  trade_rejected: {
+    badge: "Declined",
+    description: "A player rejected a pending trade offer.",
+    eyebrow: "Trade",
+    tone: "deal",
+  },
+  trade_expired: {
+    badge: "Expired",
+    description: "A pending trade offer expired before it was resolved.",
+    eyebrow: "Trade",
+    tone: "deal",
+  },
+  trade_countered: {
+    badge: "Counter",
+    description:
+      "A player countered a trade with revised terms, replacing the prior offer.",
+    eyebrow: "Trade",
+    tone: "deal",
+  },
 };
 
 /** Tile actions: money and inventory deltas belong on `player_state_changed`. */

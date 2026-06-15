@@ -161,6 +161,10 @@ export function normalizeGameState(raw: unknown): InternalGameState {
   return state;
 }
 
+// Only the trade handlers (propose/accept/reject/counter + expiry) read `nowMs`;
+// every other route closure simply omits the trailing param (a function of
+// fewer args still satisfies this type), so the uniform signature costs no churn
+// while keeping the clock injectable for trade/expiry determinism.
 type PhaseActionHandler = (
   state: InternalGameState,
   playerId: string,

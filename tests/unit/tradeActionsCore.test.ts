@@ -1,67 +1,15 @@
 import {
   applyAction,
-  expirePendingTradeOffers,
-  initTileStates,
   isTileTradeable,
   listTradeableTilePositions,
-  normalizeGameState,
   TRADE_OFFER_HISTORY_LIMIT,
   tradeTransferValue,
 } from "@oligopoly/shared";
 import { TradeErrorKeys } from "@oligopoly/validation";
 import { describe, expect, it } from "vitest";
+import { baseState } from "../helpers/tradeActionsFixture";
 
-function baseState() {
-  return normalizeGameState({
-    gameId: "trade-game",
-    round: 1,
-    phase: "action",
-    currentPlayerIndex: 0,
-    turnOrder: ["p1", "p2"],
-    freeMarketPool: 0,
-    affinityAssignments: {},
-    players: [
-      {
-        playerId: "p1",
-        position: 0,
-        capital: 1000,
-        ownedTilePositions: [3],
-        mortgagedTilePositions: [],
-        developmentTokens: {},
-        trustworthiness: 7,
-        actionPointsRemaining: 2,
-        inRegulation: false,
-        doublesCount: 0,
-        isOnDiagonal: false,
-      },
-      {
-        playerId: "p2",
-        position: 0,
-        capital: 900,
-        ownedTilePositions: [6],
-        mortgagedTilePositions: [],
-        developmentTokens: {},
-        trustworthiness: 7,
-        actionPointsRemaining: 2,
-        inRegulation: false,
-        doublesCount: 0,
-        isOnDiagonal: false,
-      },
-    ],
-    tiles: initTileStates().map((tile) => {
-      if (String(tile.position) === "3") return { ...tile, ownerId: "p1" };
-      if (String(tile.position) === "6") return { ...tile, ownerId: "p2" };
-      return tile;
-    }),
-    pendingBuyTilePosition: null,
-    lastDiceRoll: null,
-    winnerId: null,
-    eliminatedPlayerIds: [],
-    settings: { optionalRuleIds: [], turnTimeout: "5min" },
-  });
-}
-
-describe("trade actions", () => {
+describe("trade actions - core propose/accept/reject", () => {
   it("proposes and accepts a full money plus property trade", () => {
     const proposed = applyAction(baseState(), "p1", {
       type: "propose_trade",
@@ -153,200 +101,6 @@ describe("trade actions", () => {
     expect(rejected.state.tradeOffers?.[0].status).toBe("rejected");
   });
 
-  it("persists the pre-action expiry when a trade response targets a just-expired offer", () => {
-    const proposed = applyAction(baseState(), "p1", {
-      type: "propose_trade",
-      recipientId: "p2",
-      gives: { capital: 10, tilePositions: [] },
-      receives: { capital: 0, tilePositions: [6] },
-    });
-    const offerId = proposed.state.tradeOffers?.[0].id;
-    const expiredPending = {
-      ...proposed.state,
-      tradeOffers: proposed.state.tradeOffers?.map((offer) =>
-        offer.id === offerId ? { ...offer, expiresAt: 1 } : offer,
-      ),
-    };
-
-    // The pre-action expiry pass flips this offer to `expired`; the response is
-    // then a no-op, but the expiry itself (status + `trade_expired` log) must
-    // persist rather than being discarded by a thrown `OFFER_NOT_PENDING`.
-    for (const responseType of ["accept_trade", "reject_trade"] as const) {
-      const result = applyAction(expiredPending, "p2", {
-        type: responseType,
-        offerId,
-      });
-      const offer = result.state.tradeOffers?.find(
-        (entry) => entry.id === offerId,
-      );
-      expect(offer?.status).toBe("expired");
-      expect(
-        result.logEntries.some((entry) => entry.actionType === "trade_expired"),
-      ).toBe(true);
-      // No assets moved — the trade did not settle.
-      expect(
-        result.state.players.find((player) => player.playerId === "p1")
-          ?.ownedTilePositions,
-      ).toEqual([3]);
-    }
-  });
-
-  it("expires pending offers deterministically via an injected clock", () => {
-    const proposed = applyAction(baseState(), "p1", {
-      type: "propose_trade",
-      recipientId: "p2",
-      gives: { capital: 10, tilePositions: [] },
-      receives: { capital: 0, tilePositions: [6] },
-    });
-    const offer = proposed.state.tradeOffers?.[0];
-    const offerId = offer?.id;
-    const expiresAt = offer?.expiresAt ?? 0;
-
-    // Drive a later action with an injected `nowMs` past the offer's deadline:
-    // the pre-action expiry reconciliation must flip it to `expired` without any
-    // reliance on wall-clock time.
-    const afterExpiry = applyAction(
-      proposed.state,
-      "p1",
-      { type: "end_turn" },
-      expiresAt + 1,
-    );
-    expect(
-      afterExpiry.state.tradeOffers?.find((entry) => entry.id === offerId)
-        ?.status,
-    ).toBe("expired");
-
-    // The same action just before the deadline leaves the offer pending.
-    const beforeExpiry = applyAction(
-      proposed.state,
-      "p1",
-      { type: "end_turn" },
-      expiresAt - 1,
-    );
-    expect(
-      beforeExpiry.state.tradeOffers?.find((entry) => entry.id === offerId)
-        ?.status,
-    ).toBe("pending");
-  });
-
-  it("caps counter offers at two before the offer must resolve", () => {
-    const first = applyAction(baseState(), "p1", {
-      type: "propose_trade",
-      recipientId: "p2",
-      gives: { capital: 10, tilePositions: [] },
-      receives: { capital: 0, tilePositions: [6] },
-    });
-    const second = applyAction(first.state, "p2", {
-      type: "counter_trade",
-      offerId: "trade-trade-game-1",
-      gives: { capital: 0, tilePositions: [6] },
-      receives: { capital: 20, tilePositions: [] },
-    });
-    const third = applyAction(second.state, "p1", {
-      type: "counter_trade",
-      offerId: "trade-trade-game-2",
-      gives: { capital: 20, tilePositions: [] },
-      receives: { capital: 0, tilePositions: [6] },
-    });
-
-    expect(third.state.tradeOffers?.at(-1)?.counterCount).toBe(2);
-    expect(() =>
-      applyAction(third.state, "p2", {
-        type: "counter_trade",
-        offerId: "trade-trade-game-3",
-        gives: { capital: 0, tilePositions: [6] },
-        receives: { capital: 30, tilePositions: [] },
-      }),
-    ).toThrow(TradeErrorKeys.COUNTER_LIMIT_REACHED);
-  });
-
-  it("expires pending offers without transferring assets", () => {
-    const proposed = applyAction(baseState(), "p1", {
-      type: "propose_trade",
-      recipientId: "p2",
-      gives: { capital: 100, tilePositions: [3] },
-      receives: { capital: 50, tilePositions: [6] },
-    });
-    const deadline = proposed.state.tradeOffers?.[0].expiresAt ?? 0;
-    const expired = expirePendingTradeOffers(proposed.state, deadline + 1);
-
-    expect(expired?.state.tradeOffers?.[0].status).toBe("expired");
-    expect(expired?.state.players[0].capital).toBe(1000);
-    expect(expired?.state.players[0].ownedTilePositions).toEqual([3]);
-  });
-
-  it("allows trade responses during insider peek phase", () => {
-    const proposed = applyAction(baseState(), "p1", {
-      type: "propose_trade",
-      recipientId: "p2",
-      gives: { capital: 10, tilePositions: [] },
-      receives: { capital: 0, tilePositions: [6] },
-    });
-    const peekState = {
-      ...proposed.state,
-      phase: "waiting_for_insider_peek" as const,
-      pendingInsiderPeek: {
-        cardId: "card-1",
-        trigger: "turn_start" as const,
-        playerId: "p1",
-      },
-    };
-
-    const rejected = applyAction(peekState, "p2", {
-      type: "reject_trade",
-      offerId: "trade-trade-game-1",
-    });
-
-    expect(rejected.state.tradeOffers?.[0].status).toBe("rejected");
-  });
-
-  it("allows accepting a trade during insider peek phase", () => {
-    const proposed = applyAction(baseState(), "p1", {
-      type: "propose_trade",
-      recipientId: "p2",
-      gives: { capital: 10, tilePositions: [] },
-      receives: { capital: 0, tilePositions: [6] },
-    });
-    const peekState = {
-      ...proposed.state,
-      phase: "waiting_for_insider_peek" as const,
-      pendingInsiderPeek: {
-        cardId: "card-1",
-        trigger: "turn_start" as const,
-        playerId: "p1",
-      },
-    };
-
-    const accepted = applyAction(peekState, "p2", {
-      type: "accept_trade",
-      offerId: "trade-trade-game-1",
-    });
-
-    expect(accepted.state.tradeOffers?.[0].status).toBe("accepted");
-    // Special phase is preserved — accepting a trade does not advance it.
-    expect(accepted.state.phase).toBe("waiting_for_insider_peek");
-  });
-
-  it("allows trade responses during disruption nullify phase", () => {
-    const proposed = applyAction(baseState(), "p1", {
-      type: "propose_trade",
-      recipientId: "p2",
-      gives: { capital: 10, tilePositions: [] },
-      receives: { capital: 0, tilePositions: [6] },
-    });
-    const nullifyState = {
-      ...proposed.state,
-      phase: "waiting_for_disruption_nullify" as const,
-    };
-
-    const rejected = applyAction(nullifyState, "p2", {
-      type: "reject_trade",
-      offerId: "trade-trade-game-1",
-    });
-
-    expect(rejected.state.tradeOffers?.[0].status).toBe("rejected");
-  });
-
   it("throws invalid_phase when proposing outside the action phase", () => {
     const waitingState = {
       ...baseState(),
@@ -360,40 +114,6 @@ describe("trade actions", () => {
         receives: { capital: 0, tilePositions: [6] },
       }),
     ).toThrow("game.invalid_phase");
-  });
-
-  it("prunes resolved offers while keeping pending offers", () => {
-    let state = baseState();
-    for (let index = 0; index < TRADE_OFFER_HISTORY_LIMIT + 3; index += 1) {
-      state = {
-        ...state,
-        players: state.players.map((player) =>
-          player.playerId === "p1"
-            ? { ...player, actionPointsRemaining: 2 }
-            : player,
-        ),
-      };
-      const proposed = applyAction(state, "p1", {
-        type: "propose_trade",
-        recipientId: "p2",
-        gives: { capital: 10 + index, tilePositions: [] },
-        receives: { capital: 0, tilePositions: [6] },
-      });
-      const pendingOffer = proposed.state.tradeOffers?.find(
-        (offer) => offer.status === "pending",
-      );
-      expect(pendingOffer?.id).toBeDefined();
-      const rejected = applyAction(proposed.state, "p2", {
-        type: "reject_trade",
-        offerId: pendingOffer?.id,
-      });
-      state = rejected.state;
-    }
-
-    const resolvedCount = (state.tradeOffers ?? []).filter(
-      (offer) => offer.status !== "pending",
-    ).length;
-    expect(resolvedCount).toBeLessThanOrEqual(TRADE_OFFER_HISTORY_LIMIT);
   });
 
   it("values transfers using tile purchase costs", () => {
@@ -441,30 +161,9 @@ describe("trade actions", () => {
         ?.developmentTokens["3"],
     ).toBe(2);
   });
+});
 
-  it("expires pending offers during applyAction before handling the request", () => {
-    const proposed = applyAction(baseState(), "p1", {
-      type: "propose_trade",
-      recipientId: "p2",
-      gives: { capital: 10, tilePositions: [] },
-      receives: { capital: 0, tilePositions: [] },
-    });
-    const staleOfferState = {
-      ...proposed.state,
-      tradeOffers: proposed.state.tradeOffers?.map((offer) => ({
-        ...offer,
-        expiresAt: 1,
-      })),
-    };
-
-    const ended = applyAction(staleOfferState, "p1", { type: "end_turn" });
-
-    expect(ended.state.tradeOffers?.[0].status).toBe("expired");
-    expect(
-      ended.logEntries.some((entry) => entry.actionType === "trade_expired"),
-    ).toBe(true);
-  });
-
+describe("trade actions - validation and party guards", () => {
   it("rejects mortgaged or non-owned tiles in offers", () => {
     const mortgaged = baseState();
     mortgaged.tiles = mortgaged.tiles.map((tile) =>
@@ -490,6 +189,158 @@ describe("trade actions", () => {
     ).toThrow(TradeErrorKeys.TILE_NOT_OWNED);
   });
 
+  // TC-9 / TC-10: party + terms guards.
+  it("rejects a proposal to oneself with INVALID_PARTY", () => {
+    expect(() =>
+      applyAction(baseState(), "p1", {
+        type: "propose_trade",
+        recipientId: "p1",
+        gives: { capital: 10, tilePositions: [] },
+        receives: { capital: 0, tilePositions: [6] },
+      }),
+    ).toThrow(TradeErrorKeys.INVALID_PARTY);
+  });
+
+  it("rejects the proposer accepting their own offer with INVALID_PARTY", () => {
+    const proposed = applyAction(baseState(), "p1", {
+      type: "propose_trade",
+      recipientId: "p2",
+      gives: { capital: 10, tilePositions: [] },
+      receives: { capital: 0, tilePositions: [6] },
+    });
+    expect(() =>
+      applyAction(proposed.state, "p1", {
+        type: "accept_trade",
+        offerId: "trade-trade-game-1",
+      }),
+    ).toThrow(TradeErrorKeys.INVALID_PARTY);
+  });
+
+  it("rejects a non-participant accepting or rejecting with INVALID_PARTY", () => {
+    const state = baseState();
+    state.turnOrder = ["p1", "p2", "p3"];
+    state.players = [
+      ...state.players,
+      {
+        playerId: "p3",
+        position: 0,
+        capital: 500,
+        ownedTilePositions: [],
+        mortgagedTilePositions: [],
+        developmentTokens: {},
+        trustworthiness: 7,
+        actionPointsRemaining: 2,
+        inRegulation: false,
+        doublesCount: 0,
+        isOnDiagonal: false,
+      },
+    ];
+
+    const proposed = applyAction(state, "p1", {
+      type: "propose_trade",
+      recipientId: "p2",
+      gives: { capital: 10, tilePositions: [] },
+      receives: { capital: 0, tilePositions: [6] },
+    });
+
+    expect(() =>
+      applyAction(proposed.state, "p3", {
+        type: "accept_trade",
+        offerId: "trade-trade-game-1",
+      }),
+    ).toThrow(TradeErrorKeys.INVALID_PARTY);
+    expect(() =>
+      applyAction(proposed.state, "p3", {
+        type: "reject_trade",
+        offerId: "trade-trade-game-1",
+      }),
+    ).toThrow(TradeErrorKeys.INVALID_PARTY);
+  });
+
+  it("rejects an unknown recipient with INVALID_PARTY", () => {
+    expect(() =>
+      applyAction(baseState(), "p1", {
+        type: "propose_trade",
+        recipientId: "ghost",
+        gives: { capital: 10, tilePositions: [] },
+        receives: { capital: 0, tilePositions: [6] },
+      }),
+    ).toThrow(TradeErrorKeys.INVALID_PARTY);
+  });
+
+  it("rejects an empty offer on both sides with INVALID_TERMS", () => {
+    expect(() =>
+      applyAction(baseState(), "p1", {
+        type: "propose_trade",
+        recipientId: "p2",
+        gives: { capital: 0, tilePositions: [] },
+        receives: { capital: 0, tilePositions: [] },
+      }),
+    ).toThrow(TradeErrorKeys.INVALID_TERMS);
+  });
+
+  it("rejects duplicate tile positions within one side with INVALID_TERMS", () => {
+    expect(() =>
+      applyAction(baseState(), "p1", {
+        type: "propose_trade",
+        recipientId: "p2",
+        gives: { capital: 0, tilePositions: [3, 3] },
+        receives: { capital: 50, tilePositions: [] },
+      }),
+    ).toThrow(TradeErrorKeys.INVALID_TERMS);
+  });
+
+  // TC-11: a tile whose sale is blocked by an active contract cannot be traded.
+  it("rejects giving a tile blocked by an active sell contract with INVALID_TERMS", () => {
+    const state = baseState();
+    state.activeContracts = [
+      {
+        id: "contract-1",
+        gameId: "trade-game",
+        partyA: "p1",
+        partyB: "p2",
+        terms: [
+          {
+            type: "cannot_sell_tile",
+            tileId: "3",
+            boundPlayerId: "p1",
+          },
+        ],
+        status: "active",
+        startsRound: 1,
+        expiresRound: null,
+        signedAt: 1,
+        fulfilledAt: null,
+        breachedAt: null,
+      },
+    ];
+
+    expect(() =>
+      applyAction(state, "p1", {
+        type: "propose_trade",
+        recipientId: "p2",
+        gives: { capital: 0, tilePositions: [3] },
+        receives: { capital: 50, tilePositions: [] },
+      }),
+    ).toThrow(TradeErrorKeys.INVALID_TERMS);
+  });
+
+  // ADV-5: trades to/from eliminated players are blocked.
+  it("rejects trades involving an eliminated player with INVALID_PARTY", () => {
+    const state = baseState();
+    state.eliminatedPlayerIds = ["p2"];
+    expect(() =>
+      applyAction(state, "p1", {
+        type: "propose_trade",
+        recipientId: "p2",
+        gives: { capital: 10, tilePositions: [] },
+        receives: { capital: 0, tilePositions: [6] },
+      }),
+    ).toThrow(TradeErrorKeys.INVALID_PARTY);
+  });
+});
+
+describe("trade actions - settlement, atomicity, and win", () => {
   // TC-1: accept-time re-validation must reject and leave no partial settlement.
   it("re-validates at accept time and settles nothing when terms went stale", () => {
     const proposed = applyAction(baseState(), "p1", {
@@ -689,182 +540,41 @@ describe("trade actions", () => {
       accepted.logEntries.some((entry) => entry.actionType === "game_won"),
     ).toBe(true);
   });
+});
 
-  // TC-9 / TC-10: party + terms guards.
-  it("rejects a proposal to oneself with INVALID_PARTY", () => {
-    expect(() =>
-      applyAction(baseState(), "p1", {
+describe("trade actions - offer pruning and id uniqueness", () => {
+  it("prunes resolved offers while keeping pending offers", () => {
+    let state = baseState();
+    for (let index = 0; index < TRADE_OFFER_HISTORY_LIMIT + 3; index += 1) {
+      state = {
+        ...state,
+        players: state.players.map((player) =>
+          player.playerId === "p1"
+            ? { ...player, actionPointsRemaining: 2 }
+            : player,
+        ),
+      };
+      const proposed = applyAction(state, "p1", {
         type: "propose_trade",
-        recipientId: "p1",
-        gives: { capital: 10, tilePositions: [] },
+        recipientId: "p2",
+        gives: { capital: 10 + index, tilePositions: [] },
         receives: { capital: 0, tilePositions: [6] },
-      }),
-    ).toThrow(TradeErrorKeys.INVALID_PARTY);
-  });
-
-  it("rejects the proposer accepting their own offer with INVALID_PARTY", () => {
-    const proposed = applyAction(baseState(), "p1", {
-      type: "propose_trade",
-      recipientId: "p2",
-      gives: { capital: 10, tilePositions: [] },
-      receives: { capital: 0, tilePositions: [6] },
-    });
-    expect(() =>
-      applyAction(proposed.state, "p1", {
-        type: "accept_trade",
-        offerId: "trade-trade-game-1",
-      }),
-    ).toThrow(TradeErrorKeys.INVALID_PARTY);
-  });
-
-  it("rejects a non-participant accepting or rejecting with INVALID_PARTY", () => {
-    const state = baseState();
-    state.turnOrder = ["p1", "p2", "p3"];
-    state.players = [
-      ...state.players,
-      {
-        playerId: "p3",
-        position: 0,
-        capital: 500,
-        ownedTilePositions: [],
-        mortgagedTilePositions: [],
-        developmentTokens: {},
-        trustworthiness: 7,
-        actionPointsRemaining: 2,
-        inRegulation: false,
-        doublesCount: 0,
-        isOnDiagonal: false,
-      },
-    ];
-
-    const proposed = applyAction(state, "p1", {
-      type: "propose_trade",
-      recipientId: "p2",
-      gives: { capital: 10, tilePositions: [] },
-      receives: { capital: 0, tilePositions: [6] },
-    });
-
-    expect(() =>
-      applyAction(proposed.state, "p3", {
-        type: "accept_trade",
-        offerId: "trade-trade-game-1",
-      }),
-    ).toThrow(TradeErrorKeys.INVALID_PARTY);
-    expect(() =>
-      applyAction(proposed.state, "p3", {
+      });
+      const pendingOffer = proposed.state.tradeOffers?.find(
+        (offer) => offer.status === "pending",
+      );
+      expect(pendingOffer?.id).toBeDefined();
+      const rejected = applyAction(proposed.state, "p2", {
         type: "reject_trade",
-        offerId: "trade-trade-game-1",
-      }),
-    ).toThrow(TradeErrorKeys.INVALID_PARTY);
-  });
+        offerId: pendingOffer?.id,
+      });
+      state = rejected.state;
+    }
 
-  it("rejects an unknown recipient with INVALID_PARTY", () => {
-    expect(() =>
-      applyAction(baseState(), "p1", {
-        type: "propose_trade",
-        recipientId: "ghost",
-        gives: { capital: 10, tilePositions: [] },
-        receives: { capital: 0, tilePositions: [6] },
-      }),
-    ).toThrow(TradeErrorKeys.INVALID_PARTY);
-  });
-
-  it("rejects an empty offer on both sides with INVALID_TERMS", () => {
-    expect(() =>
-      applyAction(baseState(), "p1", {
-        type: "propose_trade",
-        recipientId: "p2",
-        gives: { capital: 0, tilePositions: [] },
-        receives: { capital: 0, tilePositions: [] },
-      }),
-    ).toThrow(TradeErrorKeys.INVALID_TERMS);
-  });
-
-  it("rejects duplicate tile positions within one side with INVALID_TERMS", () => {
-    expect(() =>
-      applyAction(baseState(), "p1", {
-        type: "propose_trade",
-        recipientId: "p2",
-        gives: { capital: 0, tilePositions: [3, 3] },
-        receives: { capital: 50, tilePositions: [] },
-      }),
-    ).toThrow(TradeErrorKeys.INVALID_TERMS);
-  });
-
-  // TC-10(a): countering is a reactive global action and intentionally does NOT
-  // cost an action point (unlike propose_trade, which is a turn action). Lock in
-  // that intended asymmetry.
-  it("does not charge an action point for countering a trade", () => {
-    const proposed = applyAction(baseState(), "p1", {
-      type: "propose_trade",
-      recipientId: "p2",
-      gives: { capital: 10, tilePositions: [] },
-      receives: { capital: 0, tilePositions: [6] },
-    });
-    const p2ApBefore = proposed.state.players.find(
-      (player) => player.playerId === "p2",
-    )?.actionPointsRemaining;
-
-    const countered = applyAction(proposed.state, "p2", {
-      type: "counter_trade",
-      offerId: "trade-trade-game-1",
-      gives: { capital: 0, tilePositions: [6] },
-      receives: { capital: 20, tilePositions: [] },
-    });
-
-    expect(
-      countered.state.players.find((player) => player.playerId === "p2")
-        ?.actionPointsRemaining,
-    ).toBe(p2ApBefore);
-  });
-
-  // TC-11: a tile whose sale is blocked by an active contract cannot be traded.
-  it("rejects giving a tile blocked by an active sell contract with INVALID_TERMS", () => {
-    const state = baseState();
-    state.activeContracts = [
-      {
-        id: "contract-1",
-        gameId: "trade-game",
-        partyA: "p1",
-        partyB: "p2",
-        terms: [
-          {
-            type: "cannot_sell_tile",
-            tileId: "3",
-            boundPlayerId: "p1",
-          },
-        ],
-        status: "active",
-        startsRound: 1,
-        expiresRound: null,
-        signedAt: 1,
-        fulfilledAt: null,
-        breachedAt: null,
-      },
-    ];
-
-    expect(() =>
-      applyAction(state, "p1", {
-        type: "propose_trade",
-        recipientId: "p2",
-        gives: { capital: 0, tilePositions: [3] },
-        receives: { capital: 50, tilePositions: [] },
-      }),
-    ).toThrow(TradeErrorKeys.INVALID_TERMS);
-  });
-
-  // ADV-5: trades to/from eliminated players are blocked.
-  it("rejects trades involving an eliminated player with INVALID_PARTY", () => {
-    const state = baseState();
-    state.eliminatedPlayerIds = ["p2"];
-    expect(() =>
-      applyAction(state, "p1", {
-        type: "propose_trade",
-        recipientId: "p2",
-        gives: { capital: 10, tilePositions: [] },
-        receives: { capital: 0, tilePositions: [6] },
-      }),
-    ).toThrow(TradeErrorKeys.INVALID_PARTY);
+    const resolvedCount = (state.tradeOffers ?? []).filter(
+      (offer) => offer.status !== "pending",
+    ).length;
+    expect(resolvedCount).toBeLessThanOrEqual(TRADE_OFFER_HISTORY_LIMIT);
   });
 
   // TC-14: offer ids stay unique across a prune boundary.
