@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  type BroadcastViewer,
   type PersistedGameState,
+  prepareScopableGameEvent,
   redactLogEntriesForViewer,
+  type ScopableGameEvent,
   scopeGameEventForViewer,
   toClientGameState,
 } from "../../packages/worker/src/gameStateView";
+
+/** Prepare-then-scope in one step (mirrors GameRoom.broadcast's two phases). */
+function scopeEvent(event: ScopableGameEvent, viewer: BroadcastViewer) {
+  return scopeGameEventForViewer(prepareScopableGameEvent(event), viewer);
+}
 
 function baseState(): PersistedGameState {
   return {
@@ -201,7 +209,7 @@ describe("scopeGameEventForViewer", () => {
   }
 
   it("re-injects only the viewer's own offers for a participant", () => {
-    const scoped = scopeGameEventForViewer(baseEvent(), {
+    const scoped = scopeEvent(baseEvent(), {
       viewerId: "p2",
       spectator: false,
     });
@@ -212,7 +220,7 @@ describe("scopeGameEventForViewer", () => {
   });
 
   it("hides foreign trade-offer terms from a non-participant", () => {
-    const scoped = scopeGameEventForViewer(baseEvent(), {
+    const scoped = scopeEvent(baseEvent(), {
       viewerId: "p3",
       spectator: false,
     });
@@ -226,7 +234,7 @@ describe("scopeGameEventForViewer", () => {
   });
 
   it("hides trade-offer terms from spectators", () => {
-    const scoped = scopeGameEventForViewer(baseEvent(), {
+    const scoped = scopeEvent(baseEvent(), {
       viewerId: "spectator",
       spectator: true,
     });
@@ -246,11 +254,11 @@ describe("scopeGameEventForViewer", () => {
         { actionType: "buy_tile", payload: { playerId: "p1" } },
       ],
     };
-    const participant = scopeGameEventForViewer(event, {
+    const participant = scopeEvent(event, {
       viewerId: "p1",
       spectator: false,
     });
-    const outsider = scopeGameEventForViewer(event, {
+    const outsider = scopeEvent(event, {
       viewerId: "p3",
       spectator: false,
     });
@@ -267,7 +275,7 @@ describe("scopeGameEventForViewer", () => {
   });
 
   it("preserves non-redacted event fields", () => {
-    const scoped = scopeGameEventForViewer(baseEvent(), {
+    const scoped = scopeEvent(baseEvent(), {
       viewerId: "p2",
       spectator: false,
     });

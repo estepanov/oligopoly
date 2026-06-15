@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { scopeGameEventForViewer } from "../../packages/worker/src/gameStateView";
+import {
+  prepareScopableGameEvent,
+  scopeGameEventForViewer,
+} from "../../packages/worker/src/gameStateView";
 import {
   buildGameScheduleEvent,
   notifyGameSchedule,
@@ -81,8 +84,11 @@ function assertPrivacyContract(event: ScopableEvent) {
   // The wire event itself must NOT carry the offer terms on `state`.
   expect("tradeOffers" in event.state).toBe(false);
 
+  // Normalize + re-inject ONCE, then fan out to each viewer (mirrors broadcast).
+  const prepared = prepareScopableGameEvent(event);
+
   // Non-participant: no offers, no leaked terms anywhere in their scoped payload.
-  const outsider = scopeGameEventForViewer(event, {
+  const outsider = scopeGameEventForViewer(prepared, {
     viewerId: "p3",
     spectator: false,
   });
@@ -94,14 +100,14 @@ function assertPrivacyContract(event: ScopableEvent) {
   expect(outsiderWire).not.toContain("proposerId");
 
   // Spectator: same guarantee.
-  const spectator = scopeGameEventForViewer(event, {
+  const spectator = scopeGameEventForViewer(prepared, {
     viewerId: "spectator",
     spectator: true,
   });
   expect(JSON.stringify(spectator)).not.toContain("proposerId");
 
   // Participant: receives their own offer terms.
-  const party = scopeGameEventForViewer(event, {
+  const party = scopeGameEventForViewer(prepared, {
     viewerId: "p2",
     spectator: false,
   });

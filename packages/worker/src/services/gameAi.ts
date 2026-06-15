@@ -383,10 +383,9 @@ export async function kickPlayerToAiReplacement(
  * worker→DO POST) and the in-DO AI-loop fan-out in `rooms.ts` — go through this
  * so the pattern has a single implementation.
  */
-export function buildGameScheduleEvent(
-  gameId: string,
-  state: Record<string, unknown>,
-): Record<string, unknown> {
+export function buildGameScheduleEvent<
+  TState extends { tradeOffers?: unknown },
+>(gameId: string, state: TState): Record<string, unknown> {
   const { state: stateWithoutTradeOffers, tradeOffers } =
     prepareGameBroadcastPayload(state);
   return {

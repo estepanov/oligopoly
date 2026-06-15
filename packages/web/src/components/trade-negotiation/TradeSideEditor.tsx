@@ -3,6 +3,7 @@ import { formatCurrencyAmount } from "../../lib/gameDisplay";
 import type { TradeableTile } from "./types";
 
 export function TradeSideEditor({
+  fieldId,
   legend,
   capitalLabel,
   capitalValue,
@@ -15,6 +16,8 @@ export function TradeSideEditor({
   onCapitalChange,
   onToggleTile,
 }: {
+  /** Stable, collision-free prefix for this editor's form-field `name`s. */
+  fieldId: string;
   legend: string;
   capitalLabel: string;
   capitalValue: string;
@@ -33,7 +36,7 @@ export function TradeSideEditor({
       <label className="tradeField">
         {capitalLabel}
         <input
-          name={capitalLabel.toLowerCase().replaceAll(" ", "-")}
+          name={`${fieldId}-capital`}
           type="number"
           min="0"
           step="1"
@@ -49,7 +52,7 @@ export function TradeSideEditor({
           tiles.map((tile) => (
             <label key={tile.position} className="tradeAssetChip">
               <input
-                name={`${legend.toLowerCase().replaceAll(" ", "-")}-tile`}
+                name={`${fieldId}-tile`}
                 type="checkbox"
                 checked={selectedPositions.includes(tile.position)}
                 disabled={disabled}

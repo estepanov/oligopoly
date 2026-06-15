@@ -79,8 +79,8 @@ export function TradeNegotiationPanel({
     canCompose &&
     Boolean(target) &&
     hasTerms &&
-    giveCapital >= 0 &&
-    receiveCapital >= 0;
+    Number.isFinite(giveCapital) &&
+    Number.isFinite(receiveCapital);
 
   if (
     !canCompose &&
@@ -189,6 +189,7 @@ export function TradeNegotiationPanel({
 
           <div className="tradeTermsGrid">
             <TradeSideEditor
+              fieldId="trade-give"
               legend="You give"
               capitalLabel="Capital you give"
               capitalValue={draft.giveCapital}
@@ -203,6 +204,7 @@ export function TradeNegotiationPanel({
               }
             />
             <TradeSideEditor
+              fieldId="trade-receive"
               legend="You receive"
               capitalLabel="Capital you request"
               capitalValue={draft.receiveCapital}

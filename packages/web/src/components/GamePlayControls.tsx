@@ -15,7 +15,7 @@ import { AuctionPanel } from "./AuctionPanel";
 import { InsiderPeekPanel } from "./InsiderPeekPanel";
 import { OwnedTileEconomicsActions } from "./OwnedTileEconomicsActions";
 import { RateCardPanel } from "./RateCardPanel";
-import { TradeNegotiationPanel } from "./TradeNegotiationPanel";
+import { TradeNegotiationPanel } from "./trade-negotiation";
 
 type GamePlayControlsProps = {
   state: GameState;

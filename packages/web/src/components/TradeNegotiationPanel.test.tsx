@@ -2,7 +2,7 @@ import type { GameAction, GameState } from "@oligopoly/validation";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { GamePlayControls } from "./GamePlayControls";
-import { TradeNegotiationPanel } from "./TradeNegotiationPanel";
+import { TradeNegotiationPanel } from "./trade-negotiation";
 
 function tradeState(overrides: Partial<GameState> = {}): GameState {
   return {

@@ -33,9 +33,13 @@ export function selectedTransferValue(
   });
 }
 
+/**
+ * Parse a capital input into a non-negative integer. Returns `NaN` for
+ * non-finite input so callers can reject it explicitly with `Number.isFinite`.
+ */
 export function parseCapital(value: string): number {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return -1;
+  if (!Number.isFinite(parsed)) return Number.NaN;
   return Math.max(0, Math.floor(parsed));
 }
 

@@ -1,6 +1,6 @@
 import type { BindingContract, GameState } from "@oligopoly/validation";
 import { describe, expect, it } from "vitest";
-import { tradeableTilesForPlayer } from "./helpers";
+import { parseCapital, tradeableTilesForPlayer } from "./helpers";
 
 const tileNames = new Map([
   ["3", "Mobile Gaming Inc."],
@@ -97,5 +97,25 @@ describe("tradeableTilesForPlayer", () => {
     ).map((tile) => tile.position);
 
     expect(positions).toEqual(["3", "5"]);
+  });
+});
+
+describe("parseCapital", () => {
+  it("clamps and floors finite input to a non-negative integer", () => {
+    expect(parseCapital("100")).toBe(100);
+    expect(parseCapital("12.9")).toBe(12);
+    expect(parseCapital("0")).toBe(0);
+    expect(parseCapital("-5")).toBe(0);
+  });
+
+  it('treats empty string as zero (Number("") === 0)', () => {
+    expect(parseCapital("")).toBe(0);
+  });
+
+  it("returns NaN for non-finite input so callers can reject it explicitly", () => {
+    expect(Number.isNaN(parseCapital("abc"))).toBe(true);
+    expect(Number.isNaN(parseCapital("Infinity"))).toBe(true);
+    // The panel gates on Number.isFinite(...), which rejects this NaN sentinel.
+    expect(Number.isFinite(parseCapital("abc"))).toBe(false);
   });
 });

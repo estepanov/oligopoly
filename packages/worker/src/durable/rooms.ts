@@ -2,6 +2,7 @@ import { hasAiWork, normalizeGameState } from "@oligopoly/shared";
 import { GameErrorKeys } from "@oligopoly/validation";
 import {
   type BroadcastViewer,
+  prepareScopableGameEvent,
   type ScopableGameEvent,
   scopeGameEventForViewer,
   toClientGameStateFromInternal,
@@ -150,15 +151,16 @@ export class GameRoom extends RealtimeRoom {
         event.type === "game.snapshot") &&
       event.state
     ) {
-      // Per-viewer scoping (trade-offer re-injection + redaction, log redaction)
-      // lives entirely in `scopeGameEventForViewer`; the transport just fans the
-      // scoped event out to each session.
-      const scopable = event as ScopableGameEvent;
+      // Normalize + re-inject the carried trade offers ONCE here, then fan the
+      // shared (read-only) normalized state out to each session's pure redaction
+      // via `scopeGameEventForViewer`, so no per-viewer normalization can mutate
+      // shared nested state.
+      const prepared = prepareScopableGameEvent(event as ScopableGameEvent);
       for (const session of this.sessions) {
         try {
           session.send(
             JSON.stringify(
-              scopeGameEventForViewer(scopable, this.sessionMeta(session)),
+              scopeGameEventForViewer(prepared, this.sessionMeta(session)),
             ),
           );
         } catch {
@@ -381,14 +383,7 @@ export class GameRoom extends RealtimeRoom {
         );
         // Same strip-and-carry as the worker→DO schedule POST, built by the one
         // shared helper so the trade-offer privacy contract can't drift.
-        this.broadcast(
-          JSON.stringify(
-            buildGameScheduleEvent(
-              gameId,
-              latest as unknown as Record<string, unknown>,
-            ),
-          ),
-        );
+        this.broadcast(JSON.stringify(buildGameScheduleEvent(gameId, latest)));
         await syncGameRoomTimer(this.state.storage, gameId, latest, (message) =>
           this.broadcast(message),
         );

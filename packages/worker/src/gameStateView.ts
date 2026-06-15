@@ -305,19 +305,35 @@ export interface ScopableGameEvent {
 }
 
 /**
- * Single per-viewer scoping algorithm for game broadcasts. Re-injects the
- * separately-carried `tradeOffers` into the viewer's state, normalizes it, runs
- * `toClientGameStateFromInternal` (which redacts trade offers / auctions /
- * handshakes / negotiation threads / affinity to the viewer's slice), and
- * redacts the log entries for the viewer. Returns a new event with `state` (and
- * `logEntries`, when present) replaced by the scoped versions; all other event
- * fields pass through unchanged. This is the ONE implementation of the DO
- * fan-out scoping so the transport layer never re-derives the redaction.
+ * A broadcast event whose `state` has already been normalized exactly ONCE (with
+ * the carried trade offers re-injected). Produced by `prepareScopableGameEvent`
+ * and consumed per-viewer by `scopeGameEventForViewer`, so the per-viewer step is
+ * a pure redaction that never mutates shared state.
  */
-export function scopeGameEventForViewer(
+export interface PreparedGameEvent {
+  /** Normalized engine state shared (read-only) across all viewer redactions. */
+  normalizedState: InternalGameState;
+  /** Original event fields minus `state`/`tradeOffers` (already consumed). */
+  rest: Record<string, unknown>;
+  logEntries?: Array<Pick<GameLogEntry, "actionType" | "payload">>;
+}
+
+/**
+ * Per-broadcast preparation (run ONCE, before the per-viewer fan-out). Re-injects
+ * the separately-carried `tradeOffers` into `state` and normalizes it a single
+ * time. `normalizeGameState` mutates its argument, so doing this once here — and
+ * sharing the resulting object read-only with every per-viewer redaction —
+ * guarantees no shared nested mutation can leak across viewers (each viewer's
+ * `scopeGameEventForViewer` only reads from it).
+ *
+ * The side-channel `tradeOffers` (which holds EVERY party's terms) is dropped
+ * from the carried `rest` here — each viewer's own offers are re-derived, redacted,
+ * inside their `scopedState.tradeOffers`. Keeping the raw array would leak foreign
+ * terms to every recipient.
+ */
+export function prepareScopableGameEvent(
   event: ScopableGameEvent,
-  viewer: BroadcastViewer,
-): Record<string, unknown> {
+): PreparedGameEvent {
   // Re-inject the separately-carried trade offers so the per-viewer filter can
   // keep each viewer's own slice. Falls back to any `tradeOffers` already on
   // `state` for legacy/other callers.
@@ -327,26 +343,43 @@ export function scopeGameEventForViewer(
   const rawState = carriedTradeOffers
     ? { ...event.state, tradeOffers: carriedTradeOffers }
     : event.state;
-  const state = normalizeGameState(rawState);
+  const { tradeOffers: _carried, state: _state, ...rest } = event;
+  return {
+    normalizedState: normalizeGameState(rawState),
+    rest,
+    logEntries: event.logEntries,
+  };
+}
+
+/**
+ * Single per-viewer scoping algorithm for game broadcasts. Operates on the
+ * already-normalized state from `prepareScopableGameEvent` (so this step performs
+ * NO normalization or mutation — it is a pure redaction). Runs
+ * `toClientGameStateFromInternal` (which redacts trade offers / auctions /
+ * handshakes / negotiation threads / affinity to the viewer's slice) and redacts
+ * the log entries for the viewer. Returns a new event with `state` (and
+ * `logEntries`, when present) replaced by the scoped versions; all other event
+ * fields pass through unchanged. This is the ONE implementation of the DO
+ * fan-out scoping so the transport layer never re-derives the redaction.
+ */
+export function scopeGameEventForViewer(
+  prepared: PreparedGameEvent,
+  viewer: BroadcastViewer,
+): Record<string, unknown> {
   const scopedState = toClientGameStateFromInternal(
-    state,
+    prepared.normalizedState,
     viewer.spectator ? "spectator" : "player",
     viewer.viewerId,
   );
-  const scopedLogEntries = event.logEntries
+  const scopedLogEntries = prepared.logEntries
     ? redactLogEntriesForViewer(
-        event.logEntries,
+        prepared.logEntries,
         viewer.spectator ? null : viewer.viewerId,
       )
     : undefined;
 
-  // Drop the side-channel `tradeOffers` (the carried array holds EVERY party's
-  // terms) from the wire — each viewer's own offers now live, redacted, inside
-  // `scopedState.tradeOffers`. Keeping the raw array would leak foreign terms to
-  // every recipient.
-  const { tradeOffers: _carried, ...rest } = event;
   return {
-    ...rest,
+    ...prepared.rest,
     state: scopedState,
     ...(scopedLogEntries ? { logEntries: scopedLogEntries } : {}),
   };
