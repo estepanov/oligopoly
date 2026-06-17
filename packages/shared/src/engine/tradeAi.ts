@@ -220,7 +220,10 @@ export function aiTradeProposalAction(
   if (!canProposeTrade(state, actorId)) return null;
   const actor = state.players.find((player) => player.playerId === actorId);
   if (!actor) return null;
-  if (actor.actionPointsRemaining < ACTION_POINTS_PER_TURN) return null;
+  // AI-only heuristic: only propose at the start of a turn (full AP untouched),
+  // so it never spends down a turn it has already partly committed elsewhere.
+  const AI_PROPOSE_REQUIRES_FULL_AP = ACTION_POINTS_PER_TURN;
+  if (actor.actionPointsRemaining < AI_PROPOSE_REQUIRES_FULL_AP) return null;
   if (hasPendingOutgoingTrade(state, actorId)) return null;
 
   const reserve = personality === "loyalist" ? 250 : 150;

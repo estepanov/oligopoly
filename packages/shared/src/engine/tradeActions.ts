@@ -440,10 +440,13 @@ export function reconcileTradeOffersBeforeAction(
   }
 
   if (targetsOfferExpiredByPreAction(action, expiryResult)) {
+    // Hand the raw expiry result back as the short-circuit; `applyAction` runs
+    // its own primary-log-index finalizer on it, so the log-index behavior stays
+    // identical to routing through the dispatcher without duplicating the rule.
     return {
       workingState: expiryResult.state,
       expiryLogs: [],
-      shortCircuitResult: finalizeTradeExpiryPrimaryLogIndex(expiryResult),
+      shortCircuitResult: expiryResult,
     };
   }
 
@@ -451,17 +454,6 @@ export function reconcileTradeOffersBeforeAction(
     workingState: expiryResult.state,
     expiryLogs: expiryResult.logEntries,
   };
-}
-
-// Mirrors the dispatcher's primary-log-index defaulting for the short-circuit
-// expiry result so the persisted expiry log is marked as primary when it is the
-// sole entry (keeps log-index behavior identical to routing through applyAction).
-function finalizeTradeExpiryPrimaryLogIndex(
-  result: ApplyActionResult,
-): ApplyActionResult {
-  if (result.primaryLogIndex !== undefined) return result;
-  if (result.logEntries.length === 1) return { ...result, primaryLogIndex: 0 };
-  return result;
 }
 
 function applyTradeSettlement(

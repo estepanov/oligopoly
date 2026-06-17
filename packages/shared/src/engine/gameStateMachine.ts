@@ -250,14 +250,13 @@ const TRADE_ACTION_ROUTES: Record<
   },
 };
 
-// Typed list of trade-action keys, so derivations below iterate the metadata
-// without re-widening `Object.entries` keys back to the action-type union.
-const TRADE_ACTION_TYPES: TradeActionType[] = [
-  "propose_trade",
-  "accept_trade",
-  "reject_trade",
-  "counter_trade",
-];
+// Typed list of trade-action keys derived directly from the routing metadata, so
+// derivations below iterate the keys without a hand-maintained parallel list.
+// `TRADE_ACTION_ROUTES` is a `Record<TradeActionType, …>`, so its keys are exactly
+// the `TradeActionType` union (`Object.keys` only widens them to `string`).
+const TRADE_ACTION_TYPES = Object.keys(
+  TRADE_ACTION_ROUTES,
+) as TradeActionType[];
 
 // Set of trade actions gated to the action phase, derived from the metadata so
 // the gate stays in lockstep with the declared rules.
@@ -429,7 +428,7 @@ export function applyAction(
   const { workingState, expiryLogs, shortCircuitResult } =
     reconcileTradeOffersBeforeAction(state, action, nowMs);
   if (shortCircuitResult) {
-    return shortCircuitResult;
+    return finalizePrimaryLogIndex(shortCircuitResult);
   }
 
   const before = snapshotPlayerChanges(workingState);

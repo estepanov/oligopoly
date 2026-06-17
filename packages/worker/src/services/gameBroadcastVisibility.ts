@@ -20,21 +20,20 @@ import { redactLogEntriesForViewer } from "./gameVisibilityFilters.js";
  *     trade offers, auctions, handshakes, negotiation threads, affinity, and log
  *     entries — down to that viewer's own slice via `toClientGameStateFromInternal`.
  *
- * Type-enforcement (so the contract can't drift via discipline): every emit path
- * builds its wire payload through `splitBroadcastPayload`, whose return type
- * (`ScopableBroadcastPayload`) carries a `state` branded as `StrippedBroadcastState`
- * — a state type from which `tradeOffers` has been removed. The emit-event
- * builders accept only that branded state, so forgetting to strip is a TYPE
- * ERROR, not a comment contract. HTTP responses do not use this path: they call
- * `toClientGameState` directly for the requesting player (party-scoped filter),
- * or strip offers entirely via `publicStateForBroadcast`.
+ * Type-enforcement (so the contract can't drift via discipline): the emit-event
+ * builders accept only a `ScopableBroadcastPayload`, which is constructable
+ * solely via `splitBroadcastPayload`. Because that wrapper is the only sanctioned
+ * way to produce a payload — and it strips `tradeOffers` off `state` into the
+ * separate carried field — forgetting to strip is a TYPE ERROR, not a comment
+ * contract. HTTP responses do not use this path: they call `toClientGameState`
+ * directly for the requesting player (party-scoped filter), or strip offers
+ * entirely via `publicStateForBroadcast`.
  */
 
-/** A game state guaranteed (by construction in `splitBroadcastPayload`) to have
- * had its private `tradeOffers` removed, so it is safe to put on the wire. */
-export type StrippedBroadcastState<TState> = Omit<TState, "tradeOffers"> & {
-  readonly __tradeOffersStripped?: never;
-};
+/** A game state with its private `tradeOffers` removed, so it is safe to put on
+ * the wire. The privacy guarantee comes from the `ScopableBroadcastPayload`
+ * wrapper (only `splitBroadcastPayload` can build one), not from this type alone. */
+export type StrippedBroadcastState<TState> = Omit<TState, "tradeOffers">;
 
 /**
  * The result of splitting a broadcast state into its wire-safe `publicState`
