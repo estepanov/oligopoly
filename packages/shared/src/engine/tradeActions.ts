@@ -40,6 +40,88 @@ export function tradeTransferValue(transfer: TradeOfferTransfer): number {
   );
 }
 
+/**
+ * Shared skeleton for the two trade-creation paths (propose + counter): resolve
+ * parties → normalize transfers → validate terms → build the offer → clone →
+ * mutate `tradeOffers` → emit the creation log. The handlers differ ONLY in the
+ * parameters captured here (AP deduction, parent link, counter count, the
+ * predecessor offer to flip to `countered`, and the log action type), so both
+ * become thin callers and the common logic can't drift between them.
+ */
+function commitTradeMutation(
+  state: InternalGameState,
+  params: {
+    proposerId: string;
+    recipientId: string;
+    gives: TradeOfferTransfer;
+    receives: TradeOfferTransfer;
+    deductAp: number;
+    counterCount: number;
+    parentOfferId?: string;
+    logActionType: "trade_proposed" | "trade_countered";
+    nowMs: number;
+    timeoutMinutes: number | undefined;
+  },
+): ApplyActionResult {
+  const proposer = getPlayer(state, params.proposerId);
+  const recipient = getPlayer(state, params.recipientId);
+  if (!proposer || !recipient) throw TradeErrorKeys.INVALID_PARTY;
+  if (
+    isEliminated(state, params.proposerId) ||
+    isEliminated(state, params.recipientId)
+  ) {
+    throw TradeErrorKeys.INVALID_PARTY;
+  }
+  if (proposer.actionPointsRemaining < params.deductAp) {
+    throw "game.insufficient_ap";
+  }
+
+  validateTradeTerms(state, {
+    proposer,
+    recipient,
+    gives: params.gives,
+    receives: params.receives,
+  });
+
+  const offer = buildTradeOffer(state, {
+    proposerId: params.proposerId,
+    recipientId: params.recipientId,
+    gives: params.gives,
+    receives: params.receives,
+    nowMs: params.nowMs,
+    timeoutMinutes: params.timeoutMinutes,
+    counterCount: params.counterCount,
+    ...(params.parentOfferId ? { parentOfferId: params.parentOfferId } : {}),
+  });
+
+  const newState = deepClone(state);
+  if (params.deductAp > 0) {
+    const workingProposer = getPlayer(newState, params.proposerId);
+    if (!workingProposer) throw TradeErrorKeys.INVALID_PARTY;
+    workingProposer.actionPointsRemaining -= params.deductAp;
+  }
+  if (params.parentOfferId) {
+    const parent = findTradeOffer(newState, params.parentOfferId);
+    if (!parent) throw TradeErrorKeys.OFFER_NOT_FOUND;
+    parent.status = "countered";
+  }
+  newState.tradeOffers = pruneTradeOffers([
+    ...(newState.tradeOffers ?? []),
+    offer,
+  ]);
+
+  return {
+    state: newState,
+    logEntries: [
+      {
+        playerId: params.proposerId,
+        actionType: params.logActionType,
+        payload: tradeLogPayload(offer),
+      },
+    ],
+  };
+}
+
 export function handleProposeTrade(
   state: InternalGameState,
   playerId: string,
@@ -53,49 +135,17 @@ export function handleProposeTrade(
     throw TradeErrorKeys.INVALID_PARTY;
   }
 
-  const proposer = getPlayer(state, playerId);
-  const recipient = getPlayer(state, recipientId);
-  if (!proposer || !recipient) throw TradeErrorKeys.INVALID_PARTY;
-  if (isEliminated(state, playerId) || isEliminated(state, recipientId)) {
-    throw TradeErrorKeys.INVALID_PARTY;
-  }
-  if (proposer.actionPointsRemaining < ACTION_COSTS.PROPOSE_TRADE) {
-    throw "game.insufficient_ap";
-  }
-
-  const gives = normalizeTransfer(action.gives);
-  const receives = normalizeTransfer(action.receives);
-  validateTradeTerms(state, { proposer, recipient, gives, receives });
-
-  const offer = buildTradeOffer(state, {
+  return commitTradeMutation(state, {
     proposerId: playerId,
     recipientId,
-    gives,
-    receives,
+    gives: normalizeTransfer(action.gives),
+    receives: normalizeTransfer(action.receives),
+    deductAp: ACTION_COSTS.PROPOSE_TRADE,
+    counterCount: 0,
+    logActionType: "trade_proposed",
     nowMs,
     timeoutMinutes: action.timeoutMinutes,
-    counterCount: 0,
   });
-
-  const newState = deepClone(state);
-  const workingProposer = getPlayer(newState, playerId);
-  if (!workingProposer) throw TradeErrorKeys.INVALID_PARTY;
-  workingProposer.actionPointsRemaining -= ACTION_COSTS.PROPOSE_TRADE;
-  newState.tradeOffers = pruneTradeOffers([
-    ...(newState.tradeOffers ?? []),
-    offer,
-  ]);
-
-  return {
-    state: newState,
-    logEntries: [
-      {
-        playerId,
-        actionType: "trade_proposed",
-        payload: tradeLogPayload(offer),
-      },
-    ],
-  };
 }
 
 export function handleAcceptTrade(
@@ -191,59 +241,30 @@ export function handleCounterTrade(
 ): ApplyActionResult {
   // Per the game rules, a recipient may accept/reject a pending offer at ANY
   // time (even off-turn), but may only propose a COUNTER "while the game is in
-  // an action phase" (see oligopoly_game_rules.md). So `counter_trade` is
-  // registered in `GLOBAL_ACTION_ROUTES` (the recipient need not be the active
-  // player) yet is additionally gated to the action phase here — that
-  // combination is intentional, matches the trade-desk UI (which only enables
-  // counter during the action phase), and must not be "simplified" away.
-  // Countering charges no action point (unlike `handleProposeTrade`).
-  if (state.phase !== "action") throw "game.invalid_phase";
+  // an action phase" (see oligopoly_game_rules.md). `counter_trade` is therefore
+  // routed globally (the recipient need not be the active player) yet gated to
+  // the action phase. Both facts live in the `TRADE_ACTION_ROUTES` metadata in
+  // gameStateMachine.ts (scope: "global", requiresActionPhase: true), which the
+  // dispatcher reads to enforce the gate centrally — so the handler no longer
+  // repeats the `state.phase !== "action"` check. Countering charges no action
+  // point (unlike `handleProposeTrade`).
   const offer = pendingOfferForResponse(state, playerId, action.offerId, nowMs);
   if (offer.counterCount >= MAX_TRADE_COUNTERS) {
     throw TradeErrorKeys.COUNTER_LIMIT_REACHED;
   }
 
-  const proposer = getPlayer(state, playerId);
-  const recipient = getPlayer(state, offer.proposerId);
-  if (!proposer || !recipient) throw TradeErrorKeys.INVALID_PARTY;
-  if (isEliminated(state, playerId) || isEliminated(state, offer.proposerId)) {
-    throw TradeErrorKeys.INVALID_PARTY;
-  }
-
-  const gives = normalizeTransfer(action.gives);
-  const receives = normalizeTransfer(action.receives);
-  validateTradeTerms(state, { proposer, recipient, gives, receives });
-
-  const counterOffer = buildTradeOffer(state, {
+  return commitTradeMutation(state, {
     proposerId: playerId,
     recipientId: offer.proposerId,
-    gives,
-    receives,
-    nowMs,
-    timeoutMinutes: action.timeoutMinutes,
+    gives: normalizeTransfer(action.gives),
+    receives: normalizeTransfer(action.receives),
+    deductAp: 0,
     counterCount: offer.counterCount + 1,
     parentOfferId: offer.id,
+    logActionType: "trade_countered",
+    nowMs,
+    timeoutMinutes: action.timeoutMinutes,
   });
-
-  const newState = deepClone(state);
-  const workingOffer = findTradeOffer(newState, offer.id);
-  if (!workingOffer) throw TradeErrorKeys.OFFER_NOT_FOUND;
-  workingOffer.status = "countered";
-  newState.tradeOffers = pruneTradeOffers([
-    ...(newState.tradeOffers ?? []),
-    counterOffer,
-  ]);
-
-  return {
-    state: newState,
-    logEntries: [
-      {
-        playerId,
-        actionType: "trade_countered",
-        payload: tradeLogPayload(counterOffer),
-      },
-    ],
-  };
 }
 
 /**
@@ -310,6 +331,137 @@ export function nextTradeOfferExpiry(state: InternalGameState): number | null {
     .filter((offer) => offer.status === "pending")
     .map((offer) => offer.expiresAt);
   return expiries.length ? Math.min(...expiries) : null;
+}
+
+/**
+ * Pure predicate mirroring `handleProposeTrade`'s gating (minus offer-content
+ * validation): a player may propose a trade iff they are the active player, the
+ * game is in the `action` phase, and they hold enough action points. Exposed for
+ * the web UI and AI to gate the "propose" affordance without re-deriving rules.
+ */
+export function canProposeTrade(
+  state: InternalGameState,
+  playerId: string,
+): boolean {
+  if (state.phase !== "action") return false;
+  if (state.turnOrder[state.currentPlayerIndex] !== playerId) return false;
+  if (isEliminated(state, playerId)) return false;
+  const player = getPlayer(state, playerId);
+  if (!player) return false;
+  return player.actionPointsRemaining >= ACTION_COSTS.PROPOSE_TRADE;
+}
+
+/**
+ * Pure predicate mirroring `handleCounterTrade`'s gating (minus offer-content
+ * validation): a player may counter `offerId` iff a pending offer with that id
+ * exists, names them as recipient, has not expired, is below the counter cap,
+ * and the game is in the `action` phase. Exposed for the web UI and AI.
+ */
+export function canCounterTrade(
+  state: InternalGameState,
+  playerId: string,
+  offerId: string,
+  nowMs: number = Date.now(),
+): boolean {
+  if (state.phase !== "action") return false;
+  const offer = findTradeOffer(state, offerId);
+  if (!offer || offer.status !== "pending") return false;
+  if (offer.recipientId !== playerId) return false;
+  if (isOfferExpired(offer, nowMs)) return false;
+  if (
+    isEliminated(state, offer.proposerId) ||
+    isEliminated(state, offer.recipientId)
+  ) {
+    return false;
+  }
+  return offer.counterCount < MAX_TRADE_COUNTERS;
+}
+
+const TRADE_RESPONSE_ACTION_TYPES = new Set<GameActionInput["type"]>([
+  "accept_trade",
+  "reject_trade",
+  "counter_trade",
+]);
+
+/**
+ * True when `action` is a trade response targeting an offer that the pre-action
+ * expiry pass just flipped to `expired`. The player's response is a no-op
+ * against a now-expired offer, but the expiry itself must still persist — see
+ * `reconcileTradeOffersBeforeAction` for why we return the expiry result
+ * instead of routing the (doomed) response handler, which would throw
+ * `OFFER_NOT_PENDING` and discard the expiry.
+ */
+function targetsOfferExpiredByPreAction(
+  action: GameActionInput,
+  expiryResult: ApplyActionResult,
+): boolean {
+  if (!TRADE_RESPONSE_ACTION_TYPES.has(action.type)) return false;
+  const offerId = action.offerId;
+  if (!offerId) return false;
+  return (expiryResult.state.tradeOffers ?? []).some(
+    (offer) => offer.id === offerId && offer.status === "expired",
+  );
+}
+
+/**
+ * Single canonical pre-action trade-expiry pass. Reconciles any pending trade
+ * offers whose deadline has passed BEFORE the action is routed, using the one
+ * `nowMs` clock the whole action observes — so "stale pending offers until the
+ * alarm fires" never leaks into action handling. Lives here (not in the
+ * dispatcher) so all trade-specific temporal logic stays with the trade engine;
+ * `applyAction` just calls this one function and stays thin.
+ *
+ * Perf: only does the expiry pass (which deep-clones) when an offer is actually
+ * due (`nextTradeOfferExpiry(state) <= nowMs`); otherwise it passes `state`
+ * through untouched.
+ *
+ * The subtle response-vs-expiry race lives here: when a trade RESPONSE targets
+ * an offer this pass just expired, the response is a no-op but the expiry must
+ * still persist, so `shortCircuitResult` carries the expiry result for the
+ * caller to return directly (routing the response handler would throw
+ * `OFFER_NOT_PENDING` and discard the persisted `expired` status + log).
+ */
+export function reconcileTradeOffersBeforeAction(
+  state: InternalGameState,
+  action: GameActionInput,
+  nowMs: number,
+): {
+  workingState: InternalGameState;
+  expiryLogs: LogEntry[];
+  shortCircuitResult?: ApplyActionResult;
+} {
+  const nextExpiry = nextTradeOfferExpiry(state);
+  const expiryResult =
+    nextExpiry !== null && nextExpiry <= nowMs
+      ? expirePendingTradeOffers(state, nowMs)
+      : null;
+  if (!expiryResult) {
+    return { workingState: state, expiryLogs: [] };
+  }
+
+  if (targetsOfferExpiredByPreAction(action, expiryResult)) {
+    return {
+      workingState: expiryResult.state,
+      expiryLogs: [],
+      shortCircuitResult: finalizeTradeExpiryPrimaryLogIndex(expiryResult),
+    };
+  }
+
+  return {
+    workingState: expiryResult.state,
+    expiryLogs: expiryResult.logEntries,
+  };
+}
+
+// Mirrors the dispatcher's primary-log-index defaulting for the short-circuit
+// expiry result so the persisted expiry log is marked as primary when it is the
+// sole entry (keeps log-index behavior identical to routing through applyAction).
+function finalizeTradeExpiryPrimaryLogIndex(
+  result: ApplyActionResult,
+): ApplyActionResult {
+  if (result.primaryLogIndex !== undefined) return result;
+  if (result.logEntries.length === 1) return { ...result, primaryLogIndex: 0 };
+  return result;
 }
 
 function applyTradeSettlement(
@@ -450,29 +602,59 @@ type TradeableTileStateView = {
 };
 
 /**
+ * Discriminated result of the canonical tile-tradeability check. `reason`
+ * pinpoints WHY a tile is not tradeable so a single mapping (in
+ * `validateTransferTiles`) can translate it to the specific `TradeErrorKeys`
+ * callers and tests distinguish, without a second pass over tile state.
+ */
+export type TileTradeability =
+  | { ok: true }
+  | { ok: false; reason: "not_owned" | "mortgaged" | "contract_locked" };
+
+/**
  * Single canonical tile-tradeability contract: a tile may be put on the trade
  * desk only when `playerId` owns it, it is not mortgaged, and it is not blocked
- * from sale by an active binding `sell_tile` contract. This is the positive
- * predicate behind `validateTransferTiles` (which throws specific error keys),
- * the web trade-desk helper, and the trade AI's target selection — so the rules
- * live in ONE place and can't drift.
+ * from sale by an active binding `sell_tile` contract. This is the source of
+ * truth behind `validateTransferTiles` (which maps the failure `reason` to a
+ * specific error key), the web trade-desk helper, and the trade AI's target
+ * selection — so the rules live in ONE place and can't drift.
+ */
+export function tileTradeability(
+  state: TradeableTileStateView,
+  playerId: string,
+  position: number | string,
+): TileTradeability {
+  const tileState = state.tiles?.find(
+    (tile) => String(tile.position) === String(position),
+  );
+  if (!tileState || tileState.ownerId !== playerId) {
+    return { ok: false, reason: "not_owned" };
+  }
+  if (tileState.mortgaged) {
+    return { ok: false, reason: "mortgaged" };
+  }
+  if (
+    isActionBlockedByContracts(state.activeContracts ?? [], {
+      type: "sell_tile",
+      playerId,
+      tileId: String(position),
+    }).blocked
+  ) {
+    return { ok: false, reason: "contract_locked" };
+  }
+  return { ok: true };
+}
+
+/**
+ * Thin boolean wrapper over `tileTradeability` for callers that only need a
+ * yes/no answer (the web trade desk, the trade AI's target selection).
  */
 export function isTileTradeable(
   state: TradeableTileStateView,
   playerId: string,
   position: number | string,
 ): boolean {
-  const tileState = state.tiles?.find(
-    (tile) => String(tile.position) === String(position),
-  );
-  if (!tileState || tileState.ownerId !== playerId || tileState.mortgaged) {
-    return false;
-  }
-  return !isActionBlockedByContracts(state.activeContracts ?? [], {
-    type: "sell_tile",
-    playerId,
-    tileId: String(position),
-  }).blocked;
+  return tileTradeability(state, playerId, position).ok;
 }
 
 /**
@@ -490,27 +672,30 @@ export function listTradeableTilePositions(
   );
 }
 
+// Single place mapping a tile-tradeability failure reason to the error key the
+// trade desk and tests rely on. `contract_locked` surfaces as INVALID_TERMS
+// (the historical key for "owned + un-mortgaged but blocked by a sell contract").
+const TILE_REASON_TO_ERROR_KEY: Record<
+  Exclude<TileTradeability, { ok: true }>["reason"],
+  string
+> = {
+  not_owned: TradeErrorKeys.TILE_NOT_OWNED,
+  mortgaged: TradeErrorKeys.TILE_MORTGAGED,
+  contract_locked: TradeErrorKeys.INVALID_TERMS,
+};
+
 function validateTransferTiles(
   state: InternalGameState,
   ownerId: string,
   transfer: TradeOfferTransfer,
 ): void {
   for (const tilePosition of transfer.tilePositions) {
-    // Eligibility is decided once by the canonical predicate; only when a tile
-    // is rejected do we look at its state to throw the SPECIFIC reason callers
-    // and tests distinguish (not-owned vs mortgaged vs contract-locked).
-    if (isTileTradeable(state, ownerId, tilePosition)) continue;
-    const tileState = state.tiles.find(
-      (tile) => String(tile.position) === String(tilePosition),
-    );
-    if (!tileState || tileState.ownerId !== ownerId) {
-      throw TradeErrorKeys.TILE_NOT_OWNED;
-    }
-    if (tileState.mortgaged) {
-      throw TradeErrorKeys.TILE_MORTGAGED;
-    }
-    // Owned + un-mortgaged but still not tradeable ⇒ blocked by a sell contract.
-    throw TradeErrorKeys.INVALID_TERMS;
+    // Eligibility is decided ONCE by the canonical predicate; its discriminated
+    // `reason` maps to the SPECIFIC error key callers and tests distinguish
+    // (not-owned vs mortgaged vs contract-locked) — no second pass over tiles.
+    const result = tileTradeability(state, ownerId, tilePosition);
+    if (result.ok) continue;
+    throw TILE_REASON_TO_ERROR_KEY[result.reason];
   }
 }
 

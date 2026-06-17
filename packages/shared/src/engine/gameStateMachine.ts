@@ -63,12 +63,11 @@ import { handleSetRateCard } from "./rateCardActions.js";
 import { handleFormSyndicate } from "./syndicateActions.js";
 import { handleCallVote } from "./syndicateVoteActions.js";
 import {
-  expirePendingTradeOffers,
   handleAcceptTrade,
   handleCounterTrade,
   handleProposeTrade,
   handleRejectTrade,
-  nextTradeOfferExpiry,
+  reconcileTradeOffersBeforeAction,
 } from "./tradeActions.js";
 
 export type {
@@ -200,32 +199,115 @@ const PHASE_ACTION_ROUTES: Partial<
   },
 };
 
-// Async responses valid in any phase: auction bids/passes and trade
-// accept/reject/counter. Consulted before the phase-gated throw in
-// `applySpecialActionRoute` so trade responses route from the special
-// `waiting_for_*` phases too.
-const GLOBAL_ACTION_ROUTES = {
-  accept_trade: (state, playerId, action, nowMs) =>
-    handleAcceptTrade(state, playerId, action, nowMs),
-  reject_trade: (state, playerId, action, nowMs) =>
-    handleRejectTrade(state, playerId, action, nowMs),
+type TradeActionType =
+  | "propose_trade"
+  | "accept_trade"
+  | "reject_trade"
+  | "counter_trade";
+
+// SINGLE SOURCE OF TRUTH for trade-action routing rules. Each entry declares the
+// dispatcher scope (whether the actor must be the active player) and whether the
+// action is gated to the `action` phase, alongside its handler. The dispatcher
+// derives BOTH the global/turn registration AND the action-phase gate from this
+// table, so the otherwise-fragile combinations (e.g. counter_trade is globally
+// routed yet only valid during an action phase) live in ONE place and can't be
+// broken by editing a handler. See oligopoly_game_rules.md for the rules.
+const TRADE_ACTION_ROUTES: Record<
+  TradeActionType,
+  {
+    scope: "turn" | "global";
+    requiresActionPhase: boolean;
+    handler: PhaseActionHandler;
+  }
+> = {
+  // Turn action costing 1 AP: only the active player, only in the action phase.
+  propose_trade: {
+    scope: "turn",
+    requiresActionPhase: true,
+    handler: (state, playerId, action, nowMs) =>
+      handleProposeTrade(state, playerId, action, nowMs),
+  },
+  // Recipient-driven; valid in ANY phase and off-turn.
+  accept_trade: {
+    scope: "global",
+    requiresActionPhase: false,
+    handler: (state, playerId, action, nowMs) =>
+      handleAcceptTrade(state, playerId, action, nowMs),
+  },
+  reject_trade: {
+    scope: "global",
+    requiresActionPhase: false,
+    handler: (state, playerId, action, nowMs) =>
+      handleRejectTrade(state, playerId, action, nowMs),
+  },
+  // Recipient-driven (globally routed, off-turn ok) BUT only during an action
+  // phase — the one place this combination is expressed.
+  counter_trade: {
+    scope: "global",
+    requiresActionPhase: true,
+    handler: (state, playerId, action, nowMs) =>
+      handleCounterTrade(state, playerId, action, nowMs),
+  },
+};
+
+// Typed list of trade-action keys, so derivations below iterate the metadata
+// without re-widening `Object.entries` keys back to the action-type union.
+const TRADE_ACTION_TYPES: TradeActionType[] = [
+  "propose_trade",
+  "accept_trade",
+  "reject_trade",
+  "counter_trade",
+];
+
+// Set of trade actions gated to the action phase, derived from the metadata so
+// the gate stays in lockstep with the declared rules.
+const ACTION_PHASE_GATED_TRADE_TYPES = new Set<GameActionType>(
+  TRADE_ACTION_TYPES.filter(
+    (type) => TRADE_ACTION_ROUTES[type].requiresActionPhase,
+  ),
+);
+
+// Phase gate derived from the metadata: trade actions flagged
+// `requiresActionPhase` throw `game.invalid_phase` outside the action phase,
+// enforced centrally so a handler edit can't contradict the declared rule.
+function enforceTradeActionPhaseGate(
+  state: InternalGameState,
+  actionType: GameActionType,
+): void {
+  if (
+    ACTION_PHASE_GATED_TRADE_TYPES.has(actionType) &&
+    state.phase !== "action"
+  ) {
+    throw "game.invalid_phase";
+  }
+}
+
+function globalTradeRoutes(): Partial<
+  Record<GameActionType, PhaseActionHandler>
+> {
+  const routes: Partial<Record<GameActionType, PhaseActionHandler>> = {};
+  for (const type of TRADE_ACTION_TYPES) {
+    const route = TRADE_ACTION_ROUTES[type];
+    if (route.scope === "global") {
+      routes[type] = route.handler;
+    }
+  }
+  return routes;
+}
+
+// Async responses valid in any phase: auction bids/passes and the trade actions
+// declared `scope: "global"` in `TRADE_ACTION_ROUTES`. Consulted before the
+// phase-gated throw in `applySpecialActionRoute` so trade responses route from
+// the special `waiting_for_*` phases too.
+const GLOBAL_ACTION_ROUTES_BY_TYPE: Partial<
+  Record<GameActionType, PhaseActionHandler>
+> = {
   auction_bid: (state, playerId, action) =>
     handleAuctionBid(state, playerId, action),
   auction_pass: (state, playerId, action) =>
     handleAuctionPass(state, playerId, action),
-  counter_trade: (state, playerId, action, nowMs) =>
-    handleCounterTrade(state, playerId, action, nowMs),
-} satisfies Record<
-  | "auction_bid"
-  | "auction_pass"
-  | "accept_trade"
-  | "reject_trade"
-  | "counter_trade",
-  PhaseActionHandler
->;
-const GLOBAL_ACTION_ROUTES_BY_TYPE: Partial<
-  Record<GameActionType, PhaseActionHandler>
-> = GLOBAL_ACTION_ROUTES;
+  ...globalTradeRoutes(),
+};
 
 const TURN_ACTION_ROUTES = {
   roll_dice: (state, playerId, action) =>
@@ -254,8 +336,7 @@ const TURN_ACTION_ROUTES = {
     handleProposeContract(state, playerId, action),
   sign_contract: (state, playerId, action) =>
     handleSignContract(state, playerId, action),
-  propose_trade: (state, playerId, action, nowMs) =>
-    handleProposeTrade(state, playerId, action, nowMs),
+  propose_trade: TRADE_ACTION_ROUTES.propose_trade.handler,
   propose_handshake: (state, playerId, action) =>
     handleProposeHandshake(state, playerId, action),
   sign_handshake: (state, playerId, action) =>
@@ -296,6 +377,9 @@ function applySpecialActionRoute(
   // routing in one place instead of re-spreading it into each special phase.
   const globalHandler = GLOBAL_ACTION_ROUTES_BY_TYPE[action.type];
   if (globalHandler) {
+    // Central, metadata-driven action-phase gate (e.g. counter_trade is global
+    // but only valid during an action phase). No-op for ungated actions.
+    enforceTradeActionPhaseGate(state, action.type);
     return globalHandler(state, playerId, action, nowMs);
   }
 
@@ -329,82 +413,6 @@ function mergeExpiryLogs(
   };
 }
 
-const TRADE_RESPONSE_ACTION_TYPES = new Set<GameActionType>([
-  "accept_trade",
-  "reject_trade",
-  "counter_trade",
-]);
-
-/**
- * True when `action` is a trade response targeting an offer that the
- * pre-action expiry pass just flipped to `expired`. The player's response is a
- * no-op against a now-expired offer, but the expiry itself must still persist —
- * see `applyAction` for why we return the expiry result instead of routing the
- * (doomed) response handler, which would throw `OFFER_NOT_PENDING` and discard
- * the expiry.
- */
-function targetsOfferExpiredByPreAction(
-  action: GameActionInput,
-  expiryResult: ApplyActionResult | null,
-): boolean {
-  if (!expiryResult || !TRADE_RESPONSE_ACTION_TYPES.has(action.type)) {
-    return false;
-  }
-  const offerId = action.offerId;
-  if (!offerId) return false;
-  return (expiryResult.state.tradeOffers ?? []).some(
-    (offer) => offer.id === offerId && offer.status === "expired",
-  );
-}
-
-/**
- * Single canonical pre-action trade-expiry pass. Reconciles any pending trade
- * offers whose deadline has passed BEFORE the action is routed, using the one
- * `nowMs` clock the whole action observes — so "stale pending offers until the
- * alarm fires" never leaks into action handling.
- *
- * Perf: only does the expiry pass (which deep-clones) when an offer is actually
- * due (`nextTradeOfferExpiry(state) <= nowMs`); otherwise it passes `state`
- * through untouched.
- *
- * The subtle response-vs-expiry race lives here: when a trade RESPONSE targets
- * an offer this pass just expired, the response is a no-op but the expiry must
- * still persist, so `shortCircuitResult` carries the expiry result for the
- * caller to return directly (routing the response handler would throw
- * `OFFER_NOT_PENDING` and discard the persisted `expired` status + log).
- */
-function reconcileTradeExpiryBeforeAction(
-  state: InternalGameState,
-  action: GameActionInput,
-  nowMs: number,
-): {
-  workingState: InternalGameState;
-  expiryLogs: LogEntry[];
-  shortCircuitResult?: ApplyActionResult;
-} {
-  const nextExpiry = nextTradeOfferExpiry(state);
-  const expiryResult =
-    nextExpiry !== null && nextExpiry <= nowMs
-      ? expirePendingTradeOffers(state, nowMs)
-      : null;
-  if (!expiryResult) {
-    return { workingState: state, expiryLogs: [] };
-  }
-
-  if (targetsOfferExpiredByPreAction(action, expiryResult)) {
-    return {
-      workingState: expiryResult.state,
-      expiryLogs: [],
-      shortCircuitResult: finalizePrimaryLogIndex(expiryResult),
-    };
-  }
-
-  return {
-    workingState: expiryResult.state,
-    expiryLogs: expiryResult.logEntries,
-  };
-}
-
 export function applyAction(
   state: InternalGameState,
   playerId: string,
@@ -419,7 +427,7 @@ export function applyAction(
   }
 
   const { workingState, expiryLogs, shortCircuitResult } =
-    reconcileTradeExpiryBeforeAction(state, action, nowMs);
+    reconcileTradeOffersBeforeAction(state, action, nowMs);
   if (shortCircuitResult) {
     return shortCircuitResult;
   }
@@ -447,6 +455,10 @@ export function applyAction(
   if (!turnHandler) {
     throw "game.invalid_action";
   }
+  // Central, metadata-driven action-phase gate for turn-scoped trade actions
+  // (e.g. propose_trade). Applied after the not-your-turn check to preserve the
+  // original error ordering (off-turn → not_your_turn, not invalid_phase).
+  enforceTradeActionPhaseGate(workingState, action.type);
   const turnResult = turnHandler(workingState, playerId, action, nowMs);
   return withPlayerChangeLogs(
     before,

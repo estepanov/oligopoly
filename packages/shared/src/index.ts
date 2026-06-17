@@ -319,7 +319,10 @@ export {
   syndicateMarketValue,
   tileOwnedByController,
 } from "./engine/syndicate.js";
+export type { TileTradeability } from "./engine/tradeActions.js";
 export {
+  canCounterTrade,
+  canProposeTrade,
   DEFAULT_TRADE_TIMEOUT_MINUTES,
   expirePendingTradeOffers,
   expirePendingTradeOffersForGameOver,
@@ -327,7 +330,9 @@ export {
   listTradeableTilePositions,
   MAX_TRADE_COUNTERS,
   nextTradeOfferExpiry,
+  reconcileTradeOffersBeforeAction,
   TRADE_OFFER_HISTORY_LIMIT,
+  tileTradeability,
   tradeTransferValue,
 } from "./engine/tradeActions.js";
 export type { TrustworthinessRestrictions } from "./engine/trustworthiness.js";

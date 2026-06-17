@@ -1,8 +1,11 @@
 import {
   applyAction,
+  canCounterTrade,
+  canProposeTrade,
   isTileTradeable,
   listTradeableTilePositions,
   TRADE_OFFER_HISTORY_LIMIT,
+  tileTradeability,
   tradeTransferValue,
 } from "@oligopoly/shared";
 import { TradeErrorKeys } from "@oligopoly/validation";
@@ -686,5 +689,113 @@ describe("tile-tradeability predicate", () => {
     // unmortgage 3: it becomes the only tradeable position (9 still locked)
     if (tile3) tile3.mortgaged = false;
     expect(listTradeableTilePositions(state, "p1").map(String)).toEqual(["3"]);
+  });
+
+  it("tileTradeability returns ok for an owned, unmortgaged, unlocked tile", () => {
+    expect(tileTradeability(baseState(), "p1", 3)).toEqual({ ok: true });
+  });
+
+  it("tileTradeability reports not_owned for a tile owned by another player", () => {
+    expect(tileTradeability(baseState(), "p1", 6)).toEqual({
+      ok: false,
+      reason: "not_owned",
+    });
+  });
+
+  it("tileTradeability reports mortgaged for a mortgaged tile", () => {
+    const state = baseState();
+    const tile = state.tiles.find((t) => String(t.position) === "3");
+    if (tile) tile.mortgaged = true;
+    expect(tileTradeability(state, "p1", 3)).toEqual({
+      ok: false,
+      reason: "mortgaged",
+    });
+  });
+
+  it("tileTradeability reports contract_locked for a sell-locked tile", () => {
+    const state = baseState();
+    sellLock(state, "3");
+    expect(tileTradeability(state, "p1", 3)).toEqual({
+      ok: false,
+      reason: "contract_locked",
+    });
+  });
+});
+
+describe("canProposeTrade predicate", () => {
+  it("is true for the active player in the action phase with enough AP", () => {
+    expect(canProposeTrade(baseState(), "p1")).toBe(true);
+  });
+
+  it("is false off the active player's turn", () => {
+    expect(canProposeTrade(baseState(), "p2")).toBe(false);
+  });
+
+  it("is false outside the action phase", () => {
+    const state = {
+      ...baseState(),
+      phase: "waiting_for_market_event" as const,
+    };
+    expect(canProposeTrade(state, "p1")).toBe(false);
+  });
+
+  it("is false without enough action points", () => {
+    const state = baseState();
+    const p1 = state.players.find((p) => p.playerId === "p1");
+    if (p1) p1.actionPointsRemaining = 0;
+    expect(canProposeTrade(state, "p1")).toBe(false);
+  });
+});
+
+describe("canCounterTrade predicate", () => {
+  function withPendingOffer() {
+    return applyAction(baseState(), "p1", {
+      type: "propose_trade",
+      recipientId: "p2",
+      gives: { capital: 10, tilePositions: [] },
+      receives: { capital: 0, tilePositions: [6] },
+    }).state;
+  }
+
+  it("is true for the recipient of a pending, non-expired offer in the action phase", () => {
+    expect(
+      canCounterTrade(withPendingOffer(), "p2", "trade-trade-game-1"),
+    ).toBe(true);
+  });
+
+  it("is false for a non-recipient", () => {
+    expect(
+      canCounterTrade(withPendingOffer(), "p1", "trade-trade-game-1"),
+    ).toBe(false);
+  });
+
+  it("is false for an unknown offer id", () => {
+    expect(
+      canCounterTrade(withPendingOffer(), "p2", "trade-trade-game-99"),
+    ).toBe(false);
+  });
+
+  it("is false outside the action phase", () => {
+    const state = {
+      ...withPendingOffer(),
+      phase: "waiting_for_insider_peek" as const,
+    };
+    expect(canCounterTrade(state, "p2", "trade-trade-game-1")).toBe(false);
+  });
+
+  it("is false once the offer has expired", () => {
+    const state = withPendingOffer();
+    const offer = state.tradeOffers?.[0];
+    const expiredNow = (offer?.expiresAt ?? 0) + 1;
+    expect(canCounterTrade(state, "p2", "trade-trade-game-1", expiredNow)).toBe(
+      false,
+    );
+  });
+
+  it("is false once the counter cap is reached", () => {
+    const state = withPendingOffer();
+    const offer = state.tradeOffers?.[0];
+    if (offer) offer.counterCount = 2;
+    expect(canCounterTrade(state, "p2", "trade-trade-game-1")).toBe(false);
   });
 });
