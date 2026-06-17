@@ -7,6 +7,7 @@ import {
   suggestAiAuctionBid,
 } from "./auction.js";
 import { isLiveAuction } from "./auctionMode.js";
+import { phaseHasOwnDeadline } from "./deadlines.js";
 import type { InternalGameState } from "./gameStateTypes.js";
 import {
   aiTradeProposalAction,
@@ -24,19 +25,6 @@ const defaultPersonality: AiPersonality = "opportunist";
 
 function currentPlayerId(state: InternalGameState): string | null {
   return state.turnOrder[state.currentPlayerIndex] ?? null;
-}
-
-/**
- * Phases that drive their own deadline (auction bid/settle windows). When the
- * game is in one of these, the phase actor takes priority over an off-turn
- * trade-inbox response so a pending trade can't stall the live auction window —
- * mirroring the timer-priority model in `syncGameRoomTimer`.
- */
-function phaseHasOwnDeadline(state: InternalGameState): boolean {
-  return (
-    state.phase === "waiting_for_auction_bids" ||
-    state.phase === "waiting_for_auction_settle"
-  );
 }
 
 export function findNextAiAuctionActor(

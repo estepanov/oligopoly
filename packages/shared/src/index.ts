@@ -168,6 +168,14 @@ export {
   DEFAULT_CONTRIBUTION_WEIGHTS,
 } from "./engine/contributionScore.js";
 export { processCoordinationPhase } from "./engine/coordinationPhase.js";
+export type {
+  DeadlineCandidate,
+  DeadlineKind,
+} from "./engine/deadlines.js";
+export {
+  getActiveDeadlineCandidates,
+  phaseHasOwnDeadline,
+} from "./engine/deadlines.js";
 export { shuffleDeterministic } from "./engine/deckShuffle.js";
 export {
   BOARD_SIZE,

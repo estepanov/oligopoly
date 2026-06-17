@@ -1,6 +1,7 @@
 import {
+  getActiveDeadlineCandidates,
   type InternalGameState,
-  nextTradeOfferExpiry,
+  phaseHasOwnDeadline,
 } from "@oligopoly/shared";
 import { currentTurnActorId, turnTimeoutToMs } from "./turnTimeout.js";
 
@@ -47,35 +48,18 @@ export async function syncGameRoomTimer(
     return;
   }
 
-  const candidates: TimerCandidate[] = [];
-  const tradeDeadlineAt = nextTradeOfferExpiry(state);
-  if (tradeDeadlineAt !== null) {
-    candidates.push({ deadlineAt: tradeDeadlineAt, timerKind: "trade_offer" });
-  }
+  // Auction bid/settle + trade-offer deadlines come from the shared engine so
+  // AI priority (`phaseHasOwnDeadline`/`findNextAiActor`) and the scheduler race
+  // the same deadline set. The turn deadline is appended below since it depends
+  // on durable storage + the configured turn timeout.
+  const candidates: TimerCandidate[] = getActiveDeadlineCandidates(state).map(
+    (candidate) => ({
+      deadlineAt: candidate.deadlineAt,
+      timerKind: candidate.kind,
+    }),
+  );
 
-  const inAuctionPhase =
-    state.phase === "waiting_for_auction_bids" ||
-    state.phase === "waiting_for_auction_settle";
-
-  if (
-    state.phase === "waiting_for_auction_settle" &&
-    state.pendingAuction?.settleDeadlineAt
-  ) {
-    candidates.push({
-      deadlineAt: state.pendingAuction.settleDeadlineAt,
-      timerKind: "auction_settle",
-    });
-  }
-
-  if (
-    state.phase === "waiting_for_auction_bids" &&
-    state.pendingAuction?.bidDeadlineAt
-  ) {
-    candidates.push({
-      deadlineAt: state.pendingAuction.bidDeadlineAt,
-      timerKind: "auction_bids",
-    });
-  }
+  const inAuctionPhase = phaseHasOwnDeadline(state);
 
   const actorId = currentTurnActorId(state);
   const timeoutMs = turnTimeoutToMs(

@@ -12,10 +12,11 @@ import type {
 import { getTileByPosition } from "../config/board.js";
 import { isAiControlledActor } from "./aiControl.js";
 import type { InternalGameState } from "./gameStateTypes.js";
-import { ACTION_COSTS, ACTION_POINTS_PER_TURN } from "./setup.js";
+import { ACTION_POINTS_PER_TURN } from "./setup.js";
 import {
+  canCounterTrade,
+  canProposeTrade,
   listTradeableTilePositions,
-  MAX_TRADE_COUNTERS,
   tradeTransferValue,
 } from "./tradeActions.js";
 
@@ -109,8 +110,11 @@ export function findNextAiTradeActor(
 function counterTradeAction(
   state: InternalGameState,
   offer: TradeOffer,
+  nowMs: number,
 ): GameAction | null {
-  if (state.phase !== "action" || offer.counterCount >= MAX_TRADE_COUNTERS) {
+  // Reuse the canonical counter gating (phase/recipient/expiry/elimination/
+  // counter-cap) so AI and engine share one rule set; the AI is the recipient.
+  if (!canCounterTrade(state, offer.recipientId, offer.id, nowMs)) {
     return null;
   }
 
@@ -150,7 +154,7 @@ export function aiTradeResponseAction(
     return { type: "accept_trade", offerId: offer.id };
   }
 
-  const counter = counterTradeAction(state, offer);
+  const counter = counterTradeAction(state, offer, nowMs);
   if (counter) return counter;
 
   return { type: "reject_trade", offerId: offer.id };
@@ -182,32 +186,48 @@ function tradeDiscountForPersonality(personality: AiPersonality): number {
   }
 }
 
+/**
+ * The opponent the AI should propose to, chosen deterministically by walking
+ * `state.turnOrder` (game order) and returning the first eligible, tradeable
+ * opponent. Order-stable selection mirrors the deterministic inbox/offer
+ * selection so two valid targets can't make AI behavior depend on
+ * `state.players` array order.
+ */
+function selectProposalTargetId(
+  state: InternalGameState,
+  actorId: string,
+): string | null {
+  for (const playerId of state.turnOrder) {
+    if (playerId === actorId) continue;
+    if ((state.eliminatedPlayerIds ?? []).includes(playerId)) continue;
+    // Use the canonical tradeability predicate so the AI never targets a
+    // mortgaged or contract-locked tile (which the engine would reject with
+    // `INVALID_TERMS`, wasting the propose).
+    if (listTradeableTilePositions(state, playerId).length > 0) {
+      return playerId;
+    }
+  }
+  return null;
+}
+
 export function aiTradeProposalAction(
   state: InternalGameState,
   actorId: string,
   personality: AiPersonality,
 ): GameAction | null {
-  if (state.phase !== "action") return null;
+  // Reuse the canonical propose gating (phase/turn/AP) so AI and engine share
+  // one rule set; the heuristics below are AI-only additions.
+  if (!canProposeTrade(state, actorId)) return null;
   const actor = state.players.find((player) => player.playerId === actorId);
-  if (!actor || actor.actionPointsRemaining < ACTION_COSTS.PROPOSE_TRADE) {
-    return null;
-  }
+  if (!actor) return null;
   if (actor.actionPointsRemaining < ACTION_POINTS_PER_TURN) return null;
   if (hasPendingOutgoingTrade(state, actorId)) return null;
 
   const reserve = personality === "loyalist" ? 250 : 150;
-  const target = state.players.find(
-    (player) =>
-      player.playerId !== actorId &&
-      !(state.eliminatedPlayerIds ?? []).includes(player.playerId) &&
-      // Use the canonical tradeability predicate so the AI never targets a
-      // mortgaged or contract-locked tile (which the engine would reject with
-      // `INVALID_TERMS`, wasting the propose).
-      listTradeableTilePositions(state, player.playerId).length > 0,
-  );
-  if (!target) return null;
+  const targetId = selectProposalTargetId(state, actorId);
+  if (!targetId) return null;
 
-  const targetTile = listTradeableTilePositions(state, target.playerId)
+  const targetTile = listTradeableTilePositions(state, targetId)
     .map((position) => {
       const tile = getTileByPosition(position);
       if (!tile?.cost) return null;
@@ -227,7 +247,7 @@ export function aiTradeProposalAction(
 
   return {
     type: "propose_trade",
-    recipientId: target.playerId,
+    recipientId: targetId,
     gives: { capital: offerCapital, tilePositions: [] },
     receives: { capital: 0, tilePositions: [targetTile.position] },
   };
