@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  prepareScopableGameEvent,
-  scopeGameEventForViewer,
-} from "../../packages/worker/src/gameStateView";
-import {
   buildGameScheduleEvent,
   notifyGameSchedule,
 } from "../../packages/worker/src/services/gameAi";
+import {
+  prepareScopableGameEvent,
+  scopeGameEventForViewer,
+} from "../../packages/worker/src/services/gameBroadcastVisibility";
 import { notifyGameActionResult } from "../../packages/worker/src/services/gamePersistence";
 
 /**

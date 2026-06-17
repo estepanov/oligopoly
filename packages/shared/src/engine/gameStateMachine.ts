@@ -171,15 +171,18 @@ type PhaseActionHandler = (
   nowMs: number,
 ) => ApplyActionResult;
 type GameActionType = GameActionInput["type"];
+// Non-turn (global-scoped) actions: the actor need not be the active player.
+// The trade portion is DERIVED from `TRADE_ACTION_ROUTES` (entries with
+// `scope: "global"` — see `GlobalTradeActionType`) so it can't drift from the
+// routing metadata. The auction/insider async types are separate concerns (not
+// in `TRADE_ACTION_ROUTES`) and stay listed explicitly here.
 type NonTurnActionType =
-  | "accept_trade"
+  | GlobalTradeActionType
   | "accept_disruption"
   | "auction_bid"
   | "auction_pass"
-  | "counter_trade"
   | "insider_discard_market_event"
-  | "insider_keep_market_event"
-  | "reject_trade";
+  | "insider_keep_market_event";
 type TurnActionType = Exclude<GameActionType, NonTurnActionType>;
 
 const PHASE_ACTION_ROUTES: Partial<
@@ -212,14 +215,7 @@ type TradeActionType =
 // table, so the otherwise-fragile combinations (e.g. counter_trade is globally
 // routed yet only valid during an action phase) live in ONE place and can't be
 // broken by editing a handler. See oligopoly_game_rules.md for the rules.
-const TRADE_ACTION_ROUTES: Record<
-  TradeActionType,
-  {
-    scope: "turn" | "global";
-    requiresActionPhase: boolean;
-    handler: PhaseActionHandler;
-  }
-> = {
+const TRADE_ACTION_ROUTES = {
   // Turn action costing 1 AP: only the active player, only in the action phase.
   propose_trade: {
     scope: "turn",
@@ -248,12 +244,30 @@ const TRADE_ACTION_ROUTES: Record<
     handler: (state, playerId, action, nowMs) =>
       handleCounterTrade(state, playerId, action, nowMs),
   },
-};
+} satisfies Record<
+  TradeActionType,
+  {
+    scope: "turn" | "global";
+    requiresActionPhase: boolean;
+    handler: PhaseActionHandler;
+  }
+>;
+
+// Trade actions declared `scope: "global"` in the metadata above are NON-turn
+// actions (the recipient need not be the active player). Derived at the type
+// level from `TRADE_ACTION_ROUTES` (which uses `satisfies` so each entry's
+// literal `scope` is preserved) so `NonTurnActionType` can't drift from the
+// declared routing rules. Auction/insider async types are separate (see below).
+type GlobalTradeActionType = {
+  [K in TradeActionType]: (typeof TRADE_ACTION_ROUTES)[K]["scope"] extends "global"
+    ? K
+    : never;
+}[TradeActionType];
 
 // Typed list of trade-action keys derived directly from the routing metadata, so
 // derivations below iterate the keys without a hand-maintained parallel list.
-// `TRADE_ACTION_ROUTES` is a `Record<TradeActionType, …>`, so its keys are exactly
-// the `TradeActionType` union (`Object.keys` only widens them to `string`).
+// `TRADE_ACTION_ROUTES` keys are exactly the `TradeActionType` union (`Object.keys`
+// only widens them to `string`).
 const TRADE_ACTION_TYPES = Object.keys(
   TRADE_ACTION_ROUTES,
 ) as TradeActionType[];

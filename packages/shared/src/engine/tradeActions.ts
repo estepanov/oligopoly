@@ -128,8 +128,12 @@ export function handleProposeTrade(
   action: GameActionInput,
   nowMs: number = Date.now(),
 ): ApplyActionResult {
-  if (state.phase !== "action") throw "game.invalid_phase";
-
+  // Like `handleCounterTrade`, the `action`-phase gate is NOT repeated here: the
+  // dispatcher enforces it centrally from the `TRADE_ACTION_ROUTES` metadata
+  // (propose_trade is `scope: "turn"`, `requiresActionPhase: true`), running the
+  // gate AFTER the not-your-turn check so off-turn proposals still throw
+  // `game.not_your_turn` before `game.invalid_phase`. Keeping the gate in one
+  // place stops a handler edit from contradicting the declared routing rule.
   const recipientId = action.recipientId;
   if (!recipientId || recipientId === playerId) {
     throw TradeErrorKeys.INVALID_PARTY;

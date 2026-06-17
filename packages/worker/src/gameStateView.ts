@@ -10,24 +10,13 @@ import {
   type ViewerMode,
 } from "./services/gameVisibilityFilters.js";
 
-export type {
-  BroadcastViewer,
-  PreparedGameEvent,
-  ScopableBroadcastPayload,
-  ScopableGameEvent,
-  StrippedBroadcastState,
-} from "./services/gameBroadcastVisibility.js";
-export {
-  broadcastEventStateFields,
-  buildGameScheduleEvent,
-  prepareScopableGameEvent,
-  scopeGameEventForViewer,
-  splitBroadcastPayload,
-} from "./services/gameBroadcastVisibility.js";
-// Re-exports: visibility filters and the broadcast privacy contract live in
-// focused modules now; `gameStateView.ts` is a thin orchestrator that composes
-// them into the per-viewer client view. Re-exported here so existing importers
-// (routes, persistence, tests) keep a single entry point.
+// NOTE: the broadcast privacy contract lives in `./services/gameBroadcastVisibility.js`
+// and is imported directly by its consumers (rooms, persistence, gameAi, tests).
+// `gameStateView.ts` intentionally does NOT re-export it: `gameBroadcastVisibility`
+// imports `toClientGameStateFromInternal` from here, so re-exporting it back would
+// create an import cycle. The dependency flows one way: gameBroadcastVisibility →
+// gameStateView (+ gameVisibilityFilters), gameStateView → gameVisibilityFilters.
+// Re-exports below are only the per-viewer client-view helpers (no back-edge).
 export type {
   PersistedGameState,
   ViewerMode,

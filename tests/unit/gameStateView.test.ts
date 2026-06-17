@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  type BroadcastViewer,
   type PersistedGameState,
-  prepareScopableGameEvent,
   redactLogEntriesForViewer,
-  type ScopableGameEvent,
-  scopeGameEventForViewer,
   toClientGameState,
 } from "../../packages/worker/src/gameStateView";
+import {
+  type BroadcastViewer,
+  prepareScopableGameEvent,
+  type ScopableGameEvent,
+  scopeGameEventForViewer,
+} from "../../packages/worker/src/services/gameBroadcastVisibility";
 
 /** Prepare-then-scope in one step (mirrors GameRoom.broadcast's two phases). */
 function scopeEvent(event: ScopableGameEvent, viewer: BroadcastViewer) {
