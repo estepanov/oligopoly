@@ -91,4 +91,29 @@ describe("TradeOfferSchema", () => {
       }).success,
     ).toBe(true);
   });
+
+  // Defense in depth: the engine caps counter chains at MAX_TRADE_COUNTERS (2),
+  // so a crafted payload must never carry a higher counterCount.
+  it("rejects a counterCount above MAX_TRADE_COUNTERS", () => {
+    const base = {
+      id: "trade-1",
+      gameId: "game-1",
+      proposerId: "p1",
+      recipientId: "p2",
+      gives: { capital: 100, tilePositions: [3] },
+      receives: { capital: 50, tilePositions: [6] },
+      status: "pending" as const,
+      createdAt: 1,
+      expiresAt: 2,
+    };
+    expect(
+      TradeOfferSchema.safeParse({ ...base, counterCount: 2 }).success,
+    ).toBe(true);
+    expect(
+      TradeOfferSchema.safeParse({ ...base, counterCount: 999 }).success,
+    ).toBe(false);
+    expect(
+      TradeOfferSchema.safeParse({ ...base, counterCount: 3 }).success,
+    ).toBe(false);
+  });
 });

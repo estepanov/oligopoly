@@ -526,7 +526,7 @@ Players may spend **1 action point** during their action phase to propose a trad
 
 Trade offers expire after **5 minutes** by default. Expiry is treated as a rejection: no assets transfer, and the offer is marked expired. The recipient may propose a counter-offer while the game is in an action phase; a trade chain may include at most **two counters** before players must accept or reject the latest offer.
 
-AI-controlled players evaluate pending trade offers automatically: they accept favorable offers, counter underpriced offers when a valid counter is available, and reject offers they cannot improve. AI players may also spend 1 action point on their own action phase to propose simple cash-for-property trades. Trade proposals, counters, acceptances, rejections, and expirations are recorded in the game log with the offered Capital and properties.
+AI-controlled players evaluate pending trade offers automatically: they accept favorable offers, counter underpriced offers when a valid counter is available, and reject offers they cannot improve. AI players may also spend 1 action point on their own action phase to propose simple cash-for-property trades. Trade proposals, counters, acceptances, rejections, and expirations are recorded in the game log, but their terms are private: only the two participating players (the proposer and the recipient) see the offered Capital and properties. Non-parties see that a trade event occurred without its terms.
 
 ### Binding vs. Handshake Agreements
 **Binding contracts** — mechanically enforced through two layers:

@@ -152,6 +152,45 @@ describe("TradeNegotiationPanel", () => {
     });
   });
 
+  it("disables counter once the offer reaches the counter cap", () => {
+    const onAction = vi.fn<(_: string, action: GameAction) => Promise<void>>(
+      async () => undefined,
+    );
+    const state = tradeState({
+      currentPlayerIndex: 0,
+      tradeOffers: [
+        {
+          id: "trade-1",
+          gameId: "g",
+          proposerId: "me",
+          recipientId: "opponent",
+          gives: { capital: 100, tilePositions: [3] },
+          receives: { capital: 50, tilePositions: [6] },
+          status: "pending",
+          createdAt: 1,
+          expiresAt: Date.now() + 300_000,
+          // At MAX_TRADE_COUNTERS (2): the engine rejects further counters, so
+          // `canCounterTrade` must report the affordance as unavailable.
+          counterCount: 2,
+        },
+      ],
+    });
+
+    render(
+      <GamePlayControls
+        state={state}
+        myPlayerId="opponent"
+        tileNames={tileNames}
+        busy={false}
+        onAction={onAction}
+      />,
+    );
+
+    // Accept/Reject stay available; the exhausted counter affordance disables.
+    expect(screen.getByRole("button", { name: /accept trade/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /^counter$/i })).toBeDisabled();
+  });
+
   it("shows pending offers sent by the current player", () => {
     const state = tradeState({
       tradeOffers: [

@@ -1,7 +1,12 @@
-import { ACTION_COSTS, MAX_TRADE_COUNTERS } from "@oligopoly/shared";
+import { MAX_TRADE_COUNTERS } from "@oligopoly/shared";
 import { useMemo, useState } from "react";
 import { formatCurrencyAmount, playerDisplayName } from "../../lib/gameDisplay";
-import { isMyTurn, otherHumanPlayers, playerById } from "../../lib/gameUi";
+import {
+  canCounterTrade,
+  canProposeTrade,
+  otherHumanPlayers,
+  playerById,
+} from "../../lib/gameUi";
 import {
   parseCapital,
   selectedTransferValue,
@@ -28,15 +33,18 @@ export function TradeNegotiationPanel({
   // Once the game is over the server has terminated every pending offer, so the
   // desk must not present any response actions for them.
   const gameOver = state.phase === "game_over";
-  const myTurn = isMyTurn(state, myPlayerId);
-  const myPlayer = playerById(state, myPlayerId);
-  const canPropose =
-    state.phase === "action" &&
-    myTurn &&
-    (myPlayer?.actionPointsRemaining ?? 0) >= ACTION_COSTS.PROPOSE_TRADE;
+  // Delegate eligibility to the engine's canonical predicates so the UI and the
+  // server share one rule set (active player + action phase + action points for
+  // propose; pending/unexpired/under-cap recipient offer for counter).
+  const canPropose = canProposeTrade(state, myPlayerId);
   const canCompose =
     canPropose ||
-    (state.phase === "action" && Boolean(draft.counteringOfferId));
+    (draft.counteringOfferId
+      ? canCounterTrade(state, myPlayerId, draft.counteringOfferId)
+      : false);
+  // The server already redacts trade offers to participants via
+  // `filterTradeOffersForViewer`, so the client only receives its own offers.
+  // This filter is a thin defensive guard in case that ever regresses.
   const offers =
     state.tradeOffers?.filter(
       (offer) =>
@@ -279,9 +287,7 @@ export function TradeNegotiationPanel({
                   ? undefined
                   : {
                       busy,
-                      canCounter:
-                        state.phase === "action" &&
-                        offer.counterCount < MAX_TRADE_COUNTERS,
+                      canCounter: canCounterTrade(state, myPlayerId, offer.id),
                       onAccept: () =>
                         onAction(
                           `Accepted trade from ${playerDisplayName(state, offer.proposerId, { myPlayerId })}`,

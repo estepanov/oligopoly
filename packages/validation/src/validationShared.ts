@@ -192,7 +192,11 @@ export const TradeOfferSchema = z.object({
   status: TradeOfferStatusSchema,
   createdAt: z.number().int(),
   expiresAt: z.number().int(),
-  counterCount: z.number().int().min(0),
+  // Defense in depth at the contract boundary: the engine caps counter chains at
+  // MAX_TRADE_COUNTERS (= 2 in @oligopoly/shared), so a crafted WS payload must
+  // never carry a higher count. The literal mirrors MAX_TRADE_COUNTERS; kept local
+  // to avoid a dependency from @oligopoly/validation onto @oligopoly/shared.
+  counterCount: z.number().int().min(0).max(2),
   parentOfferId: z.string().optional(),
 });
 export type TradeOffer = z.infer<typeof TradeOfferSchema>;

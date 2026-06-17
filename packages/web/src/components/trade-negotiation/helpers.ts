@@ -55,5 +55,9 @@ export function tradeStatusLabel(status: TradeOffer["status"]): string {
       return "Countered";
     case "pending":
       return "Pending";
+    default: {
+      const _exhaustive: never = status;
+      return _exhaustive;
+    }
   }
 }
