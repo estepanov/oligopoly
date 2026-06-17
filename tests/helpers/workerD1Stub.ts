@@ -22,8 +22,21 @@ export function createWorkerD1Stub(): WorkerD1Stub {
     achievements: [],
   };
 
+  let lastChanges = 0;
+
+  // Follow-up writes in persistGameActionResult are gated on the games row
+  // already holding the freshly-written state (an `AND EXISTS (SELECT 1 FROM
+  // games WHERE id = ? AND state_json = ?)` predicate). Mirror that here so the
+  // batch's optimistic-conflict semantics hold: when the guard fails the
+  // follow-up is a no-op, exactly as in real D1.
+  const appliedGuardSatisfied = (gameId: unknown, stateJson: unknown) =>
+    tables.games.some((r) => r.id === gameId && r.state_json === stateJson);
+
   const execSql = (sql: string, binds: unknown[]) => {
     const trimmed = sql.replace(/\s+/g, " ").trim();
+    const hasAppliedGuard = trimmed.includes(
+      "EXISTS (SELECT 1 FROM games WHERE id = ? AND state_json = ?)",
+    );
 
     if (trimmed.startsWith("INSERT INTO lobbies")) {
       const [
@@ -153,6 +166,18 @@ export function createWorkerD1Stub(): WorkerD1Stub {
       return { results: invite ? [invite] : [], first: invite ?? null };
     }
 
+    if (
+      trimmed.startsWith(
+        "INSERT INTO games (id, started_at, player_ids_json) SELECT id, started_at, player_ids_json FROM games WHERE id = ? AND changes() = 0",
+      )
+    ) {
+      const row = tables.games.find((r) => r.id === binds[0]);
+      if (lastChanges === 0 && row) {
+        throw new Error("UNIQUE constraint failed: games.id");
+      }
+      return { results: [], success: true, meta: { changes: 0 } };
+    }
+
     if (trimmed.startsWith("INSERT INTO games")) {
       const [id, lobby_id, started_at, player_ids_json, state_json] = binds as [
         string,
@@ -175,7 +200,15 @@ export function createWorkerD1Stub(): WorkerD1Stub {
     }
 
     if (trimmed.startsWith("INSERT INTO game_log")) {
-      if (binds.length === 7) {
+      // Guarded log inserts append [gameId, stateJson] for the EXISTS predicate.
+      const insertBinds = hasAppliedGuard ? binds.slice(0, -2) : binds;
+      if (hasAppliedGuard) {
+        const [guardGameId, guardStateJson] = binds.slice(-2);
+        if (!appliedGuardSatisfied(guardGameId, guardStateJson)) {
+          return { results: [], success: true, meta: { changes: 0 } };
+        }
+      }
+      if (insertBinds.length === 7) {
         const [
           id,
           game_id,
@@ -184,7 +217,7 @@ export function createWorkerD1Stub(): WorkerD1Stub {
           action_type,
           payload_json,
           created_at,
-        ] = binds as [
+        ] = insertBinds as [
           string,
           string,
           number,
@@ -203,7 +236,7 @@ export function createWorkerD1Stub(): WorkerD1Stub {
           created_at,
         });
       } else {
-        const [id, game_id, payload_json, created_at] = binds as [
+        const [id, game_id, payload_json, created_at] = insertBinds as [
           string,
           string,
           string,
@@ -325,7 +358,9 @@ export function createWorkerD1Stub(): WorkerD1Stub {
       return { results: row ? [row] : [], first: row };
     }
 
-    if (trimmed.includes("SELECT lobby_id FROM games WHERE id = ?")) {
+    // Use startsWith so this does not also intercept UPDATE statements that
+    // embed `SELECT lobby_id FROM games WHERE id = ?` as a subquery.
+    if (trimmed.startsWith("SELECT lobby_id FROM games WHERE id = ?")) {
       const row = tables.games.find((r) => r.id === binds[0]) ?? null;
       return {
         results: row ? [row] : [],
@@ -354,13 +389,30 @@ export function createWorkerD1Stub(): WorkerD1Stub {
       return { results: row ? [row] : [], first: row };
     }
 
+    if (
+      trimmed.startsWith(
+        "UPDATE games SET state_json = ? WHERE id = ? AND state_json = ?",
+      )
+    ) {
+      const row = tables.games.find(
+        (r) => r.id === binds[1] && r.state_json === binds[2],
+      );
+      if (row) row.state_json = binds[0];
+      lastChanges = row ? 1 : 0;
+      return { meta: { changes: row ? 1 : 0 } };
+    }
+
     if (trimmed.startsWith("UPDATE games SET state_json = ? WHERE id = ?")) {
       const row = tables.games.find((r) => r.id === binds[1]);
       if (row) row.state_json = binds[0];
-      return { results: [], success: true };
+      lastChanges = row ? 1 : 0;
+      return { results: [], success: true, meta: { changes: row ? 1 : 0 } };
     }
 
     if (trimmed.startsWith("UPDATE games SET status = 'completed'")) {
+      if (hasAppliedGuard && !appliedGuardSatisfied(binds[3], binds[4])) {
+        return { results: [], success: true, meta: { changes: 0 } };
+      }
       const row = tables.games.find((r) => r.id === binds[2]);
       if (row) {
         row.status = "completed";
@@ -377,7 +429,13 @@ export function createWorkerD1Stub(): WorkerD1Stub {
     }
 
     if (trimmed.startsWith("UPDATE lobbies SET status = 'finished'")) {
-      const row = tables.lobbies.find((r) => r.id === binds[0]);
+      if (hasAppliedGuard && !appliedGuardSatisfied(binds[1], binds[2])) {
+        return { results: [], success: true, meta: { changes: 0 } };
+      }
+      const lobbyId = trimmed.includes("(SELECT lobby_id FROM games")
+        ? tables.games.find((r) => r.id === binds[0])?.lobby_id
+        : binds[0];
+      const row = tables.lobbies.find((r) => r.id === lobbyId);
       if (row) row.status = "finished";
       return { results: [], success: true };
     }
@@ -638,6 +696,7 @@ export function createWorkerD1Stub(): WorkerD1Stub {
         return (result.first ?? result.results[0] ?? null) as T | null;
       },
       _exec: () => execSql(sql, boundValues),
+      _sql: sql,
     };
     return stmt;
   };

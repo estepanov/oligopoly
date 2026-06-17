@@ -23,7 +23,7 @@ export function useGameRealtime(
 ) {
   const [turnDeadline, setTurnDeadline] = useState<number | null>(null);
   const [timerKind, setTimerKind] = useState<
-    "turn" | "auction_bids" | "auction_settle"
+    "turn" | "auction_bids" | "auction_settle" | "trade_offer"
   >("turn");
 
   const { wsStatus } = useRealtimeChannel({

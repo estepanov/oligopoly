@@ -92,7 +92,9 @@ export function GameDetailPage() {
                     ? "Auction closes"
                     : timerKind === "auction_settle"
                       ? "Auction reveals"
-                      : "Turn deadline"}
+                      : timerKind === "trade_offer"
+                        ? "Trade expires"
+                        : "Turn deadline"}
                 </dt>
                 <dd>
                   {turnDeadline

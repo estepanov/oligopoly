@@ -5,6 +5,7 @@ import {
   applyTimeoutTakeover,
   chooseAiAction,
   closeAuctionBidWindowIfReady,
+  expirePendingTradeOffers,
   finalizeAuctionSettleIfReady,
   type InternalGameState,
   isAiControlledActor,
@@ -12,13 +13,21 @@ import {
   replaceKickedPlayerWithAi,
 } from "@oligopoly/shared";
 import type { AiPersonality } from "@oligopoly/validation";
+import { GameErrorKeys } from "@oligopoly/validation";
 import { withPathChoiceDie } from "../lib/dice.js";
 import { broadcastGameEvent } from "../realtime/notify.js";
+import { buildGameScheduleEvent } from "./gameBroadcastVisibility.js";
 import { persistGameActionResult } from "./gamePersistence.js";
 import {
   chooseOpenRouterAiDecision,
   type OpenRouterAiEnv,
 } from "./openRouterAi.js";
+
+// Re-exported so existing emit-path importers keep one entry point; the canonical
+// implementation lives in `gameBroadcastVisibility.ts`.
+export { buildGameScheduleEvent } from "./gameBroadcastVisibility.js";
+
+export const AI_LOOP_MAX_STEPS = 16;
 
 type ActiveGameRow = {
   id: string;
@@ -132,6 +141,7 @@ export async function stepGameAiTurn(
   await persistGameActionResult(db, gameId, result, {
     gameRoom,
     kv,
+    expectedStateJson: row.state_json,
     aiMeta: {
       aiPlayerId: decision.actorId,
       personality: decision.personality,
@@ -152,7 +162,16 @@ export async function runAiTurnLoop(
 ): Promise<number> {
   let steps = 0;
   for (let i = 0; i < maxSteps; i++) {
-    const step = await stepGameAiTurn(db, gameId, gameRoom, kv, aiEnv);
+    let step: StepAiTurnResult;
+    try {
+      step = await stepGameAiTurn(db, gameId, gameRoom, kv, aiEnv);
+    } catch (err) {
+      // An optimistic-concurrency conflict means another writer advanced the
+      // game between our read and persist. The AI loop is best-effort; stop
+      // rather than propagating (the other writer / next tick will continue).
+      if (err === GameErrorKeys.STATE_CONFLICT) break;
+      throw err;
+    }
     if (!step.applied) break;
     steps += 1;
     if (step.result.state.phase === "game_over") break;
@@ -166,12 +185,13 @@ export async function persistStateMutation(
   nextState: InternalGameState,
   logEntries: ApplyActionResult["logEntries"],
   gameRoom?: DurableObjectNamespace,
+  expectedStateJson?: string | null,
 ): Promise<void> {
   await persistGameActionResult(
     db,
     gameId,
     { state: nextState, logEntries },
-    { gameRoom, actorId: "system" },
+    { gameRoom, actorId: "system", expectedStateJson },
   );
 }
 
@@ -196,13 +216,14 @@ async function applyAuctionPhaseTransition(
   await persistGameActionResult(db, gameId, result, {
     gameRoom,
     actorId: "system",
+    expectedStateJson: row.state_json,
   });
 
   if (
     result.state.phase === "waiting_for_auction_bids" &&
     chooseAiAction(result.state)
   ) {
-    await runAiTurnLoop(db, gameId, gameRoom, 16, kv, aiEnv);
+    await runAiTurnLoop(db, gameId, gameRoom, AI_LOOP_MAX_STEPS, kv, aiEnv);
   }
 
   return true;
@@ -230,6 +251,28 @@ export async function applyAuctionSettleExpiry(
   return applyAuctionPhaseTransition(db, gameId, gameRoom, kv, aiEnv, (state) =>
     finalizeAuctionSettleIfReady(state, Date.now()),
   );
+}
+
+export async function applyTradeOfferExpiry(
+  db: D1Database,
+  gameId: string,
+  gameRoom?: DurableObjectNamespace,
+): Promise<boolean> {
+  const row = await loadActiveGame(db, gameId);
+  if (!row?.state_json) return false;
+
+  const gameState = normalizeGameState(
+    JSON.parse(row.state_json) as Record<string, unknown>,
+  );
+  const result = expirePendingTradeOffers(gameState, Date.now());
+  if (!result) return false;
+
+  await persistGameActionResult(db, gameId, result, {
+    gameRoom,
+    actorId: "system",
+    expectedStateJson: row.state_json,
+  });
+  return true;
 }
 
 export async function applyTimeoutTakeoverAndStep(
@@ -261,7 +304,14 @@ export async function applyTimeoutTakeoverAndStep(
   const fallbackDecision = chooseAiAction(gameState);
   if (!fallbackDecision) {
     if (logEntries.length > 0) {
-      await persistStateMutation(db, gameId, gameState, logEntries, gameRoom);
+      await persistStateMutation(
+        db,
+        gameId,
+        gameState,
+        logEntries,
+        gameRoom,
+        row.state_json,
+      );
     }
     return { applied: false, reason: "not_ai_turn" };
   }
@@ -279,6 +329,7 @@ export async function applyTimeoutTakeoverAndStep(
     { state: result.state, logEntries: [...logEntries, ...result.logEntries] },
     {
       gameRoom,
+      expectedStateJson: row.state_json,
       aiMeta: {
         aiPlayerId: decision.actorId,
         personality: decision.personality,
@@ -320,6 +371,7 @@ export async function kickPlayerToAiReplacement(
       },
     ],
     gameRoom,
+    row.state_json,
   );
 
   return nextState;
@@ -330,10 +382,9 @@ export async function notifyGameSchedule(
   gameId: string,
   state: Record<string, unknown>,
 ): Promise<void> {
-  await broadcastGameEvent(gameRoom, gameId, {
-    type: "game.schedule",
-    sentAt: Date.now(),
+  await broadcastGameEvent(
+    gameRoom,
     gameId,
-    state,
-  });
+    buildGameScheduleEvent(gameId, state),
+  );
 }

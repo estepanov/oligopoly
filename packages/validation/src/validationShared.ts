@@ -157,6 +157,51 @@ export const NegotiationThreadSchema = z.object({
 export type NegotiationThread = z.infer<typeof NegotiationThreadSchema>;
 
 // ---------------------------------------------------------------------------
+// Trade offers
+// ---------------------------------------------------------------------------
+// Upper bound on tiles per side of a trade. No player can ever own more than
+// the number of ownable board tiles, so this is a generous cap that still
+// prevents unbounded-array DoS via crafted action payloads. Kept local to avoid
+// a dependency from @oligopoly/validation onto @oligopoly/shared's board config.
+export const MAX_TRADE_TILE_POSITIONS = 40;
+
+export const TradeOfferTransferSchema = z.object({
+  capital: z.number().int().min(0),
+  tilePositions: z
+    .array(z.union([z.number().int(), z.string()]))
+    .max(MAX_TRADE_TILE_POSITIONS),
+});
+export type TradeOfferTransfer = z.infer<typeof TradeOfferTransferSchema>;
+
+export const TradeOfferStatusSchema = z.enum([
+  "pending",
+  "accepted",
+  "rejected",
+  "expired",
+  "countered",
+]);
+export type TradeOfferStatus = z.infer<typeof TradeOfferStatusSchema>;
+
+export const TradeOfferSchema = z.object({
+  id: z.string(),
+  gameId: z.string(),
+  proposerId: z.string(),
+  recipientId: z.string(),
+  gives: TradeOfferTransferSchema,
+  receives: TradeOfferTransferSchema,
+  status: TradeOfferStatusSchema,
+  createdAt: z.number().int(),
+  expiresAt: z.number().int(),
+  // Defense in depth at the contract boundary: the engine caps counter chains at
+  // MAX_TRADE_COUNTERS (= 2 in @oligopoly/shared), so a crafted WS payload must
+  // never carry a higher count. The literal mirrors MAX_TRADE_COUNTERS; kept local
+  // to avoid a dependency from @oligopoly/validation onto @oligopoly/shared.
+  counterCount: z.number().int().min(0).max(2),
+  parentOfferId: z.string().optional(),
+});
+export type TradeOffer = z.infer<typeof TradeOfferSchema>;
+
+// ---------------------------------------------------------------------------
 // Game status
 // ---------------------------------------------------------------------------
 export const GameStatusSchema = z.enum(["active", "completed"]);
@@ -404,6 +449,7 @@ export const GameErrorKeys = {
   INSUFFICIENT_AP: "game.insufficient_ap",
   TILE_NOT_MORTGAGED: "game.tile_not_mortgaged",
   DB_NOT_CONFIGURED: "game.db_not_configured",
+  STATE_CONFLICT: "game.state_conflict",
 } as const;
 
 export const LobbyErrorKeys = {

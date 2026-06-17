@@ -520,6 +520,14 @@ Any player may spend 1 action point to open a negotiation.
 - Pricing agreements, non-aggression pacts
 - Syndicate formation terms, charter details, admission terms
 
+### Trade Offers
+
+Players may spend **1 action point** during their action phase to propose a trade for any combination of Capital and unmortgaged properties from each side. The recipient may accept or reject the pending offer immediately, even outside their own turn. Accepting a trade atomically transfers all listed Capital and properties; if either side no longer has the required Capital or no longer owns the listed unmortgaged properties, the server rejects the acceptance.
+
+Trade offers expire after **5 minutes** by default. Expiry is treated as a rejection: no assets transfer, and the offer is marked expired. The recipient may propose a counter-offer while the game is in an action phase; a trade chain may include at most **two counters** before players must accept or reject the latest offer.
+
+AI-controlled players evaluate pending trade offers automatically: they accept favorable offers, counter underpriced offers when a valid counter is available, and reject offers they cannot improve. AI players may also spend 1 action point on their own action phase to propose simple cash-for-property trades. Trade proposals, counters, acceptances, rejections, and expirations are recorded in the game log, but their terms are private: only the two participating players (the proposer and the recipient) see the offered Capital and properties. Non-parties see that a trade event occurred without its terms.
+
 ### Binding vs. Handshake Agreements
 **Binding contracts** — mechanically enforced through two layers:
 1. **UI lock** — any action that would violate an active binding contract is disabled in the interface and cannot be selected. The UI renders such actions as greyed out with a tooltip explaining the active contract.
@@ -861,6 +869,7 @@ All players and spectators have access to a dynamic **Player Summary Panel** sho
 
 Additionally, each player sees their own private information in their summary panel:
 - Outstanding negotiation proposals and counter-proposals
+- Trade offers involving that player, including requested Capital and properties
 - Sealed auction bid amounts (hidden from all players and spectators until the bid window closes and bids are revealed simultaneously)
 - Syndicate membership and role (if applicable)
 - Debt balance (if Debt Spiral rule is active)

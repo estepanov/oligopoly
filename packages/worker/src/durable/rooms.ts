@@ -1,16 +1,15 @@
-import {
-  findNextAiActorForPhase,
-  isAiControlledActor,
-  normalizeGameState,
-} from "@oligopoly/shared";
-import { toClientGameState } from "../gameStateView.js";
+import { hasAiWork, normalizeGameState } from "@oligopoly/shared";
+import { GameErrorKeys } from "@oligopoly/validation";
+import { toClientGameStateFromInternal } from "../gameStateView.js";
 import { isNotifyRequest } from "../realtime/notify.js";
+import { AI_LOOP_MAX_STEPS, runAiTurnLoop } from "../services/gameAi.js";
 import {
-  applyAuctionBidWindowExpiry,
-  applyAuctionSettleExpiry,
-  applyTimeoutTakeoverAndStep,
-  runAiTurnLoop,
-} from "../services/gameAi.js";
+  type BroadcastViewer,
+  buildGameScheduleEvent,
+  prepareScopableGameEvent,
+  type ScopableGameEvent,
+  scopeGameEventForViewer,
+} from "../services/gameBroadcastVisibility.js";
 import { syncGameRoomTimer } from "../services/gameScheduler.js";
 import {
   buildLobbyResponse,
@@ -18,7 +17,7 @@ import {
   type LobbyRow,
 } from "../services/lobbyResponses.js";
 import type { OpenRouterAiEnv } from "../services/openRouterAi.js";
-import { currentTurnActorId } from "../services/turnTimeout.js";
+import { handleGameRoomAlarmTick } from "./gameRoomAlarm.js";
 
 type RoomEnv = OpenRouterAiEnv & {
   DB?: D1Database;
@@ -123,6 +122,14 @@ export class LobbyRoom extends RealtimeRoom {
 }
 
 export class GameRoom extends RealtimeRoom {
+  private sessionMeta(session: WebSocket): BroadcastViewer {
+    const url = this.sessionUrls.get(session);
+    return {
+      spectator: url?.searchParams.get("spectator") === "1",
+      viewerId: url?.searchParams.get("viewerId") ?? "spectator",
+    };
+  }
+
   protected broadcast(message: string) {
     let event: Record<string, unknown> | null = null;
     try {
@@ -138,18 +145,18 @@ export class GameRoom extends RealtimeRoom {
         event.type === "game.snapshot") &&
       event.state
     ) {
+      // Normalize + re-inject the carried trade offers ONCE here, then fan the
+      // shared (read-only) normalized state out to each session's pure redaction
+      // via `scopeGameEventForViewer`, so no per-viewer normalization can mutate
+      // shared nested state.
+      const prepared = prepareScopableGameEvent(event as ScopableGameEvent);
       for (const session of this.sessions) {
-        const url = this.sessionUrls.get(session);
-        const spectator = url?.searchParams.get("spectator") === "1";
-        const viewerId = url?.searchParams.get("viewerId") ?? "spectator";
-        const state = normalizeGameState(
-          event.state as Record<string, unknown>,
-        );
-        const scopedState = spectator
-          ? toClientGameState(state as never, "spectator", viewerId)
-          : toClientGameState(state as never, "player", viewerId);
         try {
-          session.send(JSON.stringify({ ...event, state: scopedState }));
+          session.send(
+            JSON.stringify(
+              scopeGameEventForViewer(prepared, this.sessionMeta(session)),
+            ),
+          );
         } catch {
           this.sessions.delete(session);
           this.sessionUrls.delete(session);
@@ -188,6 +195,11 @@ export class GameRoom extends RealtimeRoom {
     }
   }
 
+  private async turnDeadlineReached(): Promise<boolean> {
+    const turnDeadline = await this.state.storage.get<number>("turnDeadlineAt");
+    return turnDeadline !== undefined && Date.now() >= turnDeadline;
+  }
+
   async alarm(): Promise<void> {
     const gameId = await this.state.storage.get<string>("gameId");
     if (!gameId || !this.env.DB) return;
@@ -204,34 +216,22 @@ export class GameRoom extends RealtimeRoom {
 
     await this.state.storage.put("aiLoopRunning", true);
     try {
-      if (timerKind === "auction_bids") {
-        await applyAuctionBidWindowExpiry(
-          this.env.DB,
-          gameId,
-          this.env.GAME_ROOM,
-          this.env.KV,
-          this.env,
-        );
-      } else if (timerKind === "auction_settle") {
-        await applyAuctionSettleExpiry(
-          this.env.DB,
-          gameId,
-          this.env.GAME_ROOM,
-          this.env.KV,
-          this.env,
-        );
-      } else {
-        const actorId = await this.state.storage.get<string>("turnActorId");
-        if (!actorId) return;
-        await applyTimeoutTakeoverAndStep(
-          this.env.DB,
-          gameId,
-          actorId,
-          this.env.GAME_ROOM,
-          this.env.KV,
-          this.env,
-        );
-      }
+      // The alarm shell just loads context; the per-tick decision (trade expiry
+      // every tick + timerKind-gated auction settle/bids + turn takeover when the
+      // turn deadline has elapsed) lives in `handleGameRoomAlarmTick`.
+      await handleGameRoomAlarmTick({
+        gameId,
+        env: { ...this.env, DB: this.env.DB },
+        timerKind,
+        turnActorId: await this.state.storage.get<string>("turnActorId"),
+        turnDeadlineReached: await this.turnDeadlineReached(),
+      });
+    } catch (err) {
+      // An expiry/takeover helper persists with an optimistic guard and throws
+      // `game.state_conflict` when another writer advanced the game first. That
+      // is benign here: the other writer already moved state forward, so we just
+      // resync + reschedule below rather than letting the alarm tick fail.
+      if (err !== GameErrorKeys.STATE_CONFLICT) throw err;
     } finally {
       await this.state.storage.delete("aiLoopRunning");
       await this.resyncFromDatabase(gameId);
@@ -272,8 +272,8 @@ export class GameRoom extends RealtimeRoom {
     const raw = JSON.parse(row.state_json) as Record<string, unknown>;
     const gameState = normalizeGameState(raw);
     return spectator
-      ? toClientGameState(gameState as never, "spectator", viewerId)
-      : toClientGameState(gameState as never, "player", viewerId);
+      ? toClientGameStateFromInternal(gameState, "spectator", viewerId)
+      : toClientGameStateFromInternal(gameState, "player", viewerId);
   }
 
   private async resyncFromDatabase(gameId: string) {
@@ -305,32 +305,14 @@ export class GameRoom extends RealtimeRoom {
       return;
     }
 
+    // One canonical "is there AI work?" predicate (auction phase actors,
+    // off-turn trade-inbox recipients, AND current-turn AI) so the DO reliably
+    // wakes trade AI too — not just auction/current-turn AI. Mirrors the inline
+    // `chooseAiAction` discovery so the DO is the reliable orchestration owner.
     if (
       this.env.DB &&
       !(await this.state.storage.get<boolean>("aiLoopRunning")) &&
-      findNextAiActorForPhase(state)
-    ) {
-      await this.runAiLoop(gameId);
-      return;
-    }
-
-    if (
-      state.phase === "waiting_for_auction_bids" ||
-      state.phase === "waiting_for_auction_settle"
-    ) {
-      await syncGameRoomTimer(this.state.storage, gameId, state, (message) =>
-        this.broadcast(message),
-      );
-      return;
-    }
-
-    const actorId = currentTurnActorId(state);
-    if (!actorId) return;
-
-    if (
-      isAiControlledActor(state, actorId) &&
-      this.env.DB &&
-      !(await this.state.storage.get<boolean>("aiLoopRunning"))
+      hasAiWork(state)
     ) {
       await this.runAiLoop(gameId);
       return;
@@ -350,7 +332,7 @@ export class GameRoom extends RealtimeRoom {
         this.env.DB,
         gameId,
         this.env.GAME_ROOM,
-        16,
+        AI_LOOP_MAX_STEPS,
         this.env.KV,
         this.env,
       );
@@ -363,12 +345,9 @@ export class GameRoom extends RealtimeRoom {
         const latest = normalizeGameState(
           JSON.parse(row.state_json) as Record<string, unknown>,
         );
-        this.broadcast(
-          jsonEvent("game.schedule", {
-            gameId,
-            state: latest,
-          }),
-        );
+        // Same strip-and-carry as the worker→DO schedule POST, built by the one
+        // shared helper so the trade-offer privacy contract can't drift.
+        this.broadcast(JSON.stringify(buildGameScheduleEvent(gameId, latest)));
         await syncGameRoomTimer(this.state.storage, gameId, latest, (message) =>
           this.broadcast(message),
         );

@@ -1,3 +1,4 @@
+import { GameErrorKeys } from "@oligopoly/validation";
 import app from "@oligopoly/worker";
 import { describe, expect, it } from "vitest";
 
@@ -5,8 +6,16 @@ import { describe, expect, it } from "vitest";
 // Minimal D1 stub that holds an in-memory rows map.
 // ---------------------------------------------------------------------------
 type Row = Record<string, unknown>;
+type DbOptions = {
+  forceStateConflictOnStateUpdate?: boolean;
+};
 
-function makeDb(tables: Record<string, Row[]>) {
+function makeDb(tables: Record<string, Row[]>, options: DbOptions = {}) {
+  const mutationState = {
+    lastChanges: 0,
+    forceStateConflictOnStateUpdate:
+      options.forceStateConflictOnStateUpdate ?? false,
+  };
   const makeStmt = (query: string, boundParams: unknown[]) => ({
     bind: (...args: unknown[]) => makeStmt(query, args),
     async first<T>(): Promise<T | null> {
@@ -21,9 +30,9 @@ function makeDb(tables: Record<string, Row[]>) {
       const filtered = applyWhere(rows, query, boundParams);
       return { results: filtered as T[] };
     },
-    async run(): Promise<{ success: boolean }> {
-      applyMutation(query, boundParams, tables);
-      return { success: true };
+    async run(): Promise<{ success: boolean; meta: { changes: number } }> {
+      const changes = applyMutation(query, boundParams, tables, mutationState);
+      return { success: true, meta: { changes } };
     },
   });
 
@@ -59,18 +68,60 @@ function applyMutation(
   query: string,
   params: unknown[],
   tables: Record<string, Row[]>,
-) {
+  mutationState: {
+    lastChanges: number;
+    forceStateConflictOnStateUpdate: boolean;
+  },
+): number {
+  if (
+    /INSERT\s+INTO\s+games\s+\(id,\s*started_at,\s*player_ids_json\)\s+SELECT/i.test(
+      query,
+    )
+  ) {
+    const row = tables.games?.find((r) => r.id === params[0]);
+    if (row && mutationState.lastChanges === 0) {
+      throw new Error("UNIQUE constraint failed: games.id");
+    }
+    return 0;
+  }
+
   if (/UPDATE\s+games/i.test(query) && /state_json/i.test(query)) {
     const stateJson = params[0];
     const id = params[1];
-    const row = tables.games?.find((r) => r.id === id);
+    const expectedStateJson = /AND\s+state_json\s*=\s*\?/i.test(query)
+      ? params[2]
+      : undefined;
+    if (
+      expectedStateJson !== undefined &&
+      mutationState.forceStateConflictOnStateUpdate
+    ) {
+      mutationState.forceStateConflictOnStateUpdate = false;
+      const conflictedRow = tables.games?.find((r) => r.id === id);
+      if (conflictedRow) {
+        conflictedRow.state_json = JSON.stringify({ gameId: id, round: 99 });
+      }
+    }
+    const row = tables.games?.find(
+      (r) =>
+        r.id === id &&
+        (expectedStateJson === undefined || r.state_json === expectedStateJson),
+    );
     if (row) {
       row.state_json = stateJson;
+      mutationState.lastChanges = 1;
+      return 1;
     }
-    return;
+    mutationState.lastChanges = 0;
+    return 0;
   }
 
   if (/INSERT\s+INTO\s+game_log/i.test(query)) {
+    // Guarded inserts append [gameId, stateJson] for the EXISTS predicate; they
+    // must no-op when the games row was not advanced to that state (lost race).
+    const guarded = appliedGuardPresent(query);
+    if (guarded && !appliedGuardSatisfied(tables, params)) {
+      return 0;
+    }
     const [
       id,
       game_id,
@@ -89,7 +140,43 @@ function applyMutation(
       payload_json,
       created_at,
     });
+    return 1;
   }
+
+  if (/UPDATE\s+lobbies\s+SET\s+status\s*=\s*'finished'/i.test(query)) {
+    if (appliedGuardPresent(query) && !appliedGuardSatisfied(tables, params)) {
+      return 0;
+    }
+    const lobbyId = /SELECT\s+lobby_id\s+FROM\s+games/i.test(query)
+      ? tables.games?.find((r) => r.id === params[0])?.lobby_id
+      : params[0];
+    const row = tables.lobbies?.find((r) => r.id === lobbyId);
+    if (row) {
+      row.status = "finished";
+      return 1;
+    }
+    return 0;
+  }
+
+  return 0;
+}
+
+function appliedGuardPresent(query: string): boolean {
+  return /EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+games\s+WHERE\s+id\s*=\s*\?\s+AND\s+state_json\s*=\s*\?\s*\)/i.test(
+    query,
+  );
+}
+
+// The guard binds [gameId, stateJson] are always the last two params.
+function appliedGuardSatisfied(
+  tables: Record<string, Row[]>,
+  params: unknown[],
+): boolean {
+  const stateJson = params[params.length - 1];
+  const gameId = params[params.length - 2];
+  return (tables.games ?? []).some(
+    (r) => r.id === gameId && r.state_json === stateJson,
+  );
 }
 
 function applyWhere(rows: Row[], query: string, params: unknown[]): Row[] {
@@ -204,6 +291,24 @@ function makeEnv(extraTables: Record<string, Row[]> = {}) {
   };
 }
 
+function makeEnvWithOptions(
+  extraTables: Record<string, Row[]>,
+  options: DbOptions,
+) {
+  return {
+    DB: makeDb(
+      {
+        users: [cloneRow(userA), cloneRow(userB), cloneRow(outsiderUser)],
+        auth_sessions: [],
+        games: [cloneRow(activeGame), cloneRow(completedGame)],
+        game_log: [cloneRow(logEntry), cloneRow(logEntryCompleted)],
+        ...extraTables,
+      },
+      options,
+    ),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/games
 // ---------------------------------------------------------------------------
@@ -311,6 +416,68 @@ describe("GET /api/games/:id/log", () => {
     );
     expect(res.status).toBe(404);
   });
+
+  // ADV-1: private trade terms must reach only the proposer/recipient — never
+  // other participants of the same game.
+  it("hides private trade log entries from non-party participants", async () => {
+    const threePlayerGame: Row = {
+      id: "game-trade",
+      status: "active",
+      player_ids_json: JSON.stringify([PLAYER_A, PLAYER_B, "player-c"]),
+      started_at: 1000,
+      ended_at: null,
+      winner_id: null,
+      state_json: JSON.stringify({ gameId: "game-trade", round: 1 }),
+    };
+    const tradeLog: Row = {
+      id: "log-trade",
+      game_id: "game-trade",
+      round: 1,
+      player_id: PLAYER_A,
+      action_type: "trade_proposed",
+      payload_json: JSON.stringify({
+        offerId: "trade-1",
+        proposerId: PLAYER_A,
+        recipientId: PLAYER_B,
+        gives: { capital: 100, tilePositions: [3] },
+        receives: { capital: 50, tilePositions: [6] },
+        status: "pending",
+      }),
+      created_at: 1001,
+    };
+    const env = makeEnv({
+      games: [cloneRow(threePlayerGame)],
+      game_log: [cloneRow(tradeLog)],
+      users: [
+        cloneRow(userA),
+        cloneRow(userB),
+        { id: "player-c", username: "player-c", role: "user" },
+      ],
+    });
+
+    // A participant in the trade sees the full entry.
+    const partyRes = await app.request(
+      "/api/games/game-trade/log",
+      { headers: { "x-subject": PLAYER_B } },
+      env,
+    );
+    const partyBody = await partyRes.json<{
+      log: Array<{ actionType: string; payload: Record<string, unknown> }>;
+    }>();
+    expect(partyBody.log).toHaveLength(1);
+    expect(partyBody.log[0].payload.gives).toBeDefined();
+
+    // A non-party participant must NOT see the entry or its terms.
+    const outsiderRes = await app.request(
+      "/api/games/game-trade/log",
+      { headers: { "x-subject": "player-c" } },
+      env,
+    );
+    const outsiderBody = await outsiderRes.json<{ log: unknown[] }>();
+    expect(outsiderBody.log).toEqual([]);
+    expect(JSON.stringify(outsiderBody)).not.toContain("gives");
+    expect(JSON.stringify(outsiderBody)).not.toContain("receives");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -344,6 +511,220 @@ describe("GET /api/games/:id/replay", () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ replay: unknown[] }>();
     expect(Array.isArray(body.replay)).toBe(true);
+  });
+});
+
+describe("POST /api/games/:id/action", () => {
+  it("returns 409 for optimistic state conflicts", async () => {
+    const conflictGame: Row = {
+      id: "game-conflict",
+      status: "active",
+      player_ids_json: JSON.stringify([PLAYER_A, PLAYER_B]),
+      started_at: 2000,
+      ended_at: null,
+      winner_id: null,
+      state_json: JSON.stringify({
+        gameId: "game-conflict",
+        round: 1,
+        phase: "action",
+        currentPlayerIndex: 0,
+        turnOrder: [PLAYER_A, PLAYER_B],
+        freeMarketPool: 0,
+        pendingBuyTilePosition: null,
+        lastDiceRoll: null,
+        winnerId: null,
+        eliminatedPlayerIds: [],
+        settings: { currencySymbol: "$" },
+        players: [
+          {
+            playerId: PLAYER_A,
+            position: 0,
+            capital: 1000,
+            ownedTilePositions: [3],
+            mortgagedTilePositions: [],
+            developmentTokens: {},
+            trustworthiness: 7,
+            actionPointsRemaining: 2,
+            inRegulation: false,
+            doublesCount: 0,
+            isOnDiagonal: false,
+          },
+          {
+            playerId: PLAYER_B,
+            position: 0,
+            capital: 900,
+            ownedTilePositions: [6],
+            mortgagedTilePositions: [],
+            developmentTokens: {},
+            trustworthiness: 7,
+            actionPointsRemaining: 2,
+            inRegulation: false,
+            doublesCount: 0,
+            isOnDiagonal: false,
+          },
+        ],
+        tiles: [
+          {
+            position: 3,
+            ownerId: PLAYER_A,
+            mortgaged: false,
+            developmentTokens: 0,
+          },
+          {
+            position: 6,
+            ownerId: PLAYER_B,
+            mortgaged: false,
+            developmentTokens: 0,
+          },
+        ],
+      }),
+    };
+    const env = makeEnvWithOptions(
+      { games: [conflictGame], game_log: [] },
+      { forceStateConflictOnStateUpdate: true },
+    );
+
+    const res = await app.request(
+      "/api/games/game-conflict/action",
+      {
+        method: "POST",
+        headers: {
+          "x-subject": PLAYER_A,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "propose_trade",
+          recipientId: PLAYER_B,
+          gives: { capital: 100, tilePositions: [3] },
+          receives: { capital: 50, tilePositions: [6] },
+        }),
+      },
+      env,
+    );
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      error: GameErrorKeys.STATE_CONFLICT,
+    });
+  });
+
+  // ADV2-1: `expirePendingTradeOffers` runs at the start of every action and
+  // emits `trade_expired` entries carrying the full offer terms. A non-party
+  // participant who merely triggers another pair's expiry (e.g. by ending their
+  // turn) must never receive those terms in the action HTTP response.
+  it("redacts another pair's expired-trade terms from the actor's response", async () => {
+    const player = (
+      id: string,
+      capital: number,
+      ownedTilePositions: number[],
+    ) => ({
+      playerId: id,
+      position: 0,
+      capital,
+      ownedTilePositions,
+      mortgagedTilePositions: [],
+      developmentTokens: {},
+      trustworthiness: 7,
+      actionPointsRemaining: 2,
+      inRegulation: false,
+      doublesCount: 0,
+      isOnDiagonal: false,
+    });
+    const expiringGame: Row = {
+      id: "game-expire",
+      status: "active",
+      player_ids_json: JSON.stringify([PLAYER_A, PLAYER_B, "player-c"]),
+      started_at: 3000,
+      ended_at: null,
+      winner_id: null,
+      state_json: JSON.stringify({
+        gameId: "game-expire",
+        round: 1,
+        phase: "action",
+        currentPlayerIndex: 0,
+        turnOrder: [PLAYER_A, PLAYER_B, "player-c"],
+        freeMarketPool: 0,
+        pendingBuyTilePosition: null,
+        lastDiceRoll: null,
+        winnerId: null,
+        eliminatedPlayerIds: [],
+        settings: { currencySymbol: "$" },
+        players: [
+          player(PLAYER_A, 1000, [3]),
+          player(PLAYER_B, 900, [6]),
+          player("player-c", 800, [9]),
+        ],
+        tiles: [
+          {
+            position: 3,
+            ownerId: PLAYER_A,
+            mortgaged: false,
+            developmentTokens: 0,
+          },
+          {
+            position: 6,
+            ownerId: PLAYER_B,
+            mortgaged: false,
+            developmentTokens: 0,
+          },
+          {
+            position: 9,
+            ownerId: "player-c",
+            mortgaged: false,
+            developmentTokens: 0,
+          },
+        ],
+        // A pending B<->C offer that already expired (expiresAt in the past).
+        tradeOffers: [
+          {
+            id: "trade-game-expire-1",
+            gameId: "game-expire",
+            proposerId: PLAYER_B,
+            recipientId: "player-c",
+            gives: { capital: 4242, tilePositions: [6] },
+            receives: { capital: 9191, tilePositions: [9] },
+            status: "pending",
+            createdAt: 1,
+            expiresAt: 1,
+            counterCount: 0,
+          },
+        ],
+      }),
+    };
+    const env = makeEnv({
+      games: [cloneRow(expiringGame)],
+      game_log: [],
+      users: [
+        cloneRow(userA),
+        cloneRow(userB),
+        { id: "player-c", username: "player-c", role: "user" },
+      ],
+    });
+
+    // Player A (not a party to the B<->C trade) ends their turn, which triggers
+    // the offer's expiry inside applyAction.
+    const res = await app.request(
+      "/api/games/game-expire/action",
+      {
+        method: "POST",
+        headers: { "x-subject": PLAYER_A, "content-type": "application/json" },
+        body: JSON.stringify({ type: "end_turn" }),
+      },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      logEntries?: Array<{ actionType: string }>;
+    }>();
+    // The private trade entry must be dropped for the non-party actor, and the
+    // offer terms must not appear anywhere in the response body.
+    expect(
+      (body.logEntries ?? []).some((e) => e.actionType === "trade_expired"),
+    ).toBe(false);
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("4242");
+    expect(serialized).not.toContain("9191");
   });
 });
 

@@ -7,6 +7,7 @@ import {
   CreateLobbyInputSchema,
   CurrencyMultiplierSchema,
   GameActionSchema,
+  GameErrorKeys,
   GamePhaseSchema,
   GameRealtimeEventSchema,
   GameStateSchema,
@@ -75,6 +76,12 @@ describe("UpdateUserSettingsInputSchema", () => {
   });
 });
 
+describe("GameErrorKeys", () => {
+  it("includes optimistic state conflict", () => {
+    expect(GameErrorKeys.STATE_CONFLICT).toBe("game.state_conflict");
+  });
+});
+
 describe("AI and realtime schemas", () => {
   it("accepts lobby AI slots on create inputs", () => {
     const result = CreateLobbyInputSchema.safeParse({
@@ -126,6 +133,15 @@ describe("AI and realtime schemas", () => {
         gameId: "game-1",
         currentPlayerId: "ai:1",
         deadlineAt: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      GameRealtimeEventSchema.safeParse({
+        type: "game.timer",
+        sentAt: 1,
+        gameId: "game-1",
+        deadlineAt: 2,
+        timerKind: "trade_offer",
       }).success,
     ).toBe(true);
   });

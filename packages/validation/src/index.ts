@@ -42,6 +42,18 @@ export const NegotiationErrorKeys = {
     "negotiation.syndicate_dissolution_requires_unanimous_vote",
 } as const;
 
+export const TradeErrorKeys = {
+  OFFER_NOT_FOUND: "trade.offer_not_found",
+  OFFER_NOT_PENDING: "trade.offer_not_pending",
+  OFFER_EXPIRED: "trade.offer_expired",
+  INVALID_PARTY: "trade.invalid_party",
+  INVALID_TERMS: "trade.invalid_terms",
+  TILE_NOT_OWNED: "trade.tile_not_owned",
+  TILE_MORTGAGED: "trade.tile_mortgaged",
+  INSUFFICIENT_CAPITAL: "trade.insufficient_capital",
+  COUNTER_LIMIT_REACHED: "trade.counter_limit_reached",
+} as const;
+
 /** Stable keys returned by `applyGameAction` in `@oligopoly/shared` */
 export const GameEngineErrorKeys = {
   NOT_YOUR_TURN: "game.not_your_turn",
@@ -207,7 +219,9 @@ export const GameRealtimeEventSchema = z.discriminatedUnion("type", [
     gameId: z.string(),
     currentPlayerId: z.string().optional(),
     deadlineAt: z.number().nullable(),
-    timerKind: z.enum(["turn", "auction_bids", "auction_settle"]).optional(),
+    timerKind: z
+      .enum(["turn", "auction_bids", "auction_settle", "trade_offer"])
+      .optional(),
   }),
   z.object({
     type: z.literal("game.ai_action"),

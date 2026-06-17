@@ -39,7 +39,11 @@ function createAlarmTrackingState() {
     },
     deleteAlarm: async () => {},
   };
-  return { state: { storage } as unknown as DurableObjectState, setAlarmCalls };
+  return {
+    state: { storage } as unknown as DurableObjectState,
+    setAlarmCalls,
+    store,
+  };
 }
 
 const humanPlayer = (playerId: string, actionPoints: number) => ({
@@ -133,5 +137,242 @@ describe("Durable Object notify routing", () => {
     expect(res.status).toBe(200);
     expect(setAlarmCalls.length).toBeGreaterThan(0);
     expect(setAlarmCalls.at(-1) ?? 0).toBeGreaterThan(Date.now());
+  });
+
+  it("schedules the trade offer deadline when it is the earliest timer", async () => {
+    const { state, setAlarmCalls, store } = createAlarmTrackingState();
+    const room = new GameRoom(state, {});
+    const deadline = Date.now() + 30_000;
+    const gameState = {
+      gameId: "g1",
+      round: 1,
+      phase: "action",
+      turnOrder: ["p1", "p2"],
+      currentPlayerIndex: 0,
+      players: [humanPlayer("p1", 2), humanPlayer("p2", 0)],
+      settings: { turnTimeout: "5min" },
+      tradeOffers: [
+        {
+          id: "trade-1",
+          gameId: "g1",
+          proposerId: "p1",
+          recipientId: "p2",
+          gives: { capital: 100, tilePositions: [] },
+          receives: { capital: 0, tilePositions: [] },
+          status: "pending",
+          createdAt: Date.now(),
+          expiresAt: deadline,
+          counterCount: 0,
+        },
+      ],
+    };
+    const res = await room.fetch(
+      notifyRequest("/notify?gameId=g1", {
+        type: "game.action_applied",
+        gameId: "g1",
+        state: gameState,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(setAlarmCalls.at(-1)).toBe(deadline);
+    expect(store.get("timerKind")).toBe("trade_offer");
+    expect(store.get("turnActorId")).toBe("p1");
+    const preservedTurnDeadline = store.get("turnDeadlineAt") as number;
+    expect(preservedTurnDeadline).toBeGreaterThan(deadline);
+  });
+
+  // ADV-3: an expiry/takeover helper that throws the optimistic-conflict string
+  // (another writer advanced state first) must NOT abort the whole alarm tick.
+  it("swallows game.state_conflict thrown during alarm expiry and resyncs", async () => {
+    const { state, store } = createAlarmTrackingState();
+    store.set("gameId", "g1");
+    store.set("timerKind", "trade_offer");
+    store.set("timerDeadlineAt", Date.now() - 1000);
+
+    const activeStateJson = JSON.stringify({
+      gameId: "g1",
+      round: 1,
+      phase: "action",
+      turnOrder: ["p1", "p2"],
+      currentPlayerIndex: 0,
+      players: [humanPlayer("p1", 2), humanPlayer("p2", 0)],
+      settings: { turnTimeout: "5min" },
+      eliminatedPlayerIds: [],
+      tradeOffers: [
+        {
+          id: "trade-1",
+          gameId: "g1",
+          proposerId: "p1",
+          recipientId: "p2",
+          gives: { capital: 100, tilePositions: [] },
+          receives: { capital: 0, tilePositions: [] },
+          status: "pending",
+          createdAt: Date.now() - 60_000,
+          expiresAt: Date.now() - 1000,
+          counterCount: 0,
+        },
+      ],
+    });
+
+    // Minimal DB: reads return the active game; any guarded state UPDATE reports
+    // zero changes, so persistGameActionResult throws "game.state_conflict".
+    const db = {
+      prepare: (query: string) => {
+        const stmt = {
+          bind: () => stmt,
+          run: async () => ({ meta: { changes: 0 } }),
+          all: async () => ({ results: [] }),
+          first: async () =>
+            /FROM games/i.test(query)
+              ? { id: "g1", status: "active", state_json: activeStateJson }
+              : null,
+        };
+        return stmt;
+      },
+      batch: async (stmts: Array<{ run: () => Promise<unknown> }>) =>
+        Promise.all(stmts.map((s) => s.run())),
+    } as unknown as D1Database;
+
+    const room = new GameRoom(state, { DB: db });
+
+    // The conflict is caught internally; alarm() resolves instead of rejecting.
+    await expect(room.alarm()).resolves.toBeUndefined();
+    // aiLoopRunning flag is cleared in the finally block.
+    expect(store.get("aiLoopRunning")).toBeUndefined();
+  });
+
+  // TC-5: trade-offer alarm expires the pending offer; takeover only fires when
+  // the turn deadline has also elapsed.
+  function tradeAlarmDb(initialStateJson: string) {
+    const games = [
+      { id: "g1", status: "active", state_json: initialStateJson },
+    ];
+    const logActionTypes: string[] = [];
+    const db = {
+      prepare: (query: string) => {
+        let bound: unknown[] = [];
+        const stmt = {
+          bind: (...args: unknown[]) => {
+            bound = args;
+            return stmt;
+          },
+          run: async () => {
+            if (/UPDATE games SET state_json/i.test(query)) {
+              const row = games.find((g) => g.id === bound[1]);
+              if (row) row.state_json = bound[0] as string;
+              return { meta: { changes: 1 } };
+            }
+            if (/INSERT INTO game_log/i.test(query)) {
+              logActionTypes.push(String(bound[4]));
+            }
+            return { meta: { changes: 1 } };
+          },
+          all: async () => ({ results: [] }),
+          first: async () =>
+            /FROM games/i.test(query) ? games.find((g) => g.id === "g1") : null,
+        };
+        return stmt;
+      },
+      batch: async (stmts: Array<{ run: () => Promise<unknown> }>) =>
+        Promise.all(stmts.map((s) => s.run())),
+    } as unknown as D1Database;
+    return { db, games, logActionTypes };
+  }
+
+  function expiredTradeState(turnDeadlineInPast: boolean) {
+    return JSON.stringify({
+      gameId: "g1",
+      round: 1,
+      phase: "action",
+      turnOrder: ["p1", "p2"],
+      currentPlayerIndex: turnDeadlineInPast ? 0 : 1,
+      players: [humanPlayer("p1", 2), humanPlayer("p2", 0)],
+      settings: { turnTimeout: "5min" },
+      eliminatedPlayerIds: [],
+      tradeOffers: [
+        {
+          id: "trade-1",
+          gameId: "g1",
+          proposerId: "p1",
+          recipientId: "p2",
+          gives: { capital: 100, tilePositions: [] },
+          receives: { capital: 0, tilePositions: [] },
+          status: "pending",
+          createdAt: Date.now() - 600_000,
+          expiresAt: Date.now() - 1000,
+          counterCount: 0,
+        },
+      ],
+    });
+  }
+
+  it("expires the pending offer without takeover when the turn deadline is in the future", async () => {
+    const { db, games, logActionTypes } = tradeAlarmDb(
+      expiredTradeState(false),
+    );
+    const { state, store } = createAlarmTrackingState();
+    store.set("gameId", "g1");
+    store.set("timerKind", "trade_offer");
+    store.set("timerDeadlineAt", Date.now() - 1000);
+    store.set("turnActorId", "p2");
+    store.set("turnDeadlineAt", Date.now() + 300_000);
+
+    const room = new GameRoom(state, { DB: db });
+    await room.alarm();
+
+    const finalState = JSON.parse(games[0].state_json) as {
+      tradeOffers: Array<{ status: string }>;
+    };
+    expect(finalState.tradeOffers[0].status).toBe("expired");
+    expect(logActionTypes).toContain("trade_expired");
+    expect(logActionTypes).not.toContain("timeout_takeover");
+  });
+
+  it("expires the offer AND invokes takeover when the turn deadline has passed", async () => {
+    const { db, logActionTypes } = tradeAlarmDb(expiredTradeState(true));
+    const { state, store } = createAlarmTrackingState();
+    store.set("gameId", "g1");
+    store.set("timerKind", "trade_offer");
+    store.set("timerDeadlineAt", Date.now() - 1000);
+    store.set("turnActorId", "p1");
+    store.set("turnDeadlineAt", Date.now() - 1000);
+
+    const room = new GameRoom(state, { DB: db });
+    await room.alarm();
+
+    expect(logActionTypes).toContain("trade_expired");
+    expect(logActionTypes).toContain("timeout_takeover");
+  });
+
+  it("restores the original turn deadline after a trade expiry resync", async () => {
+    const { state, setAlarmCalls, store } = createAlarmTrackingState();
+    const room = new GameRoom(state, {});
+    const deadline = Date.now() + 30_000;
+    const turnDeadline = Date.now() + 300_000;
+    store.set("turnActorId", "p1");
+    store.set("turnDeadlineAt", turnDeadline);
+    const gameState = {
+      gameId: "g1",
+      round: 1,
+      phase: "action",
+      turnOrder: ["p1", "p2"],
+      currentPlayerIndex: 0,
+      players: [humanPlayer("p1", 2), humanPlayer("p2", 0)],
+      settings: { turnTimeout: "5min" },
+      tradeOffers: [],
+    };
+
+    const res = await room.fetch(
+      notifyRequest("/notify?gameId=g1", {
+        type: "game.action_applied",
+        gameId: "g1",
+        state: gameState,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(deadline).toBeLessThan(turnDeadline);
+    expect(setAlarmCalls.at(-1)).toBe(turnDeadline);
+    expect(store.get("turnDeadlineAt")).toBe(turnDeadline);
   });
 });

@@ -108,8 +108,10 @@ export type { AiDecision } from "./engine/ai.js";
 export {
   chooseAiAction,
   chooseAiActionForPlayer,
+  findNextAiActor,
   findNextAiActorForPhase,
   findNextAiAuctionActor,
+  hasAiWork,
 } from "./engine/ai.js";
 export {
   applyTimeoutTakeover,
@@ -166,6 +168,14 @@ export {
   DEFAULT_CONTRIBUTION_WEIGHTS,
 } from "./engine/contributionScore.js";
 export { processCoordinationPhase } from "./engine/coordinationPhase.js";
+export type {
+  DeadlineCandidate,
+  DeadlineKind,
+} from "./engine/deadlines.js";
+export {
+  getActiveDeadlineCandidates,
+  phaseHasOwnDeadline,
+} from "./engine/deadlines.js";
 export { shuffleDeterministic } from "./engine/deckShuffle.js";
 export {
   BOARD_SIZE,
@@ -228,6 +238,7 @@ export type {
   NegotiationThreadState,
   PendingForeclosureState,
   RateCardState,
+  TradeOfferState,
 } from "./engine/gameStateTypes.js";
 export type { MarketEventTrigger } from "./engine/marketEvents.js";
 export {
@@ -316,6 +327,25 @@ export {
   syndicateMarketValue,
   tileOwnedByController,
 } from "./engine/syndicate.js";
+export type {
+  PrivateTradeLogActionType,
+  TileTradeability,
+} from "./engine/tradeActions.js";
+export {
+  canCounterTrade,
+  canProposeTrade,
+  DEFAULT_TRADE_TIMEOUT_MINUTES,
+  expirePendingTradeOffers,
+  expirePendingTradeOffersForGameOver,
+  isTileTradeable,
+  listTradeableTilePositions,
+  MAX_TRADE_COUNTERS,
+  nextTradeOfferExpiry,
+  PRIVATE_TRADE_LOG_ACTION_TYPES,
+  TRADE_OFFER_HISTORY_LIMIT,
+  tileTradeability,
+  tradeTransferValue,
+} from "./engine/tradeActions.js";
 export type { TrustworthinessRestrictions } from "./engine/trustworthiness.js";
 export {
   applyHandshakeBreach,

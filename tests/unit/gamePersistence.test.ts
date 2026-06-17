@@ -1,9 +1,30 @@
 import { describe, expect, it } from "vitest";
+import { splitBroadcastPayload } from "../../packages/worker/src/services/gameBroadcastVisibility.js";
 import {
   logEntriesForBroadcast,
+  notifyGameActionResult,
+  persistGameActionResult,
   publicStateForBroadcast,
   toActionResponse,
 } from "../../packages/worker/src/services/gamePersistence.js";
+import { createD1Stub } from "../helpers/workerGameplayHarness.js";
+
+/** Capture the event POSTed to the Durable Object by `broadcastGameEvent`. */
+function captureBroadcastRoom() {
+  const events: Record<string, unknown>[] = [];
+  const room = {
+    idFromName: (name: string) => name,
+    get: () => ({
+      fetch: async (request: Request) => {
+        events.push(
+          JSON.parse(await request.text()) as Record<string, unknown>,
+        );
+        return new Response("ok");
+      },
+    }),
+  } as unknown as DurableObjectNamespace;
+  return { room, events };
+}
 
 describe("logEntriesForBroadcast", () => {
   it("filters logs marked as non-broadcast while preserving persisted entries", () => {
@@ -56,6 +77,25 @@ describe("logEntriesForBroadcast", () => {
 
     expect(logEntriesForBroadcast(entries)).toEqual([]);
   });
+
+  it("broadcasts trade action entries", () => {
+    const entries = [
+      {
+        playerId: "p1",
+        actionType: "trade_proposed",
+        payload: {
+          offerId: "trade-1",
+          proposerId: "p1",
+          recipientId: "p2",
+          gives: { capital: 100, tilePositions: [3] },
+          receives: { capital: 50, tilePositions: [6] },
+          status: "pending",
+        },
+      },
+    ];
+
+    expect(logEntriesForBroadcast(entries)).toEqual(entries);
+  });
 });
 
 describe("publicStateForBroadcast", () => {
@@ -107,10 +147,25 @@ describe("publicStateForBroadcast", () => {
           messages: [],
         },
       ],
+      tradeOffers: [
+        {
+          id: "trade-1",
+          gameId: "game-1",
+          proposerId: "p1",
+          recipientId: "p2",
+          gives: { capital: 100, tilePositions: [3] },
+          receives: { capital: 50, tilePositions: [6] },
+          status: "pending",
+          createdAt: 1,
+          expiresAt: 2,
+          counterCount: 0,
+        },
+      ],
     } as never);
 
     expect("pendingInsiderPeek" in broadcastState).toBe(false);
     expect("handshakeAgreements" in broadcastState).toBe(false);
+    expect("tradeOffers" in broadcastState).toBe(false);
     expect(
       broadcastState.negotiationThreads?.map((thread) => thread.id),
     ).toEqual(["open-thread"]);
@@ -188,5 +243,245 @@ describe("toActionResponse", () => {
     );
 
     expect(response.logEntries).toEqual([]);
+  });
+});
+
+describe("splitBroadcastPayload", () => {
+  const offers = [
+    {
+      id: "trade-1",
+      gameId: "game-1",
+      proposerId: "p1",
+      recipientId: "p2",
+      gives: { capital: 100, tilePositions: [3] },
+      receives: { capital: 50, tilePositions: [6] },
+      status: "pending",
+      createdAt: 1,
+      expiresAt: 2,
+      counterCount: 0,
+    },
+  ];
+
+  it("strips tradeOffers off the public state and carries them separately", () => {
+    const { publicState, tradeOffers } = splitBroadcastPayload({
+      gameId: "game-1",
+      round: 1,
+      tradeOffers: offers,
+    });
+
+    expect("tradeOffers" in publicState).toBe(false);
+    expect(publicState).toEqual({ gameId: "game-1", round: 1 });
+    expect(tradeOffers).toEqual(offers);
+  });
+
+  it("omits the tradeOffers field entirely when there are none", () => {
+    const result = splitBroadcastPayload({ gameId: "game-1", round: 1 });
+
+    expect("tradeOffers" in result).toBe(false);
+    expect(result.publicState).toEqual({ gameId: "game-1", round: 1 });
+  });
+
+  it("preserves an empty tradeOffers array (still a carried side channel)", () => {
+    const result = splitBroadcastPayload({
+      gameId: "game-1",
+      round: 1,
+      tradeOffers: [],
+    });
+
+    // `Array.isArray([])` is true, so the helper keeps an empty `tradeOffers: []`
+    // on the side channel (matching the pre-existing truthy-array behaviour).
+    expect(result.tradeOffers).toEqual([]);
+    expect("tradeOffers" in result.publicState).toBe(false);
+  });
+});
+
+describe("notifyGameActionResult", () => {
+  // Privacy is safe-by-construction: the state on the broadcast event NEVER
+  // carries `tradeOffers`. The terms ride a separate `tradeOffers` field that
+  // only `GameRoom.broadcast` re-injects per-viewer, so a caller forwarding
+  // `event.state` raw cannot leak another player's offer terms.
+  it("strips tradeOffers from event.state and carries them separately", async () => {
+    const { room, events } = captureBroadcastRoom();
+    const offers = [
+      {
+        id: "trade-1",
+        gameId: "game-1",
+        proposerId: "p1",
+        recipientId: "p2",
+        gives: { capital: 100, tilePositions: [3] },
+        receives: { capital: 50, tilePositions: [6] },
+        status: "pending",
+        createdAt: 1,
+        expiresAt: 2,
+        counterCount: 0,
+      },
+    ];
+
+    await notifyGameActionResult(
+      "game-1",
+      {
+        state: {
+          gameId: "game-1",
+          round: 1,
+          players: [],
+          tiles: [],
+          tradeOffers: offers,
+        } as never,
+        logEntries: [
+          {
+            playerId: "p1",
+            actionType: "trade_proposed",
+            payload: { offerId: "trade-1" },
+          },
+        ],
+      },
+      [
+        {
+          id: "log-1",
+          gameId: "game-1",
+          round: 1,
+          playerId: "p1",
+          actionType: "trade_proposed",
+          payload: { offerId: "trade-1" },
+          createdAt: 1,
+        },
+      ],
+      { gameRoom: room },
+    );
+
+    expect(events).toHaveLength(1);
+    const event = events[0] as {
+      state: Record<string, unknown>;
+      tradeOffers?: unknown;
+    };
+    expect("tradeOffers" in event.state).toBe(false);
+    expect(event.tradeOffers).toEqual(offers);
+  });
+});
+
+describe("persistGameActionResult", () => {
+  it("rejects stale state writes before inserting logs", async () => {
+    const db = createD1Stub();
+    db._tables.games.push({
+      id: "game-1",
+      state_json: JSON.stringify({ gameId: "game-1", round: 2 }),
+      status: "active",
+    });
+
+    await expect(
+      persistGameActionResult(
+        db,
+        "game-1",
+        {
+          state: { gameId: "game-1", round: 3 } as never,
+          logEntries: [
+            {
+              playerId: "p1",
+              actionType: "trade_accepted",
+              payload: { offerId: "trade-1" },
+            },
+          ],
+        },
+        { expectedStateJson: JSON.stringify({ gameId: "game-1", round: 1 }) },
+      ),
+    ).rejects.toBe("game.state_conflict");
+    expect(db._tables.game_log).toEqual([]);
+  });
+
+  // TN-1: on the happy path the guarded state update, the log inserts, and the
+  // game-over/winner/lobby updates all commit together.
+  it("commits state, logs, and game-over follow-ups atomically", async () => {
+    const db = createD1Stub();
+    const expected = JSON.stringify({ gameId: "game-1", round: 1 });
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      state_json: expected,
+      status: "active",
+      player_ids_json: JSON.stringify(["p1", "p2"]),
+    });
+    db._tables.lobbies.push({ id: "lobby-1", status: "in_game" });
+
+    await persistGameActionResult(
+      db,
+      "game-1",
+      {
+        state: {
+          gameId: "game-1",
+          round: 2,
+          phase: "game_over",
+          winnerId: "p1",
+          players: [
+            { playerId: "p1", capital: 100, ownedTilePositions: [] },
+            { playerId: "p2", capital: 50, ownedTilePositions: [] },
+          ],
+          tiles: [],
+          syndicates: [],
+          kickedPlayerIds: [],
+        } as never,
+        logEntries: [
+          {
+            playerId: "p1",
+            actionType: "trade_accepted",
+            payload: { offerId: "trade-1" },
+          },
+          {
+            playerId: null,
+            actionType: "game_won",
+            payload: { winnerId: "p1" },
+          },
+        ],
+      },
+      { expectedStateJson: expected, notify: false },
+    );
+
+    const game = db._tables.games.find((row) => row.id === "game-1");
+    expect(game?.status).toBe("completed");
+    expect(game?.winner_id).toBe("p1");
+    expect(db._tables.lobbies.find((row) => row.id === "lobby-1")?.status).toBe(
+      "finished",
+    );
+    expect(db._tables.game_log).toHaveLength(2);
+  });
+
+  // TN-1: a conflicting game-over write rolls back every follow-up — no log
+  // rows, no status/winner change.
+  it("writes nothing on a conflicting game-over persist", async () => {
+    const db = createD1Stub();
+    db._tables.games.push({
+      id: "game-1",
+      lobby_id: "lobby-1",
+      state_json: JSON.stringify({ gameId: "game-1", round: 2 }),
+      status: "active",
+    });
+    db._tables.lobbies.push({ id: "lobby-1", status: "in_game" });
+
+    await expect(
+      persistGameActionResult(
+        db,
+        "game-1",
+        {
+          state: {
+            gameId: "game-1",
+            round: 3,
+            phase: "game_over",
+            winnerId: "p1",
+          } as never,
+          logEntries: [{ playerId: null, actionType: "game_won", payload: {} }],
+        },
+        {
+          expectedStateJson: JSON.stringify({ gameId: "game-1", round: 1 }),
+          notify: false,
+        },
+      ),
+    ).rejects.toBe("game.state_conflict");
+
+    const game = db._tables.games.find((row) => row.id === "game-1");
+    expect(game?.status).toBe("active");
+    expect(game?.winner_id ?? null).toBeNull();
+    expect(db._tables.lobbies.find((row) => row.id === "lobby-1")?.status).toBe(
+      "in_game",
+    );
+    expect(db._tables.game_log).toEqual([]);
   });
 });

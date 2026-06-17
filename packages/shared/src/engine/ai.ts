@@ -7,7 +7,13 @@ import {
   suggestAiAuctionBid,
 } from "./auction.js";
 import { isLiveAuction } from "./auctionMode.js";
+import { phaseHasOwnDeadline } from "./deadlines.js";
 import type { InternalGameState } from "./gameStateTypes.js";
+import {
+  aiTradeProposalAction,
+  aiTradeResponseAction,
+  findNextAiTradeActor,
+} from "./tradeAi.js";
 
 export type AiDecision = {
   actorId: string;
@@ -102,6 +108,16 @@ export function chooseAiActionForPlayer(
   const personality =
     resolveAiPersonality(state, actorId) ?? defaultPersonality;
 
+  // Off-turn trade-inbox responses run only when the current phase has no
+  // deadline of its own. During an auction window the phase actor wins so a
+  // pending trade can't stall live bidding (see `phaseHasOwnDeadline`).
+  if (!phaseHasOwnDeadline(state)) {
+    const tradeResponse = aiTradeResponseAction(state, actorId, personality);
+    if (tradeResponse) {
+      return { actorId, personality, action: tradeResponse };
+    }
+  }
+
   if (state.phase === "waiting_for_auction_bids" && state.pendingAuction) {
     if (
       !isLiveAuction(state.pendingAuction) &&
@@ -188,6 +204,10 @@ export function chooseAiActionForPlayer(
   }
 
   if (state.phase === "action") {
+    const tradeProposal = aiTradeProposalAction(state, actorId, personality);
+    if (tradeProposal) {
+      return { actorId, personality, action: tradeProposal };
+    }
     return { actorId, personality, action: { type: "end_turn" } };
   }
 
@@ -208,12 +228,40 @@ export function findNextAiActorForPhase(
   return finder ? finder(state) : null;
 }
 
-export function chooseAiAction(state: InternalGameState): AiDecision | null {
-  const phaseActor = findNextAiActorForPhase(state);
-  if (phaseActor) {
-    return chooseAiActionForPlayer(state, phaseActor);
+/**
+ * Single canonical "which AI actor (if any) owes an action right now?" used by
+ * BOTH the inline AI loop (`chooseAiAction`/`stepGameAiTurn`) and the Durable
+ * Object orchestration (`GameRoom.syncAfterStateChange`), so the DO reliably
+ * wakes trade-inbox AI too — not just auction/current-turn AI.
+ *
+ * Priority (highest first):
+ *   1. A phase actor when the phase drives its own deadline (auction windows) —
+ *      a pending trade must not preempt live bidding.
+ *   2. An off-turn trade-inbox recipient (deterministic earliest-expiring).
+ *   3. Any remaining phase actor, then the current-turn actor.
+ */
+export function findNextAiActor(state: InternalGameState): string | null {
+  if (phaseHasOwnDeadline(state)) {
+    const phaseActor = findNextAiActorForPhase(state);
+    if (phaseActor) return phaseActor;
   }
 
+  const tradeActor = findNextAiTradeActor(state);
+  if (tradeActor) return tradeActor;
+
+  const phaseActor = findNextAiActorForPhase(state);
+  if (phaseActor) return phaseActor;
+
   const actorId = currentPlayerId(state);
+  return actorId && isAiControlledActor(state, actorId) ? actorId : null;
+}
+
+/** True when any AI actor owes an action — the canonical "is there AI work?". */
+export function hasAiWork(state: InternalGameState): boolean {
+  return findNextAiActor(state) !== null;
+}
+
+export function chooseAiAction(state: InternalGameState): AiDecision | null {
+  const actorId = findNextAiActor(state);
   return actorId ? chooseAiActionForPlayer(state, actorId) : null;
 }

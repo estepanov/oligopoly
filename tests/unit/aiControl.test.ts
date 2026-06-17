@@ -1,6 +1,7 @@
 import {
   applyTimeoutTakeover,
   chooseAiAction,
+  initTileStates,
   isAiControlledActor,
   normalizeGameState,
   replaceKickedPlayerWithAi,
@@ -100,6 +101,218 @@ describe("aiControl", () => {
         expect(die).toBeLessThanOrEqual(6);
       }
     }
+  });
+
+  // TC-7: AI counters a below-margin but counterable offer, and rejects once
+  // the counter limit is reached.
+  const tradeResponseState = (counterCount: number) =>
+    normalizeGameState({
+      gameId: "g-trade",
+      round: 1,
+      phase: "action",
+      currentPlayerIndex: 0,
+      turnOrder: ["human-a", "ai:bot"],
+      freeMarketPool: 0,
+      affinityAssignments: {},
+      aiPlayers: [
+        { playerId: "ai:bot", name: "Bot", personality: "opportunist" },
+      ],
+      players: [
+        {
+          playerId: "human-a",
+          kind: "human",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 2,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+        {
+          playerId: "ai:bot",
+          kind: "ai",
+          aiPersonality: "opportunist",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [6],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 2,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+      ],
+      tiles: initTileStates().map((tile) =>
+        String(tile.position) === "6" ? { ...tile, ownerId: "ai:bot" } : tile,
+      ),
+      pendingBuyTilePosition: null,
+      lastDiceRoll: null,
+      winnerId: null,
+      eliminatedPlayerIds: [],
+      tradeOffers: [
+        {
+          id: "trade-g-trade-1",
+          gameId: "g-trade",
+          proposerId: "human-a",
+          recipientId: "ai:bot",
+          // AI is asked to give up tile 6 (cost 140) for only 50 capital.
+          gives: { capital: 50, tilePositions: [] },
+          receives: { capital: 0, tilePositions: [6] },
+          status: "pending",
+          createdAt: Date.now(),
+          expiresAt: Date.now() + 300_000,
+          counterCount,
+        },
+      ],
+      settings: {},
+    });
+
+  it("counters a below-margin offer that is still counterable", () => {
+    const decision = chooseAiAction(tradeResponseState(0));
+    expect(decision?.actorId).toBe("ai:bot");
+    expect(decision?.action.type).toBe("counter_trade");
+    const action = decision?.action as {
+      type: string;
+      receives: { capital: number };
+    };
+    // The AI asks the proposer to make up the tile-value gap (140 - 50 = 90).
+    expect(action.receives.capital).toBe(140);
+  });
+
+  it("rejects a below-margin offer once the counter limit is reached", () => {
+    const decision = chooseAiAction(tradeResponseState(2));
+    expect(decision?.actorId).toBe("ai:bot");
+    expect(decision?.action.type).toBe("reject_trade");
+  });
+
+  // Deterministic inbox selection: two humans propose to the same AI; the AI
+  // must answer the EARLIEST-expiring offer regardless of array order, so a
+  // later offer can't starve an earlier one based on `tradeOffers` ordering.
+  it("answers the earliest-expiring pending trade offer first", () => {
+    const now = Date.now();
+    const state = tradeResponseState(0);
+    state.tradeOffers = [
+      {
+        id: "trade-g-trade-2",
+        gameId: "g-trade",
+        proposerId: "human-a",
+        recipientId: "ai:bot",
+        gives: { capital: 50, tilePositions: [] },
+        receives: { capital: 0, tilePositions: [6] },
+        status: "pending",
+        createdAt: now,
+        expiresAt: now + 300_000,
+        counterCount: 0,
+      },
+      {
+        id: "trade-g-trade-1",
+        gameId: "g-trade",
+        proposerId: "human-a",
+        recipientId: "ai:bot",
+        gives: { capital: 50, tilePositions: [] },
+        receives: { capital: 0, tilePositions: [6] },
+        status: "pending",
+        createdAt: now,
+        // Earlier deadline despite appearing AFTER the other offer in the array.
+        expiresAt: now + 100_000,
+        counterCount: 0,
+      },
+    ];
+
+    const decision = chooseAiAction(state);
+    expect(decision?.actorId).toBe("ai:bot");
+    const action = decision?.action as { offerId?: string };
+    expect(action.offerId).toBe("trade-g-trade-1");
+  });
+
+  // Priority inversion guard: during a live auction window the AI must bid (the
+  // phase owns its deadline) rather than answer a pending inbox trade, which
+  // would stall the auction.
+  const auctionWithPendingTradeState = () =>
+    normalizeGameState({
+      gameId: "g-auction",
+      round: 1,
+      phase: "waiting_for_auction_bids",
+      currentPlayerIndex: 0,
+      turnOrder: ["human-a", "ai:bot"],
+      freeMarketPool: 0,
+      affinityAssignments: {},
+      aiPlayers: [
+        { playerId: "ai:bot", name: "Bot", personality: "opportunist" },
+      ],
+      players: [
+        {
+          playerId: "human-a",
+          kind: "human",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 2,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+        {
+          playerId: "ai:bot",
+          kind: "ai",
+          aiPersonality: "opportunist",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 2,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+      ],
+      tiles: initTileStates(),
+      pendingAuction: {
+        tilePosition: 6,
+        trigger: "decline",
+        auctionType: "sealed_bids",
+        submissions: {},
+        eligiblePlayerIds: ["human-a", "ai:bot"],
+        tieBreakRound: 0,
+        resumePhase: "waiting_for_roll",
+        bidDeadlineAt: Date.now() + 60_000,
+      },
+      pendingBuyTilePosition: null,
+      lastDiceRoll: null,
+      winnerId: null,
+      eliminatedPlayerIds: [],
+      tradeOffers: [
+        {
+          id: "trade-g-auction-1",
+          gameId: "g-auction",
+          proposerId: "human-a",
+          recipientId: "ai:bot",
+          gives: { capital: 50, tilePositions: [] },
+          receives: { capital: 0, tilePositions: [] },
+          status: "pending",
+          createdAt: Date.now(),
+          expiresAt: Date.now() + 300_000,
+          counterCount: 0,
+        },
+      ],
+      settings: { auctionType: "sealed_bids" },
+    });
+
+  it("bids in a live auction instead of answering a pending inbox trade", () => {
+    const decision = chooseAiAction(auctionWithPendingTradeState());
+    expect(decision?.actorId).toBe("ai:bot");
+    expect(decision?.action.type).toBe("auction_bid");
   });
 
   it("replaces kicked humans with permanent AI control", () => {

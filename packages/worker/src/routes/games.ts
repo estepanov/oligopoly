@@ -1,5 +1,6 @@
 import {
   applyAction,
+  hasAiWork,
   isLoopbackUrl,
   normalizeGameState,
 } from "@oligopoly/shared";
@@ -12,11 +13,16 @@ import {
 import { type Context, Hono } from "hono";
 import {
   type PersistedGameState,
+  redactLogEntriesForViewer,
   toClientGameState,
 } from "../gameStateView.js";
 import { buildEngineActionInput } from "../lib/dice.js";
 import { upgradeWebSocket } from "../realtime/upgrade.js";
-import { stepGameAiTurn } from "../services/gameAi.js";
+import {
+  AI_LOOP_MAX_STEPS,
+  runAiTurnLoop,
+  stepGameAiTurn,
+} from "../services/gameAi.js";
 import { listGames, toGameSummary } from "../services/gameListings.js";
 import {
   notifyGameActionResult,
@@ -276,7 +282,9 @@ gameRoutes.get("/:id/log", async (c) => {
     createdAt: row.created_at,
   }));
 
-  return c.json({ log });
+  // Private trade terms must only reach the proposer/recipient, never other
+  // players in the same game (mirrors the realtime broadcast redaction).
+  return c.json({ log: redactLogEntriesForViewer(log, subject) });
 });
 
 // ---------------------------------------------------------------------------
@@ -340,7 +348,7 @@ gameRoutes.get("/:id/replay", async (c) => {
     createdAt: row.created_at,
   }));
 
-  return c.json({ replay });
+  return c.json({ replay: redactLogEntriesForViewer(replay, subject) });
 });
 
 // ---------------------------------------------------------------------------
@@ -433,36 +441,102 @@ gameRoutes.post("/:id/action", async (c) => {
       actorId: subject,
       kv: c.env?.KV,
       notify: false,
+      expectedStateJson: row.state_json,
     });
     timings.push({
       name: "persist",
       duration: nowMs() - persistStartedAt,
     });
-
+    // Broadcast the human action result. Ordering matters: the inline AI loop
+    // below persists AND broadcasts each follow-up step (NEWER state) during this
+    // request. `hasAiWork` predicts whether that loop will act:
+    //   - No AI work: defer the human notify off the response path (`waitUntil`)
+    //     for low latency — it is the only broadcast, so there is nothing to
+    //     race with.
+    //   - AI will act: broadcast the human result inline (awaited) BEFORE the
+    //     loop so realtime clients see human-state (with the human action's own
+    //     log entries, e.g. `trade_proposed`) and then the AI's newer state —
+    //     monotonic, no rewind. Deferring it here would let the loop's broadcasts
+    //     land first and then rewind clients to pre-AI state while dropping the
+    //     human action's log entries (the client appends realtime log deltas; it
+    //     does not refetch).
+    // Either way the notify is best-effort and a no-op when `GAME_ROOM` is
+    // unbound (tests / non-realtime).
     const notifyStartedAt = nowMs();
-    scheduleActionSideEffect(
-      c,
-      notifyGameActionResult(id, result, logEntries, {
+    const aiWillFollow = hasAiWork(result.state);
+    if (aiWillFollow) {
+      await notifyGameActionResult(id, result, logEntries, {
         gameRoom: c.env?.GAME_ROOM,
         actorId: subject,
         kv: c.env?.KV,
-      }),
-    );
+      }).catch((err) =>
+        console.error("Failed to notify game action result", {
+          gameId: id,
+          error: err,
+        }),
+      );
+    } else {
+      scheduleActionSideEffect(
+        c,
+        notifyGameActionResult(id, result, logEntries, {
+          gameRoom: c.env?.GAME_ROOM,
+          actorId: subject,
+          kv: c.env?.KV,
+        }),
+      );
+    }
     timings.push({
       name: "notify_schedule",
       duration: nowMs() - notifyStartedAt,
     });
 
+    // The AI follow-up loop runs inline (awaited) on purpose. The Durable Object
+    // (`GameRoom.syncAfterStateChange`) ALSO drives `runAiTurnLoop` when it
+    // receives this action's broadcast, but that path is (a) only wired when
+    // `GAME_ROOM` is bound and (b) driven off the response via `waitUntil`, so it
+    // is not observable to a caller that immediately reads back state. Several
+    // flows — and the e2e/integration harness, which has no `GAME_ROOM` binding
+    // at all — depend on the AI having already acted by the time this request
+    // returns, so the inline await is the authoritative driver. Running from both
+    // places is safe: each step persists under an optimistic-concurrency guard,
+    // so whichever driver loses the race simply gets `STATE_CONFLICT` and stops
+    // (handled in `runAiTurnLoop` and the DO) rather than double-applying.
+    //
+    // The loop is also best-effort: the human action above already committed, so
+    // an AI step that conflicts (or otherwise throws) must never surface as a
+    // failure of the human's request. We swallow it here rather than letting it
+    // propagate into the 409/400 catch below.
+    try {
+      await runAiTurnLoop(
+        db,
+        id,
+        c.env?.GAME_ROOM,
+        AI_LOOP_MAX_STEPS,
+        c.env?.KV,
+        c.env,
+      );
+    } catch (aiErr) {
+      console.error("ai follow-up loop failed", { gameId: id, error: aiErr });
+    }
+
     timings.push({
       name: "total",
       duration: nowMs() - actionStartedAt,
     });
-    const response = c.json(toActionResponse(result, subject, { logEntries }));
+    // Redact private trade log entries (e.g. `trade_expired` from
+    // `expirePendingTradeOffers`) so a non-participant who triggers another
+    // pair's offer expiry never receives their private terms in the HTTP body.
+    const response = c.json(
+      toActionResponse(result, subject, {
+        logEntries: redactLogEntriesForViewer(logEntries, subject),
+      }),
+    );
     response.headers.set("Server-Timing", formatServerTiming(timings));
     return response;
   } catch (err) {
     if (typeof err === "string") {
-      return c.json({ error: err }, 400);
+      const status = err === GameErrorKeys.STATE_CONFLICT ? 409 : 400;
+      return c.json({ error: err }, status);
     }
     return c.json(
       { error: GameErrorKeys.INVALID_ACTION, detail: String(err) },

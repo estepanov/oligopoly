@@ -49,6 +49,7 @@ export const ACTION_COSTS = {
   CALL_SYNDICATE_VOTE: 1,
   INITIATE_AUCTION: 1,
   FORM_SYNDICATE: 1,
+  PROPOSE_TRADE: 1,
 } as const;
 
 /** Maximum tiles absorbed per losing player after a syndicate win */

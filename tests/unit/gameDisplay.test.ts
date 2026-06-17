@@ -5,7 +5,10 @@ import {
   playerDisplayName,
   playerNameMap,
 } from "../../packages/web/src/lib/gameDisplay";
-import { formatGameLogEntry } from "../../packages/web/src/lib/gameLogDisplay";
+import {
+  describeGameLogEntry,
+  formatGameLogEntry,
+} from "../../packages/web/src/lib/gameLogDisplay";
 
 describe("game display helpers", () => {
   const state: GameState = {
@@ -316,6 +319,73 @@ describe("game display helpers", () => {
     ).toBe(
       "foreclosure proceeds · proceeds ¤200 · applied ¤150 · debt remaining ¤50",
     );
+  });
+
+  it("formats trade action log entries with players and assets", () => {
+    const names = playerNameMap(state);
+
+    expect(
+      formatGameLogEntry(
+        {
+          id: "log-trade",
+          gameId: "g",
+          round: 1,
+          playerId: "human-1",
+          actionType: "trade_proposed",
+          payload: {
+            proposerId: "human-1",
+            recipientId: "ai:one",
+            gives: { capital: 100, tilePositions: [3] },
+            receives: { capital: 50, tilePositions: [6] },
+          },
+          createdAt: 1,
+        },
+        new Map([
+          ["3", "Mobile Gaming Inc."],
+          ["6", "Search Engine Corp."],
+        ]),
+        "$",
+        names,
+      ),
+    ).toBe(
+      "Trade proposed · Ada to Copper Scout · gives $100 + Mobile Gaming Inc. · requests $50 + Search Engine Corp.",
+    );
+  });
+
+  it("gives every trade log type a non-default presentation", () => {
+    const tradeTypes = [
+      "trade_proposed",
+      "trade_accepted",
+      "trade_rejected",
+      "trade_expired",
+      "trade_countered",
+    ] as const;
+
+    for (const actionType of tradeTypes) {
+      const described = describeGameLogEntry(
+        {
+          id: `log-${actionType}`,
+          gameId: "g",
+          round: 1,
+          playerId: "human-1",
+          actionType,
+          payload: {
+            proposerId: "human-1",
+            recipientId: "ai:one",
+            gives: { capital: 10, tilePositions: [] },
+            receives: { capital: 0, tilePositions: [6] },
+          },
+          createdAt: 1,
+        },
+        new Map(),
+      );
+
+      // Must not fall back to the generic "Game update" presentation.
+      expect(described.eyebrow).toBe("Trade");
+      expect(described.tone).toBe("deal");
+      expect(described.badge).not.toBe("Log");
+      expect(described.description).not.toContain("A game update was recorded");
+    }
   });
 
   it("formats remaining player_state_changed fields", () => {

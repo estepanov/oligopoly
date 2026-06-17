@@ -33,6 +33,7 @@ import {
   FLASH_CRASH_WINDFALL_PCT,
   type FullUserProfile,
   finalizeAuctionSettleIfReady,
+  findNextAiActorForPhase,
   getRankForPoints,
   getStartingCapital,
   getTileByPosition,
@@ -144,6 +145,150 @@ describe("chooseAiAction", () => {
     });
 
     expect(decision).toBeNull();
+  });
+
+  function tradeReadyState(): InternalGameState {
+    return {
+      ...baseAiState,
+      phase: "action",
+      currentPlayerIndex: 0,
+      turnOrder: ["human-1", "ai:bot"],
+      players: [
+        {
+          playerId: "human-1",
+          kind: "human",
+          position: 0,
+          capital: 1500,
+          ownedTilePositions: [3],
+          mortgagedTilePositions: [],
+          developmentTokens: {},
+          trustworthiness: 7,
+          actionPointsRemaining: 2,
+          inRegulation: false,
+          doublesCount: 0,
+          isOnDiagonal: false,
+        },
+        {
+          ...baseAiState.players[0],
+          ownedTilePositions: [6],
+          actionPointsRemaining: 2,
+        },
+      ],
+      tiles: initTileStates().map((tile) => {
+        if (String(tile.position) === "3") {
+          return { ...tile, ownerId: "human-1" };
+        }
+        if (String(tile.position) === "6") {
+          return { ...tile, ownerId: "ai:bot" };
+        }
+        return tile;
+      }),
+      tradeOffers: [],
+    };
+  }
+
+  it("accepts favorable trade offers addressed to AI", () => {
+    const state = tradeReadyState();
+    state.tradeOffers = [
+      {
+        id: "trade-1",
+        gameId: state.gameId,
+        proposerId: "human-1",
+        recipientId: "ai:bot",
+        gives: { capital: 300, tilePositions: [] },
+        receives: { capital: 0, tilePositions: [6] },
+        status: "pending",
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 300_000,
+        counterCount: 0,
+      },
+    ];
+
+    const decision = chooseAiAction(state);
+
+    expect(decision).toMatchObject({
+      actorId: "ai:bot",
+      action: { type: "accept_trade", offerId: "trade-1" },
+    });
+  });
+
+  it("counters underpriced trade offers addressed to AI", () => {
+    const state = tradeReadyState();
+    state.tradeOffers = [
+      {
+        id: "trade-1",
+        gameId: state.gameId,
+        proposerId: "human-1",
+        recipientId: "ai:bot",
+        gives: { capital: 10, tilePositions: [] },
+        receives: { capital: 0, tilePositions: [6] },
+        status: "pending",
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 300_000,
+        counterCount: 0,
+      },
+    ];
+
+    const decision = chooseAiAction(state);
+
+    expect(decision?.actorId).toBe("ai:bot");
+    expect(decision?.action.type).toBe("counter_trade");
+    expect(
+      (decision?.action as { receives?: { capital?: number } }).receives
+        ?.capital,
+    ).toBeGreaterThan(10);
+  });
+
+  it("bids in the auction window instead of answering a pending inbox trade", () => {
+    // Priority inversion guard: while the auction phase owns its own deadline,
+    // the AI must keep bidding rather than answer an off-turn inbox trade, which
+    // would stall the auction window.
+    const state = {
+      ...tradeReadyState(),
+      phase: "waiting_for_auction_bids" as const,
+      pendingAuction: {
+        tilePosition: 6,
+        auctionType: "sealed_bids" as const,
+        initiatorId: "human-1",
+        eligiblePlayerIds: ["human-1", "ai:bot"],
+        bidDeadlineAt: Date.now() + 60_000,
+        submissions: {},
+      },
+      tradeOffers: [
+        {
+          id: "trade-1",
+          gameId: "game-ai",
+          proposerId: "human-1",
+          recipientId: "ai:bot",
+          gives: { capital: 300, tilePositions: [] },
+          receives: { capital: 0, tilePositions: [6] },
+          status: "pending" as const,
+          createdAt: Date.now(),
+          expiresAt: Date.now() + 300_000,
+          counterCount: 0,
+        },
+      ],
+    };
+
+    expect(findNextAiActorForPhase(state)).toBe("ai:bot");
+    expect(chooseAiAction(state)?.action.type).toBe("auction_bid");
+  });
+
+  it("proposes a cash-for-property trade on an AI action phase", () => {
+    const state = {
+      ...tradeReadyState(),
+      currentPlayerIndex: 0,
+      turnOrder: ["ai:bot", "human-1"],
+    };
+
+    const decision = chooseAiAction(state);
+
+    expect(decision?.actorId).toBe("ai:bot");
+    expect(decision?.action.type).toBe("propose_trade");
+    expect(decision?.action).toMatchObject({
+      recipientId: "human-1",
+      receives: { capital: 0, tilePositions: [3] },
+    });
   });
 });
 

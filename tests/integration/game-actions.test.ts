@@ -4,7 +4,6 @@ import {
   createAndStartGame,
   createD1Stub,
   drawRoundStartMarketEvent,
-  type HarnessDb,
   loadStoredGameState,
   markLobbyPlayersReady,
   requestWithEnv,

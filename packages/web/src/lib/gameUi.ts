@@ -3,7 +3,9 @@ import {
   AFFINITY_IDS,
   type AffinityContext,
   applyAcquisitionCostAffinity,
+  canCounterTrade as canCounterTradeShared,
   canCreateBindingContract,
+  canProposeTrade as canProposeTradeShared,
   formSyndicateApCost,
   getTileByPosition,
   hasSectorControl,
@@ -46,6 +48,24 @@ export function isAiControlledActor(
 ): boolean {
   if (!actorId) return false;
   return isAiControlledActorShared(state as InternalGameState, actorId);
+}
+
+/**
+ * Web-side wrappers over the engine's canonical trade-eligibility predicates so
+ * the UI and server share one rule set. The broadcast `GameState` is the lenient
+ * view of `InternalGameState`; bridge it here (same idiom as
+ * `isAiControlledActor`) rather than re-deriving phase/turn/AP/counter-cap rules.
+ */
+export function canProposeTrade(state: GameState, playerId: string): boolean {
+  return canProposeTradeShared(state as InternalGameState, playerId);
+}
+
+export function canCounterTrade(
+  state: GameState,
+  playerId: string,
+  offerId: string,
+): boolean {
+  return canCounterTradeShared(state as InternalGameState, playerId, offerId);
 }
 
 /**

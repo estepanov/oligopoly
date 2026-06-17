@@ -11,6 +11,11 @@ import {
   formatCurrencyAmount,
   formatSignedCurrencyAmount,
 } from "./gameDisplay";
+import {
+  formatTradePayload,
+  TRADE_ACTION_LABELS,
+  TRADE_ACTION_PRESENTATION,
+} from "./tradeLogDisplay";
 
 /** Past-tense engine log types map to the same label as the imperative action. */
 const ENGINE_LOG_ACTION_ALIASES: Record<string, string> = {
@@ -70,9 +75,10 @@ const ACTION_LABELS: Record<string, string> = {
   round_boundary_complete: "Round housekeeping complete",
   debt_interest: "Debt interest accrued",
   new_round: "New round",
+  ...TRADE_ACTION_LABELS,
 };
 
-type GameLogTone =
+export type GameLogTone =
   | "auction"
   | "deal"
   | "event"
@@ -81,7 +87,7 @@ type GameLogTone =
   | "property"
   | "system";
 
-type ActionLogPresentation = {
+export type ActionLogPresentation = {
   badge: string;
   description: string;
   eyebrow: string;
@@ -283,6 +289,7 @@ const ACTION_PRESENTATION: Record<string, ActionLogPresentation> = {
     eyebrow: "Round",
     tone: "system",
   },
+  ...TRADE_ACTION_PRESENTATION,
 };
 
 /** Tile actions: money and inventory deltas belong on `player_state_changed`. */
@@ -689,6 +696,9 @@ function payloadSuffix(
   }
   if (actionType === "player_state_changed") {
     return formatPlayerStateChange(record, tileNames, currencySettings);
+  }
+  if (actionType.startsWith("trade_")) {
+    return formatTradePayload(record, tileNames, currencySettings, playerNames);
   }
   if (actionType === "roll_dice") {
     return formatDiceRoll(record);

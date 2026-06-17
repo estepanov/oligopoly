@@ -1,23 +1,30 @@
-import type {
-  GameNegotiationThread,
-  GameState,
-  InGameHandshakeAgreement,
-  PendingAuction,
-  PendingInsiderPeek,
-} from "@oligopoly/validation";
+import type { InternalGameState } from "@oligopoly/shared";
+import type { GameState } from "@oligopoly/validation";
+import {
+  type ClientPendingAuction,
+  filterHandshakesForViewer,
+  filterNegotiationThreadsForViewer,
+  filterTradeOffersForViewer,
+  type PersistedGameState,
+  redactPendingAuctionByMode,
+  type ViewerMode,
+} from "./services/gameVisibilityFilters.js";
 
-/** Persisted `state_json` may include server-only affinity assignments. */
-export type PersistedGameState = GameState & {
-  affinityAssignments?: Record<string, string>;
-  negotiationThreads?: GameNegotiationThread[];
-  handshakeAgreements?: InGameHandshakeAgreement[];
-  pendingInsiderPeek?: PendingInsiderPeek | null;
-};
-
-type ClientPendingAuction = PendingAuction & {
-  submissionCount: number;
-  mySubmission?: number | "pass";
-};
+// NOTE: the broadcast privacy contract lives in `./services/gameBroadcastVisibility.js`
+// and is imported directly by its consumers (rooms, persistence, gameAi, tests).
+// `gameStateView.ts` intentionally does NOT re-export it: `gameBroadcastVisibility`
+// imports `toClientGameStateFromInternal` from here, so re-exporting it back would
+// create an import cycle. The dependency flows one way: gameBroadcastVisibility →
+// gameStateView (+ gameVisibilityFilters), gameStateView → gameVisibilityFilters.
+// Re-exports below are only the per-viewer client-view helpers (no back-edge).
+export type {
+  PersistedGameState,
+  ViewerMode,
+} from "./services/gameVisibilityFilters.js";
+export {
+  redactLogEntriesForViewer,
+  redactPendingAuctionForBroadcast,
+} from "./services/gameVisibilityFilters.js";
 
 /** HTTP/WS game state after affinity redaction and visibility filtering. */
 export type ClientGameState = Omit<
@@ -28,57 +35,17 @@ export type ClientGameState = Omit<
   myAffinityCardId?: string | null;
   negotiationThreads?: PersistedGameState["negotiationThreads"];
   handshakeAgreements?: PersistedGameState["handshakeAgreements"];
+  tradeOffers?: PersistedGameState["tradeOffers"];
   pendingInsiderPeek?: PersistedGameState["pendingInsiderPeek"];
 };
 
-function withSubmissionCount(auction: PendingAuction): ClientPendingAuction {
-  return {
-    ...auction,
-    submissionCount: Object.keys(auction.submissions).length,
-  };
-}
-
-function redactPendingAuctionByMode(
-  auction: PendingAuction,
-  mode: "broadcast" | "spectator" | "player",
-  viewerId?: string,
-): ClientPendingAuction {
-  if (
-    auction.auctionType === "open_bids" ||
-    auction.auctionType === "live_bidding"
-  ) {
-    return withSubmissionCount(auction);
-  }
-
-  const submissionCount = Object.keys(auction.submissions).length;
-  if (mode !== "player") {
-    const { submissions: _submissions, ...rest } = auction;
-    return { ...rest, submissions: {}, submissionCount };
-  }
-
-  if (!viewerId) {
-    throw new Error("viewerId is required for player auction redaction");
-  }
-  const mySubmission = auction.submissions[viewerId];
-  return {
-    ...auction,
-    submissions: {},
-    submissionCount,
-    ...(mySubmission !== undefined ? { mySubmission } : {}),
-  };
-}
-
-export function redactPendingAuctionForBroadcast(
-  auction: PendingAuction,
-): ClientPendingAuction {
-  return redactPendingAuctionByMode(auction, "broadcast");
-}
 function buildClientGameStateBase(
   state: PersistedGameState,
   extras: {
     pendingAuction?: ClientPendingAuction;
     negotiationThreads: PersistedGameState["negotiationThreads"];
     handshakeAgreements: PersistedGameState["handshakeAgreements"];
+    tradeOffers: PersistedGameState["tradeOffers"];
     myAffinityCardId?: string | null;
     pendingInsiderPeek?: PersistedGameState["pendingInsiderPeek"];
   },
@@ -87,6 +54,7 @@ function buildClientGameStateBase(
     affinityAssignments: _affinity,
     pendingAuction: _auction,
     pendingInsiderPeek: _peek,
+    tradeOffers: _tradeOffers,
     ...rest
   } = state;
   return {
@@ -94,6 +62,7 @@ function buildClientGameStateBase(
     ...(extras.pendingAuction ? { pendingAuction: extras.pendingAuction } : {}),
     negotiationThreads: extras.negotiationThreads,
     handshakeAgreements: extras.handshakeAgreements,
+    tradeOffers: extras.tradeOffers,
     ...(extras.myAffinityCardId !== undefined
       ? { myAffinityCardId: extras.myAffinityCardId }
       : {}),
@@ -104,12 +73,40 @@ function buildClientGameStateBase(
 }
 
 /**
- * Strip hidden affinity data for HTTP responses.
+ * Typed bridge from the engine's `InternalGameState` (what `normalizeGameState`
+ * returns) to the client view. `InternalGameState` is a structural superset of
+ * `PersistedGameState` — it carries every wire field, but a handful of branches
+ * use looser server-internal typings (e.g. `BindingContract.partySignatures` is
+ * `Partial<Record<…>>` internally vs `Record<…>` on the validation type, and
+ * `pendingAuction`/`settings` are engine variants). `toClientGameState` only
+ * reads the redaction-relevant fields, which are wire-identical, so we reconcile
+ * the difference ONCE here at the normalization boundary instead of casting at
+ * every per-viewer broadcast iteration (where casting at the privacy boundary is
+ * risky). This is the single sanctioned bridge between the two type families.
+ */
+export function toClientGameStateFromInternal(
+  state: InternalGameState,
+  mode: ViewerMode,
+  playerId: string,
+): ClientGameState {
+  return toClientGameState(
+    state as unknown as PersistedGameState,
+    mode,
+    playerId,
+  );
+}
+
+/**
+ * Compile the per-viewer client view: redact each privacy-sensitive field
+ * (auction submissions, negotiation threads, handshakes, trade offers, insider
+ * peek, affinity) down to the viewer's slice via the per-domain filters in
+ * `gameVisibilityFilters.ts`, then assemble the wire shape.
+ *
  * Callers must enforce authZ (player vs spectator) before using this.
  */
 export function toClientGameState(
   state: PersistedGameState,
-  mode: "spectator" | "player",
+  mode: ViewerMode,
   playerId: string,
 ): ClientGameState {
   const pendingAuction = state.pendingAuction
@@ -128,6 +125,12 @@ export function toClientGameState(
     mode,
   );
 
+  const tradeOffers = filterTradeOffersForViewer(
+    state.tradeOffers,
+    playerId,
+    mode,
+  );
+
   const insiderPeek =
     mode === "player" && state.pendingInsiderPeek?.drawingPlayerId === playerId
       ? state.pendingInsiderPeek
@@ -142,35 +145,9 @@ export function toClientGameState(
     pendingAuction,
     negotiationThreads,
     handshakeAgreements,
+    tradeOffers,
     ...(mode === "player"
       ? { myAffinityCardId, pendingInsiderPeek: insiderPeek }
       : {}),
   });
-}
-
-function filterNegotiationThreadsForViewer(
-  threads: PersistedGameState["negotiationThreads"],
-  viewerId: string,
-  mode: "spectator" | "player",
-) {
-  if (!threads?.length) return threads;
-  if (mode === "spectator") {
-    return threads.filter((thread) => thread.visibility === "open");
-  }
-  return threads.filter(
-    (thread) =>
-      thread.visibility === "open" || thread.partyIds.includes(viewerId),
-  );
-}
-
-function filterHandshakesForViewer(
-  handshakes: PersistedGameState["handshakeAgreements"],
-  viewerId: string,
-  mode: "spectator" | "player",
-) {
-  if (!handshakes?.length) return handshakes;
-  if (mode === "spectator") return [];
-  return handshakes.filter(
-    (entry) => entry.partyA === viewerId || entry.partyB === viewerId,
-  );
 }
