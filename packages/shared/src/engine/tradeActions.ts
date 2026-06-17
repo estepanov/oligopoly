@@ -23,6 +23,45 @@ export const DEFAULT_TRADE_TIMEOUT_MINUTES = 5;
 export const MAX_TRADE_COUNTERS = 2;
 export const TRADE_OFFER_HISTORY_LIMIT = 20;
 
+/**
+ * Canonical, single source of truth for every log `actionType` whose payload
+ * carries PRIVATE trade terms (capital/tiles + the two party ids). It lives
+ * here — colocated with the emitters below — so the worker's broadcast redaction
+ * (`redactLogEntriesForViewer` in `gameVisibilityFilters.ts`) can DERIVE its
+ * private-action set from this tuple instead of hand-maintaining a parallel list
+ * in another package.
+ *
+ * Every trade log line emitted in this file is typed against the derived
+ * `PrivateTradeLogActionType` union (see `tradeLogEntry`/`commitTradeMutation`),
+ * so adding a NEW private trade log type forces it into this tuple at compile
+ * time — it cannot silently bypass redaction and leak terms to non-parties.
+ */
+export const PRIVATE_TRADE_LOG_ACTION_TYPES = [
+  "trade_proposed",
+  "trade_accepted",
+  "trade_rejected",
+  "trade_expired",
+  "trade_countered",
+] as const;
+
+export type PrivateTradeLogActionType =
+  (typeof PRIVATE_TRADE_LOG_ACTION_TYPES)[number];
+
+/**
+ * Build a trade log entry whose `actionType` is constrained to the canonical
+ * `PrivateTradeLogActionType` union. Funnelling every emission through this
+ * helper is what ties the emitters to `PRIVATE_TRADE_LOG_ACTION_TYPES`: a new
+ * trade log literal won't type-check until it is added to the tuple (and thus to
+ * the worker's redaction set).
+ */
+function tradeLogEntry(
+  playerId: string | null,
+  actionType: PrivateTradeLogActionType,
+  offer: TradeOffer,
+): LogEntry {
+  return { playerId, actionType, payload: tradeLogPayload(offer) };
+}
+
 type TradeValidationContext = {
   proposer: InternalPlayerState;
   recipient: InternalPlayerState;
@@ -58,7 +97,10 @@ function commitTradeMutation(
     deductAp: number;
     counterCount: number;
     parentOfferId?: string;
-    logActionType: "trade_proposed" | "trade_countered";
+    logActionType: Extract<
+      PrivateTradeLogActionType,
+      "trade_proposed" | "trade_countered"
+    >;
     nowMs: number;
     timeoutMinutes: number | undefined;
   },
@@ -112,13 +154,7 @@ function commitTradeMutation(
 
   return {
     state: newState,
-    logEntries: [
-      {
-        playerId: params.proposerId,
-        actionType: params.logActionType,
-        payload: tradeLogPayload(offer),
-      },
-    ],
+    logEntries: [tradeLogEntry(params.proposerId, params.logActionType, offer)],
   };
 }
 
@@ -185,11 +221,7 @@ export function handleAcceptTrade(
   // emit a public "trade completed" line — keeping the negotiated terms private is
   // the conservative choice.
   const logs: LogEntry[] = [
-    {
-      playerId,
-      actionType: "trade_accepted",
-      payload: tradeLogPayload(workingOffer),
-    },
+    tradeLogEntry(playerId, "trade_accepted", workingOffer),
   ];
 
   let settledState = revokeUnqualifiedRateCards(newState, logs, {
@@ -225,14 +257,11 @@ export function handleRejectTrade(
   return {
     state: newState,
     logEntries: [
-      {
+      tradeLogEntry(
         playerId,
-        actionType:
-          workingOffer.status === "expired"
-            ? "trade_expired"
-            : "trade_rejected",
-        payload: tradeLogPayload(workingOffer),
-      },
+        workingOffer.status === "expired" ? "trade_expired" : "trade_rejected",
+        workingOffer,
+      ),
     ],
   };
 }
@@ -287,11 +316,7 @@ function expireSelectedTradeOffers(
     if (offer.status !== "pending" || !shouldExpire(offer)) continue;
     offer.status = "expired";
     expired += 1;
-    logs.push({
-      playerId: null,
-      actionType: "trade_expired",
-      payload: tradeLogPayload(offer),
-    });
+    logs.push(tradeLogEntry(null, "trade_expired", offer));
   }
   state.tradeOffers = pruneTradeOffers(state.tradeOffers ?? []);
   return expired;

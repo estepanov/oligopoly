@@ -1,3 +1,4 @@
+import { PRIVATE_TRADE_LOG_ACTION_TYPES } from "@oligopoly/shared";
 import { describe, expect, it } from "vitest";
 import {
   type PersistedGameState,
@@ -332,13 +333,11 @@ describe("redactLogEntriesForViewer (private trade terms)", () => {
   });
 
   it("redacts every private trade action type", () => {
-    const actions = [
-      "trade_proposed",
-      "trade_accepted",
-      "trade_rejected",
-      "trade_expired",
-      "trade_countered",
-    ];
+    // Derive directly from the canonical shared tuple so the redaction guarantee
+    // is asserted against the SAME source of truth the worker filter builds from
+    // (and the engine emitters are typed against) — no hand-maintained parallel
+    // list that could drift.
+    const actions = PRIVATE_TRADE_LOG_ACTION_TYPES;
     const entries = actions.map((actionType) => ({
       actionType,
       payload: { proposerId: "p1", recipientId: "p2", gives: {}, receives: {} },

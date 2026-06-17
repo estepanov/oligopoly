@@ -327,7 +327,10 @@ export {
   syndicateMarketValue,
   tileOwnedByController,
 } from "./engine/syndicate.js";
-export type { TileTradeability } from "./engine/tradeActions.js";
+export type {
+  PrivateTradeLogActionType,
+  TileTradeability,
+} from "./engine/tradeActions.js";
 export {
   canCounterTrade,
   canProposeTrade,
@@ -338,7 +341,7 @@ export {
   listTradeableTilePositions,
   MAX_TRADE_COUNTERS,
   nextTradeOfferExpiry,
-  reconcileTradeOffersBeforeAction,
+  PRIVATE_TRADE_LOG_ACTION_TYPES,
   TRADE_OFFER_HISTORY_LIMIT,
   tileTradeability,
   tradeTransferValue,

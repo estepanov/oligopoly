@@ -1,3 +1,4 @@
+import { PRIVATE_TRADE_LOG_ACTION_TYPES } from "@oligopoly/shared";
 import type {
   GameLogEntry,
   GameNegotiationThread,
@@ -144,22 +145,16 @@ export function filterHandshakesForViewer(
  * everyone else (other players + spectators) must not receive them at all —
  * mirroring how `filterTradeOffersForViewer` hides offer state itself.
  *
- * There is no shared constant to derive this from: `GameLogEntry.actionType` is a
- * free-form `z.string()`, and the emission sites live in the `@oligopoly/shared`
- * engine, not this worker package. So this list MUST be kept in sync by hand with
- * every `trade_*` log line emitted in `packages/shared/src/engine/tradeActions.ts`
- * (search `actionType:`/`logActionType:` there — currently `trade_proposed`,
- * `trade_accepted`, `trade_rejected`, `trade_expired`, `trade_countered`). If a
- * new private trade log type is added there, add it here too or it will leak to
- * non-parties.
+ * This set is DERIVED from `PRIVATE_TRADE_LOG_ACTION_TYPES`, the canonical tuple
+ * colocated with the `trade_*` emitters in
+ * `packages/shared/src/engine/tradeActions.ts`. Those emitters are typed against
+ * that same tuple, so adding a new private trade log type forces it into the
+ * tuple at compile time — and therefore into this redaction set — instead of
+ * silently leaking to non-parties.
  */
-const PRIVATE_TRADE_LOG_ACTIONS = new Set([
-  "trade_proposed",
-  "trade_accepted",
-  "trade_rejected",
-  "trade_expired",
-  "trade_countered",
-]);
+const PRIVATE_TRADE_LOG_ACTIONS = new Set<string>(
+  PRIVATE_TRADE_LOG_ACTION_TYPES,
+);
 
 function isTradeParticipant(
   payload: GameLogEntry["payload"],
