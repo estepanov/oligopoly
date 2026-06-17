@@ -16,14 +16,16 @@ import type { AiPersonality } from "@oligopoly/validation";
 import { GameErrorKeys } from "@oligopoly/validation";
 import { withPathChoiceDie } from "../lib/dice.js";
 import { broadcastGameEvent } from "../realtime/notify.js";
-import {
-  persistGameActionResult,
-  prepareGameBroadcastPayload,
-} from "./gamePersistence.js";
+import { buildGameScheduleEvent } from "./gameBroadcastVisibility.js";
+import { persistGameActionResult } from "./gamePersistence.js";
 import {
   chooseOpenRouterAiDecision,
   type OpenRouterAiEnv,
 } from "./openRouterAi.js";
+
+// Re-exported so existing emit-path importers keep one entry point; the canonical
+// implementation lives in `gameBroadcastVisibility.ts`.
+export { buildGameScheduleEvent } from "./gameBroadcastVisibility.js";
 
 export const AI_LOOP_MAX_STEPS = 16;
 
@@ -373,28 +375,6 @@ export async function kickPlayerToAiReplacement(
   );
 
   return nextState;
-}
-
-/**
- * Build the `game.schedule` broadcast event with the trade-offer strip-and-carry
- * applied ONCE (private terms stripped off `state` onto a separate `tradeOffers`
- * field, which `GameRoom.broadcast` re-injects per viewer — see
- * `prepareGameBroadcastPayload`). Both emit paths — `notifyGameSchedule` (the
- * worker→DO POST) and the in-DO AI-loop fan-out in `rooms.ts` — go through this
- * so the pattern has a single implementation.
- */
-export function buildGameScheduleEvent<
-  TState extends { tradeOffers?: unknown },
->(gameId: string, state: TState): Record<string, unknown> {
-  const { state: stateWithoutTradeOffers, tradeOffers } =
-    prepareGameBroadcastPayload(state);
-  return {
-    type: "game.schedule",
-    sentAt: Date.now(),
-    gameId,
-    state: stateWithoutTradeOffers,
-    ...(tradeOffers ? { tradeOffers } : {}),
-  };
 }
 
 export async function notifyGameSchedule(

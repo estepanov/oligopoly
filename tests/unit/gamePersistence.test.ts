@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { splitBroadcastPayload } from "../../packages/worker/src/services/gameBroadcastVisibility.js";
 import {
   logEntriesForBroadcast,
   notifyGameActionResult,
   persistGameActionResult,
-  prepareGameBroadcastPayload,
   publicStateForBroadcast,
   toActionResponse,
 } from "../../packages/worker/src/services/gamePersistence.js";
@@ -246,7 +246,7 @@ describe("toActionResponse", () => {
   });
 });
 
-describe("prepareGameBroadcastPayload", () => {
+describe("splitBroadcastPayload", () => {
   const offers = [
     {
       id: "trade-1",
@@ -262,37 +262,36 @@ describe("prepareGameBroadcastPayload", () => {
     },
   ];
 
-  it("strips tradeOffers off the state and carries them separately", () => {
-    const { state, tradeOffers } = prepareGameBroadcastPayload({
+  it("strips tradeOffers off the public state and carries them separately", () => {
+    const { publicState, tradeOffers } = splitBroadcastPayload({
       gameId: "game-1",
       round: 1,
       tradeOffers: offers,
     });
 
-    expect("tradeOffers" in state).toBe(false);
-    expect(state).toEqual({ gameId: "game-1", round: 1 });
+    expect("tradeOffers" in publicState).toBe(false);
+    expect(publicState).toEqual({ gameId: "game-1", round: 1 });
     expect(tradeOffers).toEqual(offers);
   });
 
   it("omits the tradeOffers field entirely when there are none", () => {
-    const result = prepareGameBroadcastPayload({ gameId: "game-1", round: 1 });
+    const result = splitBroadcastPayload({ gameId: "game-1", round: 1 });
 
     expect("tradeOffers" in result).toBe(false);
-    expect(result.state).toEqual({ gameId: "game-1", round: 1 });
+    expect(result.publicState).toEqual({ gameId: "game-1", round: 1 });
   });
 
-  it("preserves an empty tradeOffers array (matching the original spread)", () => {
-    const result = prepareGameBroadcastPayload({
+  it("preserves an empty tradeOffers array (still a carried side channel)", () => {
+    const result = splitBroadcastPayload({
       gameId: "game-1",
       round: 1,
       tradeOffers: [],
     });
 
-    // An array is truthy regardless of length, so the helper mirrors the
-    // pre-existing `...(tradeOffers ? { tradeOffers } : {})` behaviour and keeps
-    // an empty `tradeOffers: []` on the side channel.
+    // `Array.isArray([])` is true, so the helper keeps an empty `tradeOffers: []`
+    // on the side channel (matching the pre-existing truthy-array behaviour).
     expect(result.tradeOffers).toEqual([]);
-    expect("tradeOffers" in result.state).toBe(false);
+    expect("tradeOffers" in result.publicState).toBe(false);
   });
 });
 

@@ -11,6 +11,10 @@ import {
   toClientGameState,
 } from "../gameStateView.js";
 import { broadcastGameEvent } from "../realtime/notify.js";
+import {
+  broadcastEventStateFields,
+  splitBroadcastPayload,
+} from "./gameBroadcastVisibility.js";
 import { processGameCompletion } from "./gameCompletion.js";
 
 type PersistOptions = {
@@ -143,20 +147,12 @@ function applyDarkPoolTransferRedaction<
 }
 
 /**
- * Trade-offer redaction contract (two paths — keep in sync):
- *
- * 1. Realtime broadcast: the state that travels on `broadcastGameEvent`
- *    (`event.state`) NEVER carries `tradeOffers`. `notifyGameActionResult` (and
- *    the `game.schedule` emitters) strip the offers from `state` and place them
- *    on a SEPARATE `event.tradeOffers` field. `GameRoom.broadcast` re-injects
- *    that field into each viewer's state and runs `toClientGameState`, whose
- *    `filterTradeOffersForViewer` keeps only the viewer's own offers. So the
- *    redaction is safe-by-construction: even if a future caller forwarded
- *    `event.state` without the GameRoom override, no offer terms leak.
- * 2. HTTP responses: `toActionResponse` calls `toClientGameState` DIRECTLY for
- *    the requesting player, applying the same party-scoped filter. The
- *    no-subject fallback goes through `publicStateForBroadcast`, which also
- *    strips `tradeOffers` entirely.
+ * HTTP-only public state. The realtime broadcast strip/carry/re-inject/scope
+ * contract lives in `gameBroadcastVisibility.ts`; this path is for HTTP responses
+ * with no requesting player (the no-subject fallback in `toActionResponse`). It
+ * strips `tradeOffers` entirely (no party scope is available) along with the
+ * other server-only/per-viewer fields. When a subject IS known, `toActionResponse`
+ * instead calls `toClientGameState` directly for the requesting player.
  */
 export function publicStateForBroadcast(
   state: ApplyActionResult["state"],
@@ -185,27 +181,6 @@ export function publicStateForBroadcast(
   };
 
   return applyDarkPoolTransferRedaction(publicState, logEntries);
-}
-
-/**
- * Single canonical broadcast-payload splitter for the trade-offer privacy
- * contract (see the doc comment above `publicStateForBroadcast`). Strips private
- * `tradeOffers` terms off the state that travels on the wire and returns them on
- * a SEPARATE field that `GameRoom.broadcast` re-injects only into the matching
- * viewer's slice (via `filterTradeOffersForViewer`). Every realtime emit path —
- * `notifyGameActionResult`, `notifyGameSchedule`, and the DO alarm/AI-loop emit
- * in `rooms.ts` — MUST go through this so the redaction can never drift.
- */
-export function prepareGameBroadcastPayload<
-  TState extends { tradeOffers?: unknown },
->(
-  state: TState,
-): { state: Omit<TState, "tradeOffers">; tradeOffers?: TState["tradeOffers"] } {
-  const { tradeOffers, ...stateWithoutTradeOffers } = state;
-  return {
-    state: stateWithoutTradeOffers,
-    ...(tradeOffers ? { tradeOffers } : {}),
-  };
 }
 
 export async function persistGameActionResult(
@@ -333,11 +308,9 @@ export async function notifyGameActionResult(
     ? applyDarkPoolTransferRedaction(result.state, result.logEntries)
     : result.state;
   // Strip private `tradeOffers` terms off the wire state and carry them on a
-  // separate field (see `prepareGameBroadcastPayload`). Other per-viewer fields
+  // separate field (see `gameBroadcastVisibility.ts`). Other per-viewer fields
   // (insider peek, handshakes, affinity, private negotiation threads) still ride
   // on `state` and are redacted per-viewer by `toClientGameState`.
-  const { state: stateWithoutTradeOffers, tradeOffers } =
-    prepareGameBroadcastPayload(baseState);
   const broadcastLogEntries = hiddenTransfer
     ? []
     : persistedLogEntries.filter(
@@ -350,8 +323,7 @@ export async function notifyGameActionResult(
     gameId,
     actorId: options.actorId ?? options.aiMeta?.aiPlayerId ?? "system",
     logEntries: broadcastLogEntries,
-    state: stateWithoutTradeOffers,
-    ...(tradeOffers ? { tradeOffers } : {}),
+    ...broadcastEventStateFields(splitBroadcastPayload(baseState)),
   });
 }
 

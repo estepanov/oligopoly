@@ -1,22 +1,15 @@
 import { hasAiWork, normalizeGameState } from "@oligopoly/shared";
 import { GameErrorKeys } from "@oligopoly/validation";
+import { toClientGameStateFromInternal } from "../gameStateView.js";
+import { isNotifyRequest } from "../realtime/notify.js";
+import { AI_LOOP_MAX_STEPS, runAiTurnLoop } from "../services/gameAi.js";
 import {
   type BroadcastViewer,
+  buildGameScheduleEvent,
   prepareScopableGameEvent,
   type ScopableGameEvent,
   scopeGameEventForViewer,
-  toClientGameStateFromInternal,
-} from "../gameStateView.js";
-import { isNotifyRequest } from "../realtime/notify.js";
-import {
-  AI_LOOP_MAX_STEPS,
-  applyAuctionBidWindowExpiry,
-  applyAuctionSettleExpiry,
-  applyTimeoutTakeoverAndStep,
-  applyTradeOfferExpiry,
-  buildGameScheduleEvent,
-  runAiTurnLoop,
-} from "../services/gameAi.js";
+} from "../services/gameBroadcastVisibility.js";
 import { syncGameRoomTimer } from "../services/gameScheduler.js";
 import {
   buildLobbyResponse,
@@ -24,6 +17,7 @@ import {
   type LobbyRow,
 } from "../services/lobbyResponses.js";
 import type { OpenRouterAiEnv } from "../services/openRouterAi.js";
+import { handleGameRoomAlarmTick } from "./gameRoomAlarm.js";
 
 type RoomEnv = OpenRouterAiEnv & {
   DB?: D1Database;
@@ -222,46 +216,16 @@ export class GameRoom extends RealtimeRoom {
 
     await this.state.storage.put("aiLoopRunning", true);
     try {
-      // Trade-offer expiry runs on every tick regardless of which kind won the
-      // alarm race — it is idempotent and only acts on offers that are actually
-      // expired.
-      await applyTradeOfferExpiry(this.env.DB, gameId, this.env.GAME_ROOM);
-
-      if (timerKind === "auction_bids") {
-        await applyAuctionBidWindowExpiry(
-          this.env.DB,
-          gameId,
-          this.env.GAME_ROOM,
-          this.env.KV,
-          this.env,
-        );
-      } else if (timerKind === "auction_settle") {
-        await applyAuctionSettleExpiry(
-          this.env.DB,
-          gameId,
-          this.env.GAME_ROOM,
-          this.env.KV,
-          this.env,
-        );
-      }
-
-      // Independently of which kind won the alarm, take over the current turn
-      // whenever the TURN deadline has actually passed. A plain `turn` alarm IS
-      // the turn deadline, so this fires for it; a `trade_offer` alarm only
-      // takes over once the turn deadline (not just the trade deadline) has also
-      // elapsed. Auction phases clear `turnActorId`/`turnDeadlineAt`, so this is
-      // a no-op for the auction kinds above.
-      const actorId = await this.state.storage.get<string>("turnActorId");
-      if (actorId && (await this.turnDeadlineReached())) {
-        await applyTimeoutTakeoverAndStep(
-          this.env.DB,
-          gameId,
-          actorId,
-          this.env.GAME_ROOM,
-          this.env.KV,
-          this.env,
-        );
-      }
+      // The alarm shell just loads context; the per-tick decision (trade expiry
+      // every tick + timerKind-gated auction settle/bids + turn takeover when the
+      // turn deadline has elapsed) lives in `handleGameRoomAlarmTick`.
+      await handleGameRoomAlarmTick({
+        gameId,
+        env: { ...this.env, DB: this.env.DB },
+        timerKind,
+        turnActorId: await this.state.storage.get<string>("turnActorId"),
+        turnDeadlineReached: await this.turnDeadlineReached(),
+      });
     } catch (err) {
       // An expiry/takeover helper persists with an optimistic guard and throws
       // `game.state_conflict` when another writer advanced the game first. That
