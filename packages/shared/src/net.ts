@@ -24,3 +24,21 @@ export function isLoopbackUrl(url: string): boolean {
     return false;
   }
 }
+
+/**
+ * True when a browser `Origin` header value points at a loopback dev server
+ * (`http(s)://localhost|127.0.0.1|::1` with any port). Used by the worker CORS
+ * middleware so local Vite ports and `127.0.0.1` hosts work without listing
+ * every combination in `ALLOWED_ORIGINS`.
+ */
+export function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return false;
+    }
+    return isLoopbackHostname(url.hostname);
+  } catch {
+    return false;
+  }
+}

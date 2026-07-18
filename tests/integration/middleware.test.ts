@@ -27,6 +27,50 @@ const createRequestWithEnv = (
   );
 };
 
+describe("cors", () => {
+  it("allows configured origins", async () => {
+    const res = await createRequestWithEnv("/api/health", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://localhost:5173",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
+      "http://localhost:5173",
+    );
+  });
+
+  it("allows loopback origins not listed in ALLOWED_ORIGINS", async () => {
+    const res = await createRequestWithEnv("/api/health", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://127.0.0.1:5191",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
+      "http://127.0.0.1:5191",
+    );
+  });
+
+  it("rejects deployed origins", async () => {
+    const res = await createRequestWithEnv("/api/health", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://oligopoly.online",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+});
+
 describe("rateLimitMiddleware", () => {
   it("returns 429 when auth IP key is flagged", async () => {
     const res = await createRequestWithEnv("/api/auth/login", {

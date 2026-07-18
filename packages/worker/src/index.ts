@@ -3,6 +3,7 @@ import {
   AFFINITY_CARDS,
   DIAGONAL_TILES,
   DISRUPTION_DECK,
+  isLoopbackOrigin,
   MARKET_EVENT_DECK,
   OPTIONAL_MARKET_EVENT_CARDS_REGISTRY,
   OPTIONAL_RULES_REGISTRY,
@@ -52,10 +53,16 @@ app.use(
   "*",
   cors({
     origin: (origin, c) => {
-      const allowed = c.env?.ALLOWED_ORIGINS?.split(",") ?? [
-        "http://localhost:5173",
-      ];
-      return allowed.includes(origin) ? origin : "";
+      const allowed = c.env?.ALLOWED_ORIGINS?.split(",")
+        .map((entry: string) => entry.trim())
+        .filter(Boolean) ?? ["http://localhost:5173"];
+      if (!origin) {
+        return "";
+      }
+      if (allowed.includes(origin) || isLoopbackOrigin(origin)) {
+        return origin;
+      }
+      return "";
     },
   }),
 );

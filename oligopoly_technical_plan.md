@@ -134,7 +134,7 @@ Framework conventions:
 
 Global middleware order:
 
-1. CORS allowlist middleware
+1. CORS allowlist middleware — honors `ALLOWED_ORIGINS` and also accepts any loopback browser origin (`http(s)://localhost|127.0.0.1|::1` on any port) so local Vite dev servers work without listing every port/host combination.
 2. Rate limit middleware
 3. Ban cache middleware
 

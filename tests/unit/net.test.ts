@@ -1,4 +1,8 @@
-import { isLoopbackHostname, isLoopbackUrl } from "@oligopoly/shared";
+import {
+  isLoopbackHostname,
+  isLoopbackOrigin,
+  isLoopbackUrl,
+} from "@oligopoly/shared";
 import { describe, expect, it } from "vitest";
 
 describe("isLoopbackHostname", () => {
@@ -26,5 +30,19 @@ describe("isLoopbackUrl", () => {
   it("rejects deployed and malformed URLs", () => {
     expect(isLoopbackUrl("https://oligopoly.online/api/x")).toBe(false);
     expect(isLoopbackUrl("not a url")).toBe(false);
+  });
+});
+
+describe("isLoopbackOrigin", () => {
+  it("accepts loopback browser origins on any port", () => {
+    expect(isLoopbackOrigin("http://localhost:5173")).toBe(true);
+    expect(isLoopbackOrigin("http://127.0.0.1:5191")).toBe(true);
+    expect(isLoopbackOrigin("http://[::1]:5176")).toBe(true);
+  });
+
+  it("rejects deployed and non-http(s) origins", () => {
+    expect(isLoopbackOrigin("https://oligopoly.online")).toBe(false);
+    expect(isLoopbackOrigin("null")).toBe(false);
+    expect(isLoopbackOrigin("not an origin")).toBe(false);
   });
 });
