@@ -1,30 +1,18 @@
 import type { GameState } from "@oligopoly/validation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  type AiPresentationBeatInput,
   type AiPresentationQueueState,
   advancePresentation,
   bufferAiAction,
   createPresentationQueue,
   enqueueAiBeat,
   enqueueCanonical,
-  type PendingAiBeatInput,
   pauseMsFor,
   skipPresentation,
 } from "../lib/aiPresentationQueue";
 
-/** Presentation-relevant fields from a `game.ai_action` WS event. Pairing with
- * the canonical `GameState` at the matching `stateVersion` — beats and their
- * canonical update can arrive over WS in either order — happens inside the
- * queue itself (`bufferAiAction` / `enqueueCanonical`), not here. */
-export type AiPresentationBeatInput = {
-  aiPlayerId: string;
-  displayName?: string;
-  material: boolean;
-  softTurnEnd: boolean;
-  summary?: string;
-  stateVersion: number;
-  sentAt: number;
-};
+export type { AiPresentationBeatInput } from "../lib/aiPresentationQueue";
 
 /**
  * Owns the client-local AI presentation queue (see `aiPresentationQueue.ts`)
@@ -69,15 +57,6 @@ export function useAiPresentation(
 
   const pushAiAction = useCallback(
     (beatInput: AiPresentationBeatInput) => {
-      const pendingBeat: PendingAiBeatInput = {
-        stateVersion: beatInput.stateVersion,
-        aiPlayerId: beatInput.aiPlayerId,
-        displayName: beatInput.displayName,
-        material: beatInput.material,
-        softTurnEnd: beatInput.softTurnEnd,
-        summary: beatInput.summary ?? "",
-        sentAt: beatInput.sentAt,
-      };
       setQueue((current) => {
         const latestCanonical = canonicalRef.current;
         // Fast path: canonical already reflects this beat's `stateVersion`
@@ -88,17 +67,17 @@ export function useAiPresentation(
         // is flushed by `enqueueCanonical` once that canonical update lands.
         if (
           latestCanonical &&
-          latestCanonical.stateVersion === pendingBeat.stateVersion
+          latestCanonical.stateVersion === beatInput.stateVersion
         ) {
           return enqueueAiBeat(
             current,
-            { ...pendingBeat, state: latestCanonical },
+            { ...beatInput, state: latestCanonical },
             latestCanonical,
             urgentObligation,
             Date.now(),
           );
         }
-        return bufferAiAction(current, pendingBeat);
+        return bufferAiAction(current, beatInput);
       });
     },
     [urgentObligation],

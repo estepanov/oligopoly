@@ -9,14 +9,28 @@ export type AiPresentationBeatEvent = {
   displayName?: string;
   material: boolean;
   softTurnEnd: boolean;
-  summary: string;
+  summary?: string;
   sentAt: number;
 };
 
 /** A `game.ai_action` beat received before its matching canonical state
  * (same `stateVersion`) has arrived — everything but the `state` snapshot,
- * which `enqueueCanonical` fills in once that canonical update lands. */
-export type PendingAiBeatInput = Omit<AiPresentationBeatEvent, "state">;
+ * which pairing fills in once that canonical update lands. This is the ONE
+ * beat-input shape used end-to-end: realtime (`useGameRealtime`) → session
+ * (`useGameSession`) → this queue. */
+export type AiPresentationBeatInput = Omit<AiPresentationBeatEvent, "state">;
+
+/** The half of an AI-beat/canonical-state pair that has arrived so far, keyed
+ * by `stateVersion` in `pendingByVersion`. Whichever side is missing is
+ * filled in by the OTHER side's handler once it arrives at the same version:
+ * an AI-side entry is completed by `enqueueCanonical`, a canonical-side entry
+ * is completed by `enqueueAiBeat` (reached via `useAiPresentation`'s
+ * same-version fast path). Replaces the former dual bookkeeping of a
+ * standalone `canonicalPendingBeatVersion` scalar plus a `pendingAiByVersion`
+ * map — one structure, one lookup, one place to clear on skip/reset. */
+export type PendingHalf =
+  | { side: "ai"; beat: AiPresentationBeatInput }
+  | { side: "canonical"; state: GameState };
 
 export type AiPresentationQueueState = {
   mode: PresentationMode;
@@ -24,12 +38,8 @@ export type AiPresentationQueueState = {
   queue: AiPresentationBeatEvent[];
   currentBeat: AiPresentationBeatEvent | null;
   currentBeatPresentedAtMs: number | null;
-  canonicalPendingBeatVersion: number | null;
   lastAppliedVersion: number;
-  /** AI beats whose matching canonical `stateVersion` hasn't arrived yet —
-   * `game.ai_action` and `game.action_applied`/snapshot events can arrive
-   * over WS in either order. Flushed by `enqueueCanonical`. */
-  pendingAiByVersion: Map<number, PendingAiBeatInput>;
+  pendingByVersion: Map<number, PendingHalf>;
 };
 
 export const MATERIAL_PAUSE_MS = 1200;
@@ -47,9 +57,8 @@ export function createPresentationQueue(
     queue: [],
     currentBeat: null,
     currentBeatPresentedAtMs: null,
-    canonicalPendingBeatVersion: null,
     lastAppliedVersion: canonical?.stateVersion ?? 0,
-    pendingAiByVersion: new Map(),
+    pendingByVersion: new Map(),
   };
 }
 
@@ -63,15 +72,28 @@ export function pauseMsFor(beat: AiPresentationBeatEvent): number {
   return NON_MATERIAL_PAUSE_MS;
 }
 
+function withoutPendingVersion(
+  pendingByVersion: Map<number, PendingHalf>,
+  version: number,
+): Map<number, PendingHalf> {
+  if (!pendingByVersion.has(version)) return pendingByVersion;
+  const next = new Map(pendingByVersion);
+  next.delete(version);
+  return next;
+}
+
 /** Buffer an AI beat that arrived before its matching canonical state. Stale
  * or matched entries are reaped by `enqueueCanonical`, not here. */
 export function bufferAiAction(
   q: AiPresentationQueueState,
-  beatInput: PendingAiBeatInput,
+  beatInput: AiPresentationBeatInput,
 ): AiPresentationQueueState {
-  const pendingAiByVersion = new Map(q.pendingAiByVersion);
-  pendingAiByVersion.set(beatInput.stateVersion, beatInput);
-  return { ...q, pendingAiByVersion };
+  const pendingByVersion = new Map(q.pendingByVersion);
+  pendingByVersion.set(beatInput.stateVersion, {
+    side: "ai",
+    beat: beatInput,
+  });
+  return { ...q, pendingByVersion };
 }
 
 export function enqueueCanonical(
@@ -82,18 +104,21 @@ export function enqueueCanonical(
 ): AiPresentationQueueState {
   const canonicalVersion = canonical.stateVersion;
 
-  // Reap any buffered AI beat at or below this version: an exact match pairs
-  // with this canonical update; anything strictly older is stale (superseded
-  // by a version bump the client never got a matching beat for) and is
+  // Reap any pending half at or below this version: an AI-side entry at
+  // exactly this version pairs with this canonical update; everything else
+  // at or below (a stale AI buffer nothing ever matched, or a stale
+  // canonical marker from a version we've since moved past) is stale and is
   // dropped rather than left to leak into a future, unrelated pairing.
-  const pendingAiByVersion = new Map(q.pendingAiByVersion);
-  let matchedBeat: PendingAiBeatInput | undefined;
-  for (const [version, beatInput] of pendingAiByVersion) {
+  const pendingByVersion = new Map(q.pendingByVersion);
+  let matchedBeat: AiPresentationBeatInput | undefined;
+  for (const [version, half] of pendingByVersion) {
     if (version > canonicalVersion) continue;
-    pendingAiByVersion.delete(version);
-    if (version === canonicalVersion) matchedBeat = beatInput;
+    pendingByVersion.delete(version);
+    if (version === canonicalVersion && half.side === "ai") {
+      matchedBeat = half.beat;
+    }
   }
-  const base: AiPresentationQueueState = { ...q, pendingAiByVersion };
+  const base: AiPresentationQueueState = { ...q, pendingByVersion };
 
   // A buffered beat pairing with this exact canonical update takes the same
   // path a same-tick beat would (`enqueueAiBeat`, including its own urgent-
@@ -124,10 +149,20 @@ export function enqueueCanonical(
 
   if (base.mode === "caught_up") {
     if (canonicalVersion > base.lastAppliedVersion) {
+      // No AI beat has arrived for this version yet — record the canonical
+      // half so a same-version beat arriving via `useAiPresentation`'s
+      // same-tick fast path (which calls `enqueueAiBeat` directly, bypassing
+      // this function) still recognizes it as a pairing rather than a stale
+      // duplicate.
+      const nextPending = new Map(base.pendingByVersion);
+      nextPending.set(canonicalVersion, {
+        side: "canonical",
+        state: canonical,
+      });
       return {
         ...base,
         presentationState: canonical,
-        canonicalPendingBeatVersion: canonicalVersion,
+        pendingByVersion: nextPending,
         lastAppliedVersion: canonicalVersion,
       };
     }
@@ -156,10 +191,11 @@ export function enqueueAiBeat(
     return skipPresentation(q, canonical);
   }
 
+  const pendingHalf = q.pendingByVersion.get(beat.stateVersion);
   const pairsWithPendingCanonical =
     q.mode === "caught_up" &&
     q.currentBeat === null &&
-    q.canonicalPendingBeatVersion === beat.stateVersion &&
+    pendingHalf?.side === "canonical" &&
     q.lastAppliedVersion === beat.stateVersion;
   const latestPendingVersion =
     q.queue.at(-1)?.stateVersion ??
@@ -174,14 +210,18 @@ export function enqueueAiBeat(
     return q;
   }
 
+  const pendingByVersion = pairsWithPendingCanonical
+    ? withoutPendingVersion(q.pendingByVersion, beat.stateVersion)
+    : q.pendingByVersion;
+
   if (q.currentBeat === null) {
     return {
       ...q,
+      pendingByVersion,
       mode: "watching",
       presentationState: beat.state,
       currentBeat: beat,
       currentBeatPresentedAtMs: nowMs,
-      canonicalPendingBeatVersion: null,
       lastAppliedVersion: beat.stateVersion,
     };
   }
@@ -194,6 +234,7 @@ export function enqueueAiBeat(
 
   return {
     ...q,
+    pendingByVersion,
     queue: [...q.queue, beat],
   };
 }
@@ -209,7 +250,10 @@ export function skipPresentation(
     queue: [],
     currentBeat: null,
     currentBeatPresentedAtMs: null,
-    canonicalPendingBeatVersion: null,
+    // Clear BOTH half-pair buffers, not just the current one — a stale
+    // buffered AI beat left behind here would otherwise re-enter "watching"
+    // the moment a later `enqueueCanonical` call reaches its version.
+    pendingByVersion: new Map(),
     lastAppliedVersion: canonical.stateVersion,
   };
 }
@@ -239,7 +283,6 @@ export function advancePresentation(
     queue: remainingQueue,
     currentBeat: nextBeat,
     currentBeatPresentedAtMs: nowMs,
-    canonicalPendingBeatVersion: null,
     lastAppliedVersion: nextBeat.stateVersion,
   };
 }

@@ -371,21 +371,9 @@ export async function applyTimeoutTakeoverAndStep(
     aiEnv,
   );
 
-  // Timeout takeovers are not presentation AI seats (`isAiSeatForPresentation`
-  // excludes them) — never classify or emit `game.ai_action` for this path.
-  const isPresentationSeat = isAiSeatForPresentation(
-    engineResult.state,
-    decision.actorId,
-  );
-  const presentationBeat = isPresentationSeat
-    ? classifyAiPresentationBeat(
-        gameState,
-        engineResult.state,
-        decision.action,
-        { turnHadMaterial: false },
-      )
-    : undefined;
-
+  // Timeout takeovers act on behalf of the human seat (`kind` stays "human"),
+  // so `isAiSeatForPresentation` always excludes them — never classify a
+  // presentation beat or emit `game.ai_action`/`aiMeta` for this path.
   const { result } = await persistGameActionResult(
     db,
     gameId,
@@ -396,20 +384,10 @@ export async function applyTimeoutTakeoverAndStep(
     {
       gameRoom,
       expectedStateJson: row.state_json,
-      ...(isPresentationSeat && presentationBeat
-        ? {
-            aiMeta: {
-              aiPlayerId: decision.actorId,
-              personality: decision.personality,
-              action: decision.action,
-              presentationBeat,
-            },
-          }
-        : {}),
     },
   );
 
-  return { applied: true, decision, result, presentationBeat };
+  return { applied: true, decision, result };
 }
 
 export async function kickPlayerToAiReplacement(

@@ -14,7 +14,7 @@ import { type Context, Hono } from "hono";
 import {
   type PersistedGameState,
   redactLogEntriesForViewer,
-  toClientGameState,
+  toClientGameStateFromInternal,
 } from "../gameStateView.js";
 import { buildEngineActionInput } from "../lib/dice.js";
 import { upgradeWebSocket } from "../realtime/upgrade.js";
@@ -204,25 +204,27 @@ gameRoutes.get("/:id/state", async (c) => {
   const playerIds = JSON.parse(row.player_ids_json) as string[];
   const isPlayer = playerIds.includes(subject);
 
+  // Legacy rows may predate fields like `stateVersion` — normalize before
+  // building the client view so `toClientGameStateFromInternal`'s output
+  // always satisfies `GameStateSchema` (e.g. `stateVersion` defaults to 0).
+  const rawState = row.state_json
+    ? (JSON.parse(row.state_json) as Record<string, unknown>)
+    : { gameId: id, round: 0 };
+  const gameState = normalizeGameState(rawState);
+
   // If not a player, check whether spectator mode is enabled
   if (!isPlayer) {
-    const state: PersistedGameState = row.state_json
-      ? (JSON.parse(row.state_json) as PersistedGameState)
-      : { gameId: id, stateVersion: 0, round: 0 };
-
-    const spectatorEnabled = state.settings?.spectatorMode === "enabled";
+    const spectatorEnabled = gameState.settings?.spectatorMode === "enabled";
     if (!spectatorEnabled) {
       return c.json({ error: "Forbidden" }, 403);
     }
 
-    return c.json(toClientGameState(state, "spectator", subject));
+    return c.json(
+      toClientGameStateFromInternal(gameState, "spectator", subject),
+    );
   }
 
-  const state: PersistedGameState = row.state_json
-    ? (JSON.parse(row.state_json) as PersistedGameState)
-    : { gameId: id, stateVersion: 0, round: 0 };
-
-  return c.json(toClientGameState(state, "player", subject));
+  return c.json(toClientGameStateFromInternal(gameState, "player", subject));
 });
 
 // ---------------------------------------------------------------------------

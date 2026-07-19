@@ -15,7 +15,8 @@ import {
   submitGameAction,
 } from "../api/games";
 import { ApiError } from "../api/http";
-import type { GameAiActionUpdate, GameSessionUpdate } from "./useGameRealtime";
+import type { AiPresentationBeatInput } from "../lib/aiPresentationQueue";
+import type { GameSessionUpdate } from "./useGameRealtime";
 import { useGameSession } from "./useGameSession";
 
 vi.mock("../api/gameConfig", () => ({
@@ -31,7 +32,7 @@ vi.mock("../api/games", () => ({
 
 type RealtimeCallbacks = {
   onUpdate?: (update: GameSessionUpdate) => void;
-  onAiAction?: (update: GameAiActionUpdate) => void;
+  onAiAction?: (update: AiPresentationBeatInput) => void;
 };
 
 // Mutable test doubles for the mocked `useGameRealtime`: captures the
@@ -116,17 +117,15 @@ function gameState(
 
 function aiActionUpdate(
   stateVersion: number,
-  overrides: Partial<GameAiActionUpdate> = {},
-): GameAiActionUpdate {
+  overrides: Partial<AiPresentationBeatInput> = {},
+): AiPresentationBeatInput {
   return {
-    source: "ai_action",
     aiPlayerId: "opponent",
     displayName: "Grace",
     material: true,
     softTurnEnd: false,
     summary: "Grace rolled",
     stateVersion,
-    action: { type: "roll_dice" } satisfies GameAction,
     sentAt: Date.now(),
     ...overrides,
   };
@@ -299,7 +298,7 @@ describe("useGameSession", () => {
     expect(result.current.presentationMode).toBe("watching");
     expect(result.current.currentPresentationBeat?.stateVersion).toBe(2);
     expect(result.current.myTurn).toBe(true);
-    expect(result.current.actionsLocked).toBe(true);
+    expect(result.current.controls.locked).toBe(true);
   });
 
   it("only falls back to polling while the WS is disconnected, not while connected", async () => {

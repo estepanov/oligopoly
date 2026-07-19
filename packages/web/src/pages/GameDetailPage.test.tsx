@@ -113,7 +113,6 @@ vi.mock("../hooks/useGameSession", () => ({
     presentationMode: "idle",
     currentPresentationBeat: null,
     skipPresentation,
-    actionsLocked: false,
     controls: { locked: false, busy: false, myTurnEffective: true },
     ...sessionOverride.value,
   }),
@@ -235,7 +234,6 @@ describe("GameDetailPage", () => {
         displayName: "Nova Blake",
         summary: "changed tile ownership",
       },
-      actionsLocked: true,
       controls: { locked: true, busy: true, myTurnEffective: false },
     };
 

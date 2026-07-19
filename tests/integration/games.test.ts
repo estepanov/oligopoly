@@ -391,6 +391,21 @@ describe("GET /api/games/:id/state", () => {
     expect(body.gameId).toBe("game-active");
     expect(body.round).toBe(3);
   });
+
+  it("normalizes a legacy row missing stateVersion to 0", async () => {
+    // `activeGame.state_json` predates `stateVersion` — the route must run
+    // it through `normalizeGameState` before building the client view so the
+    // response still satisfies `GameStateSchema`.
+    const res = await app.request(
+      "/api/games/game-active/state",
+      { headers: { "x-subject": PLAYER_A } },
+      makeEnv(),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json<{ stateVersion: number; tiles: unknown[] }>();
+    expect(body.stateVersion).toBe(0);
+    expect(Array.isArray(body.tiles)).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -108,31 +108,41 @@ export function useGameSession(
     skip: skipPresentation,
   } = useAiPresentation(state, urgentObligation);
 
-  // Mirrors `state`, but assigned synchronously wherever canonical state is
-  // produced (rather than only at render time via `stateRef.current = state`)
-  // so `mergeAuctionClientView` always merges against the latest canonical
+  // Mirrors `state`, but assigned synchronously at every write site (via
+  // `commitCanonicalState`) instead of only at render time, so
+  // `mergeAuctionClientView` always merges against the latest canonical
   // state even across same-tick updates, without waiting for a React commit
   // to land the ref update.
   const stateRef = useRef<GameState | null>(state);
-  stateRef.current = state;
 
-  const applySessionUpdate = useCallback((update: GameSessionUpdate) => {
-    // `mergeAuctionClientView` exists because auctions hold client-LOCAL state
-    // (the optimistic `mySubmission`) that a server broadcast would otherwise
-    // wipe. `tradeOffers` deliberately has NO symmetric merge: there is no
-    // client-local trade state to preserve — every broadcast carries the
-    // viewer's own offers (the DO re-injects them per viewer via
-    // `filterTradeOffersForViewer`), so we always take the server's `tradeOffers`
-    // verbatim. If a future broadcast path ever omitted `tradeOffers`, that would
-    // be a server-side bug to fix at the source, not something to patch here.
-    const merged = mergeAuctionClientView(stateRef.current, update.state);
-    stateRef.current = merged;
-    setState(merged);
-    if (update.logEntries?.length) {
-      setLogEntries((current) => appendLogEntries(current, update.logEntries));
-    }
-    setStatusLine(update.source);
+  const commitCanonicalState = useCallback((next: GameState | null) => {
+    stateRef.current = next;
+    setState(next);
   }, []);
+
+  const applySessionUpdate = useCallback(
+    (update: GameSessionUpdate) => {
+      // `mergeAuctionClientView` exists because auctions hold client-LOCAL
+      // state (the optimistic `mySubmission`) that a server broadcast would
+      // otherwise wipe. `tradeOffers` deliberately has NO symmetric merge:
+      // there is no client-local trade state to preserve — every broadcast
+      // carries the viewer's own offers (the DO re-injects them per viewer
+      // via `filterTradeOffersForViewer`), so we always take the server's
+      // `tradeOffers` verbatim. If a future broadcast path ever omitted
+      // `tradeOffers`, that would be a server-side bug to fix at the source,
+      // not something to patch here.
+      commitCanonicalState(
+        mergeAuctionClientView(stateRef.current, update.state),
+      );
+      if (update.logEntries?.length) {
+        setLogEntries((current) =>
+          appendLogEntries(current, update.logEntries),
+        );
+      }
+      setStatusLine(update.source);
+    },
+    [commitCanonicalState],
+  );
 
   // AI beats and their matching canonical state can arrive over WS in either
   // order (`game.ai_action` usually follows `game.action_applied`, but is not
@@ -178,7 +188,7 @@ export function useGameSession(
   useEffect(() => {
     if (!gameId) {
       setGame(null);
-      setState(null);
+      commitCanonicalState(null);
       setLogEntries([]);
       setError("Missing game id");
       setLoading(false);
@@ -197,13 +207,15 @@ export function useGameSession(
         ]);
         if (!cancelled) {
           setGame(summary);
-          setState((current) => mergeAuctionClientView(current, gameState));
+          commitCanonicalState(
+            mergeAuctionClientView(stateRef.current, gameState),
+          );
           setLogEntries(log);
         }
       } catch (e) {
         if (!cancelled) {
           setGame(null);
-          setState(null);
+          commitCanonicalState(null);
           setLogEntries([]);
           if (e instanceof ApiError && e.status === 404) {
             setError("Game not found.");
@@ -220,7 +232,7 @@ export function useGameSession(
     return () => {
       cancelled = true;
     };
-  }, [gameId]);
+  }, [gameId, commitCanonicalState]);
 
   const refresh = useCallback(async () => {
     if (!gameId) return;
@@ -228,20 +240,32 @@ export function useGameSession(
       fetchGameState(gameId),
       loadGameLog(gameId),
     ]);
-    setState((current) => mergeAuctionClientView(current, gameState));
+    commitCanonicalState(mergeAuctionClientView(stateRef.current, gameState));
     setLogEntries(log);
     setStatusLine(null);
     // Poll/refresh is the degrade-to-jump-to-latest path (WS down, backup
     // AI-turn poll, or an explicit manual refresh): always catch presentation
     // up to canonical rather than pacing from a possibly-stale queue.
     skipPresentation();
-  }, [gameId, skipPresentation]);
+  }, [gameId, skipPresentation, commitCanonicalState]);
 
-  const actionsLocked = presentationMode === "watching";
+  const myTurn = state ? isMyTurn(state, myPlayerId) : false;
+
+  // Single view-model for "can the viewer act right now", so consumers (the
+  // status header, play controls, the details panel, and `runAction` itself)
+  // all agree instead of each re-deriving their own lock condition.
+  const controls = useMemo(() => {
+    const locked = presentationMode === "watching";
+    return {
+      locked,
+      busy: busyAction || locked,
+      myTurnEffective: locked ? false : myTurn,
+    };
+  }, [presentationMode, busyAction, myTurn]);
 
   const runAction = useCallback(
     async (label: string, action: GameAction) => {
-      if (!gameId || actionsLocked) return;
+      if (!gameId || controls.locked) return;
       const startedAt =
         typeof performance === "undefined" ? Date.now() : performance.now();
       setBusyAction(true);
@@ -256,7 +280,7 @@ export function useGameSession(
         const latencyMs = Math.max(0, Math.round(finishedAt - startedAt));
 
         startTransition(() => {
-          setState((current) => mergeAuctionClientView(current, next));
+          commitCanonicalState(mergeAuctionClientView(stateRef.current, next));
           setStatusLine(`${label} confirmed`);
           setLastActionLatencyMs(latencyMs);
           setPendingAction(null);
@@ -280,7 +304,7 @@ export function useGameSession(
         setBusyAction(false);
       }
     },
-    [gameId, refresh, actionsLocked],
+    [gameId, refresh, controls.locked, commitCanonicalState],
   );
 
   useEffect(() => {
@@ -297,20 +321,6 @@ export function useGameSession(
     }, 2500);
     return () => window.clearInterval(interval);
   }, [gameId, refresh, state?.phase, wsStatus]);
-
-  const myTurn = state ? isMyTurn(state, myPlayerId) : false;
-
-  // Single view-model for "can the viewer act right now", so consumers (the
-  // status header, play controls, and the details panel) all agree instead
-  // of each re-deriving their own `busyAction || actionsLocked` combination.
-  const controls = useMemo(
-    () => ({
-      locked: actionsLocked,
-      busy: busyAction || actionsLocked,
-      myTurnEffective: actionsLocked ? false : myTurn,
-    }),
-    [actionsLocked, busyAction, myTurn],
-  );
 
   return {
     game,
@@ -337,7 +347,6 @@ export function useGameSession(
     presentationMode,
     currentPresentationBeat,
     skipPresentation,
-    actionsLocked,
     controls,
   };
 }

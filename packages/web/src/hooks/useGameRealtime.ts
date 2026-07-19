@@ -1,14 +1,11 @@
-import type {
-  AiActionBroadcast,
-  GameLogEntry,
-  GameState,
-} from "@oligopoly/validation";
+import type { GameLogEntry, GameState } from "@oligopoly/validation";
 import {
   GameRealtimeEventSchema,
   GameStateSchema,
 } from "@oligopoly/validation";
 import { useState } from "react";
 import { gameWebSocketUrl } from "../api/games";
+import type { AiPresentationBeatInput } from "../lib/aiPresentationQueue";
 import { useRealtimeChannel } from "./useRealtimeChannel";
 
 export type GameSessionUpdate = {
@@ -17,24 +14,15 @@ export type GameSessionUpdate = {
   source: string;
 };
 
-/** A single AI-seat presentation beat, extracted from a `game.ai_action` WS event.
- * `action` is redacted server-side (see `redactAiActionForBroadcast` in
- * `@oligopoly/worker`) and unused on the client — kept only for wire parity. */
-export type GameAiActionUpdate = {
-  source: "ai_action";
-  aiPlayerId: string;
-  displayName?: string;
-  material: boolean;
-  softTurnEnd: boolean;
-  summary?: string;
-  stateVersion: number;
-  action: AiActionBroadcast;
-  sentAt: number;
-};
-
 type UseGameRealtimeOptions = {
   onUpdate?: (update: GameSessionUpdate) => void;
-  onAiAction?: (update: GameAiActionUpdate) => void;
+  /** A single AI-seat presentation beat, mapped from a `game.ai_action` WS
+   * event straight into the one beat-input shape shared end-to-end by
+   * `useGameSession` and the presentation queue. The event's `action` field
+   * is redacted server-side (see `redactAiActionForBroadcast` in
+   * `@oligopoly/worker`) and unused on the client, so it is dropped here
+   * rather than threaded through as dead wire parity. */
+  onAiAction?: (update: AiPresentationBeatInput) => void;
 };
 
 export function useGameRealtime(
@@ -82,14 +70,12 @@ export function useGameRealtime(
       }
       if (message.type === "game.ai_action") {
         options.onAiAction?.({
-          source: "ai_action",
           aiPlayerId: message.aiPlayerId,
           displayName: message.displayName,
           material: message.material,
           softTurnEnd: message.softTurnEnd,
           summary: message.summary,
           stateVersion: message.stateVersion,
-          action: message.action,
           sentAt: message.sentAt,
         });
       }
