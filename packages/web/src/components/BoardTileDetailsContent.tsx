@@ -239,8 +239,9 @@ export function BoardTileDetailsContent({
                         type="button"
                         className={className}
                         aria-pressed={member.selected}
-                        onClick={() => {
+                        onClick={(event) => {
                           if (member.selected) return;
+                          event.currentTarget.focus();
                           setViewAnnouncement(`Viewing ${member.label}`);
                           onSelectSetMember(member.position);
                         }}
