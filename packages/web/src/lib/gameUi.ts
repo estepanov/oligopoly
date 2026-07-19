@@ -169,17 +169,17 @@ export function hasSubmittedAuction(
 }
 
 /**
- * Whether the viewer has an actionable interactive moment right now: their
- * turn, an auction bid they still owe, or a pending inbound trade offer. Used
- * to interrupt AI presentation pacing (auto-catch-up), matching the "Skip"
- * effect described in the AI turn presentation design doc.
+ * Whether the viewer owes a mid-loop obligation that is not simply "it's my
+ * turn": an auction bid they still owe, or a pending inbound trade offer.
+ * These interrupt AI presentation pacing (auto-catch-up) immediately, even
+ * while beats are still queued, because they are time-sensitive and
+ * independent of whose turn canonical state says it is.
  */
-export function viewerNeedsInteraction(
+export function viewerHasUrgentObligation(
   state: GameState,
   viewerId: string | null,
 ): boolean {
   if (!viewerId || state.phase === "game_over") return false;
-  if (isMyTurn(state, viewerId)) return true;
   if (
     isAuctionBiddingPhase(state) &&
     canParticipateInAuction(state, viewerId) &&
@@ -189,6 +189,42 @@ export function viewerNeedsInteraction(
   }
   return (state.tradeOffers ?? []).some(
     (offer) => offer.recipientId === viewerId && offer.status === "pending",
+  );
+}
+
+/**
+ * Whether canonical state currently says it is the viewer's own turn to act
+ * (e.g. `waiting_for_roll`, `action`). Unlike `viewerHasUrgentObligation`,
+ * this alone must NOT force an immediate presentation catch-up while AI
+ * beats are still queued/current: the AI turn loop can finish server-side
+ * before the client has drained the beats leading up to it, and canonical
+ * flipping to "my turn" mid-drain should not skip the remaining beats.
+ * Presentation catches up to this naturally once its queue empties.
+ */
+export function viewerCanActOnOwnTurn(
+  state: GameState,
+  viewerId: string | null,
+): boolean {
+  return isMyTurn(state, viewerId);
+}
+
+/**
+ * Whether the viewer has an actionable interactive moment right now: their
+ * turn, an auction bid they still owe, or a pending inbound trade offer.
+ * Matches the "Skip" effect described in the AI turn presentation design
+ * doc. Callers pacing AI presentation should prefer the split
+ * `viewerHasUrgentObligation` / `viewerCanActOnOwnTurn` predicates above so
+ * "my turn" alone does not force-drain a queue of AI beats; this combined
+ * form remains for callers that just need a single "can the viewer act"
+ * check.
+ */
+export function viewerNeedsInteraction(
+  state: GameState,
+  viewerId: string | null,
+): boolean {
+  return (
+    viewerCanActOnOwnTurn(state, viewerId) ||
+    viewerHasUrgentObligation(state, viewerId)
   );
 }
 

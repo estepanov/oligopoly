@@ -14,6 +14,7 @@ import {
   SOFT_TURN_END_PAUSE_MS,
   skipPresentation,
 } from "./aiPresentationQueue";
+import { viewerHasUrgentObligation } from "./gameUi";
 
 function state(
   version: number,
@@ -59,10 +60,61 @@ describe("aiPresentationQueue", () => {
     expect(q.queue).toHaveLength(0);
   });
 
-  it("auto catch-up when viewer needs interaction", () => {
+  it("auto catch-up when the viewer has an urgent obligation", () => {
     let q = createPresentationQueue(state(1));
     q = enqueueAiBeat(q, beat(2), state(2), true, 10_000);
     expect(q.mode).toBe("caught_up");
+  });
+
+  it("keeps AI beats queued when canonical already shows the human's turn but no urgent obligation is owed", () => {
+    // Regression for the fast-finishing AI loop case: `runAiTurnLoop` can
+    // complete server-side (advancing canonical all the way to "human's
+    // turn") before the client has drained the AI beats that led there.
+    // Canonical `isMyTurn` alone must not force a catch-up while beats are
+    // still queued/current — only an urgent obligation (auction/trade)
+    // would.
+    let q = createPresentationQueue(state(1));
+
+    q = enqueueCanonical(q, state(2), "human", false);
+    q = enqueueAiBeat(q, beat(2), state(2), false, 10_000);
+    expect(q.mode).toBe("watching");
+
+    q = enqueueCanonical(q, state(3), "human", false);
+    q = enqueueAiBeat(q, beat(3), state(3), false, 10_100);
+    expect(q.queue).toHaveLength(1);
+
+    const humanTurnCanonical: GameState = {
+      ...state(4, "waiting_for_roll"),
+      currentPlayerIndex: 1,
+    };
+    expect(viewerHasUrgentObligation(humanTurnCanonical, "human")).toBe(false);
+
+    q = enqueueCanonical(q, humanTurnCanonical, "human", false);
+    // Must NOT drain: still watching the first beat, second still queued.
+    expect(q.mode).toBe("watching");
+    expect(q.currentBeat?.stateVersion).toBe(2);
+    expect(q.queue).toHaveLength(1);
+
+    q = enqueueAiBeat(q, beat(4), humanTurnCanonical, false, 10_200);
+    expect(q.queue).toHaveLength(2);
+
+    q = advancePresentation(q, humanTurnCanonical, 10_000 + MATERIAL_PAUSE_MS);
+    expect(q.currentBeat?.stateVersion).toBe(3);
+    q = advancePresentation(
+      q,
+      humanTurnCanonical,
+      10_000 + 2 * MATERIAL_PAUSE_MS,
+    );
+    expect(q.currentBeat?.stateVersion).toBe(4);
+
+    // Presentation catches up to canonical naturally once the queue drains.
+    q = advancePresentation(
+      q,
+      humanTurnCanonical,
+      10_000 + 3 * MATERIAL_PAUSE_MS,
+    );
+    expect(q.mode).toBe("caught_up");
+    expect(q.queue).toHaveLength(0);
   });
 
   it("drops older versions and catches up on a gap", () => {

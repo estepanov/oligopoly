@@ -256,6 +256,52 @@ describe("useGameSession", () => {
     expect(result.current.currentPresentationBeat?.stateVersion).toBe(2);
   });
 
+  it("keeps presenting queued AI beats after canonical flips to the human's turn, absent an urgent obligation", async () => {
+    // Regression: a fast-finishing `runAiTurnLoop` can advance canonical all
+    // the way to "my turn" before the client has drained the AI beats that
+    // led there. Canonical `isMyTurn` alone must not force a catch-up while
+    // a beat is still current/queued — only an urgent obligation (auction
+    // bid owed, pending inbound trade) does that.
+    vi.mocked(fetchGameState).mockResolvedValueOnce(gameState(1, 1, 1));
+    vi.mocked(fetchGameLog).mockResolvedValueOnce({ log: [] });
+
+    const { result } = renderHook(() => useGameSession("game-1", "me"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // First AI-seat action: opponent still acting.
+    act(() => {
+      realtimeCallbacks.onUpdate?.({
+        state: gameState(2, 2, 1),
+        source: "Realtime state update",
+      });
+      realtimeCallbacks.onAiAction?.(aiActionUpdate(2));
+    });
+    expect(result.current.presentationMode).toBe("watching");
+    expect(result.current.currentPresentationBeat?.stateVersion).toBe(2);
+
+    // Second AI-seat action hands the turn back to "me" (currentPlayerIndex
+    // 0), with no auction bid owed or pending trade offer.
+    act(() => {
+      realtimeCallbacks.onUpdate?.({
+        state: gameState(3, 3, 0),
+        source: "Realtime state update",
+      });
+      realtimeCallbacks.onAiAction?.(
+        aiActionUpdate(3, {
+          softTurnEnd: true,
+          summary: "Grace ended her turn",
+        }),
+      );
+    });
+
+    // Must still be watching the first beat with the second queued behind
+    // it — not immediately jumped to caught_up with an empty queue.
+    expect(result.current.presentationMode).toBe("watching");
+    expect(result.current.currentPresentationBeat?.stateVersion).toBe(2);
+    expect(result.current.myTurn).toBe(true);
+    expect(result.current.actionsLocked).toBe(true);
+  });
+
   it("only falls back to polling while the WS is disconnected, not while connected", async () => {
     vi.mocked(fetchGameState).mockResolvedValue(gameState(1, 1, 1));
     vi.mocked(fetchGameLog).mockResolvedValue({ log: [] });

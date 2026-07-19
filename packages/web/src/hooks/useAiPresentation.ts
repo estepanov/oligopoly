@@ -29,11 +29,17 @@ export type AiPresentationBeatInput = {
  * and the timer that paces material/soft-turn-end beats. The reducer itself
  * stays pure and timer-free; this hook is the only place that schedules
  * `setTimeout` for `advancePresentation`.
+ *
+ * `urgentObligation` (auction bid owed / pending inbound trade — see
+ * `viewerHasUrgentObligation`) forces an immediate catch-up. Canonical "my
+ * turn" alone deliberately does not: it is derived from `enqueueCanonical` /
+ * `enqueueAiBeat`'s own version bookkeeping instead, so a fast-finishing AI
+ * turn loop does not drain already-queued beats out from under the viewer.
  */
 export function useAiPresentation(
   canonical: GameState | null,
   viewerId: string | null,
-  needsInteraction: boolean,
+  urgentObligation: boolean,
 ) {
   const [queue, setQueue] = useState<AiPresentationQueueState>(() =>
     createPresentationQueue(canonical),
@@ -44,9 +50,9 @@ export function useAiPresentation(
   useEffect(() => {
     if (!canonical) return;
     setQueue((current) =>
-      enqueueCanonical(current, canonical, viewerId, needsInteraction),
+      enqueueCanonical(current, canonical, viewerId, urgentObligation),
     );
-  }, [canonical, viewerId, needsInteraction]);
+  }, [canonical, viewerId, urgentObligation]);
 
   const pushAiAction = useCallback(
     (beatInput: AiPresentationBeatInput, stateForVersion: GameState) => {
@@ -65,12 +71,12 @@ export function useAiPresentation(
           current,
           beat,
           stateForVersion,
-          needsInteraction,
+          urgentObligation,
           Date.now(),
         ),
       );
     },
-    [needsInteraction],
+    [urgentObligation],
   );
 
   const skip = useCallback(() => {

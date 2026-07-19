@@ -24,4 +24,19 @@ describe("game.ai_action event", () => {
       expect(parsed.stateVersion).toBe(3);
     }
   });
+
+  it("rejects a payload missing required material/stateVersion fields", () => {
+    expect(() =>
+      GameRealtimeEventSchema.parse({
+        type: "game.ai_action",
+        sentAt: 1,
+        gameId: "g1",
+        aiPlayerId: "ai:bot",
+        personality: "opportunist",
+        action: { type: "end_turn" },
+        reason: null,
+        // `material` and `stateVersion` intentionally omitted.
+      }),
+    ).toThrow();
+  });
 });

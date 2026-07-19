@@ -26,7 +26,7 @@ import {
   currentActorId,
   isMyTurn,
   mergeAuctionClientView,
-  viewerNeedsInteraction,
+  viewerHasUrgentObligation,
 } from "../lib/gameUi";
 import { useAiPresentation } from "./useAiPresentation";
 import {
@@ -95,8 +95,12 @@ export function useGameSession(
       : null;
   }, [myUserId, state?.players]);
 
-  const needsInteraction = useMemo(
-    () => (state ? viewerNeedsInteraction(state, myPlayerId) : false),
+  // Only an urgent obligation (auction bid owed / pending inbound trade)
+  // forces an immediate presentation catch-up. Canonical "my turn" alone
+  // must not drain a queue of already-arrived AI beats — see
+  // `viewerCanActOnOwnTurn` / `enqueueCanonical` for why.
+  const urgentObligation = useMemo(
+    () => (state ? viewerHasUrgentObligation(state, myPlayerId) : false),
     [state, myPlayerId],
   );
 
@@ -106,7 +110,7 @@ export function useGameSession(
     currentPresentationBeat,
     pushAiAction,
     skip: skipPresentation,
-  } = useAiPresentation(state, myPlayerId, needsInteraction);
+  } = useAiPresentation(state, myPlayerId, urgentObligation);
 
   // AI beats and their matching canonical state can arrive over WS in either
   // order (ai_action usually follows action_applied, but is not guaranteed

@@ -57,12 +57,18 @@ export function enqueueCanonical(
   q: AiPresentationQueueState,
   canonical: GameState,
   viewerId: string | null,
-  needsInteraction: boolean,
+  urgentObligation: boolean,
 ): AiPresentationQueueState {
   void viewerId;
 
+  // Note: canonical `isMyTurn` alone must NOT land here — only an urgent
+  // mid-loop obligation (auction bid owed, pending inbound trade) or a
+  // version gap too large for the queue to bridge force an immediate
+  // catch-up. Otherwise queued/current AI beats would be discarded the
+  // instant canonical flips to the viewer's turn, even though the loop that
+  // produced them already finished server-side. See `viewerCanActOnOwnTurn`.
   if (
-    needsInteraction ||
+    urgentObligation ||
     (canonical.stateVersion ?? q.lastAppliedVersion) - q.lastAppliedVersion >
       q.queue.length + 1
   ) {
@@ -93,10 +99,14 @@ export function enqueueAiBeat(
   q: AiPresentationQueueState,
   beat: AiPresentationBeatEvent,
   canonical: GameState,
-  needsInteraction: boolean,
+  urgentObligation: boolean,
   nowMs: number,
 ): AiPresentationQueueState {
-  if (needsInteraction) {
+  // Same rationale as `enqueueCanonical`: only an urgent obligation forces
+  // an immediate skip here. A canonical "my turn" alone must not drop AI
+  // beats that already arrived — let them present, then catch up naturally
+  // once the queue drains (see `advancePresentation`).
+  if (urgentObligation) {
     return skipPresentation(q, canonical);
   }
 
