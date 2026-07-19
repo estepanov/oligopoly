@@ -165,6 +165,21 @@ describe("aiPresentationQueue", () => {
     expect(q.presentationState?.stateVersion).toBe(2);
   });
 
+  it("does not re-arm canonical pending after skip and duplicate canonical", () => {
+    let q = createPresentationQueue(state(1));
+    q = enqueueCanonical(q, state(2), "human", false);
+    q = enqueueAiBeat(q, beat(2), state(2), false, 10_000);
+    q = skipPresentation(q, state(2));
+
+    expect(q.canonicalPendingBeatVersion).toBeNull();
+    q = enqueueCanonical(q, state(2), "human", false);
+    expect(q.canonicalPendingBeatVersion).toBeNull();
+
+    q = enqueueAiBeat(q, beat(2), state(2), false, 20_000);
+    expect(q.mode).toBe("caught_up");
+    expect(q.currentBeat).toBeNull();
+  });
+
   it("measures the pause from local presentation time, not sentAt", () => {
     let q = createPresentationQueue(state(1));
     q = enqueueAiBeat(q, beat(2, { sentAt: 1 }), state(2), false, 10_000);

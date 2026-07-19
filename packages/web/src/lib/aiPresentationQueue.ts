@@ -71,11 +71,18 @@ export function enqueueCanonical(
 
   if (q.mode === "caught_up") {
     const canonicalVersion = canonical.stateVersion ?? q.lastAppliedVersion;
+    if (canonicalVersion > q.lastAppliedVersion) {
+      return {
+        ...q,
+        presentationState: canonical,
+        canonicalPendingBeatVersion: canonicalVersion,
+        lastAppliedVersion: canonicalVersion,
+      };
+    }
+
     return {
       ...q,
       presentationState: canonical,
-      canonicalPendingBeatVersion: canonicalVersion,
-      lastAppliedVersion: canonicalVersion,
     };
   }
 
