@@ -10,6 +10,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { fetchGameConfig } from "../api/gameConfig";
@@ -26,8 +27,14 @@ import {
   isAiControlledActor,
   isMyTurn,
   mergeAuctionClientView,
+  viewerNeedsInteraction,
 } from "../lib/gameUi";
-import { type GameSessionUpdate, useGameRealtime } from "./useGameRealtime";
+import { useAiPresentation } from "./useAiPresentation";
+import {
+  type GameAiActionUpdate,
+  type GameSessionUpdate,
+  useGameRealtime,
+} from "./useGameRealtime";
 
 type PendingGameAction = {
   label: string;
@@ -82,25 +89,92 @@ export function useGameSession(
     null,
   );
 
-  const applySessionUpdate = useCallback((update: GameSessionUpdate) => {
-    // `mergeAuctionClientView` exists because auctions hold client-LOCAL state
-    // (the optimistic `mySubmission`) that a server broadcast would otherwise
-    // wipe. `tradeOffers` deliberately has NO symmetric merge: there is no
-    // client-local trade state to preserve — every broadcast carries the
-    // viewer's own offers (the DO re-injects them per viewer via
-    // `filterTradeOffersForViewer`), so we always take the server's `tradeOffers`
-    // verbatim. If a future broadcast path ever omitted `tradeOffers`, that would
-    // be a server-side bug to fix at the source, not something to patch here.
-    setState((current) => mergeAuctionClientView(current, update.state));
-    if (update.logEntries?.length) {
-      setLogEntries((current) => appendLogEntries(current, update.logEntries));
-    }
-    setStatusLine(update.source);
-  }, []);
+  const myPlayerId = useMemo(() => {
+    if (!myUserId || !state?.players) return null;
+    return state.players.some((player) => player.playerId === myUserId)
+      ? myUserId
+      : null;
+  }, [myUserId, state?.players]);
+
+  const needsInteraction = useMemo(
+    () => (state ? viewerNeedsInteraction(state, myPlayerId) : false),
+    [state, myPlayerId],
+  );
+
+  const {
+    presentationState,
+    presentationMode,
+    currentPresentationBeat,
+    pushAiAction,
+    skip: skipPresentation,
+  } = useAiPresentation(state, myPlayerId, needsInteraction);
+
+  // AI beats and their matching canonical state can arrive over WS in either
+  // order (ai_action usually follows action_applied, but is not guaranteed
+  // to). Buffer by `stateVersion` until both halves of the pair are known,
+  // per the pairing strategy in the AI turn presentation design doc.
+  const pendingAiRef = useRef<Map<number, GameAiActionUpdate>>(new Map());
+  const stateRef = useRef<GameState | null>(state);
+  stateRef.current = state;
+
+  const applySessionUpdate = useCallback(
+    (update: GameSessionUpdate) => {
+      // `mergeAuctionClientView` exists because auctions hold client-LOCAL state
+      // (the optimistic `mySubmission`) that a server broadcast would otherwise
+      // wipe. `tradeOffers` deliberately has NO symmetric merge: there is no
+      // client-local trade state to preserve — every broadcast carries the
+      // viewer's own offers (the DO re-injects them per viewer via
+      // `filterTradeOffersForViewer`), so we always take the server's `tradeOffers`
+      // verbatim. If a future broadcast path ever omitted `tradeOffers`, that would
+      // be a server-side bug to fix at the source, not something to patch here.
+      setState((current) => mergeAuctionClientView(current, update.state));
+      if (update.logEntries?.length) {
+        setLogEntries((current) =>
+          appendLogEntries(current, update.logEntries),
+        );
+      }
+      setStatusLine(update.source);
+
+      const version = update.state.stateVersion;
+      if (version === undefined) return;
+      for (const [pendingVersion, pendingBeat] of pendingAiRef.current) {
+        if (pendingVersion > version) continue;
+        pendingAiRef.current.delete(pendingVersion);
+        if (pendingVersion === version) {
+          pushAiAction(pendingBeat, update.state);
+        }
+      }
+    },
+    [pushAiAction],
+  );
+
+  const handleAiAction = useCallback(
+    (update: GameAiActionUpdate) => {
+      const current = stateRef.current;
+      if (current && current.stateVersion === update.stateVersion) {
+        pushAiAction(update, current);
+        return;
+      }
+      pendingAiRef.current.set(update.stateVersion, update);
+    },
+    [pushAiAction],
+  );
 
   const { wsStatus, turnDeadline, timerKind } = useGameRealtime(gameId, {
     onUpdate: applySessionUpdate,
+    onAiAction: handleAiAction,
   });
+
+  const previousWsStatusRef = useRef(wsStatus);
+  useEffect(() => {
+    if (
+      previousWsStatusRef.current === "connected" &&
+      wsStatus !== "connected"
+    ) {
+      skipPresentation();
+    }
+    previousWsStatusRef.current = wsStatus;
+  }, [wsStatus, skipPresentation]);
 
   useEffect(() => {
     let cancelled = false;
@@ -170,13 +244,6 @@ export function useGameSession(
     };
   }, [gameId]);
 
-  const myPlayerId = useMemo(() => {
-    if (!myUserId || !state?.players) return null;
-    return state.players.some((player) => player.playerId === myUserId)
-      ? myUserId
-      : null;
-  }, [myUserId, state?.players]);
-
   const refresh = useCallback(async () => {
     if (!gameId) return;
     const [gameState, log] = await Promise.all([
@@ -186,11 +253,17 @@ export function useGameSession(
     setState((current) => mergeAuctionClientView(current, gameState));
     setLogEntries(log);
     setStatusLine(null);
-  }, [gameId]);
+    // Poll/refresh is the degrade-to-jump-to-latest path (WS down, backup
+    // AI-turn poll, or an explicit manual refresh): always catch presentation
+    // up to canonical rather than pacing from a possibly-stale queue.
+    skipPresentation();
+  }, [gameId, skipPresentation]);
+
+  const actionsLocked = presentationMode === "watching";
 
   const runAction = useCallback(
     async (label: string, action: GameAction) => {
-      if (!gameId) return;
+      if (!gameId || actionsLocked) return;
       const startedAt =
         typeof performance === "undefined" ? Date.now() : performance.now();
       setBusyAction(true);
@@ -229,7 +302,7 @@ export function useGameSession(
         setBusyAction(false);
       }
     },
-    [gameId, refresh],
+    [gameId, refresh, actionsLocked],
   );
 
   useEffect(() => {
@@ -266,5 +339,11 @@ export function useGameSession(
     currentPlayerId: state ? currentActorId(state) : null,
     runAction,
     refresh,
+    canonicalState: state,
+    presentationState,
+    presentationMode,
+    currentPresentationBeat,
+    skipPresentation,
+    actionsLocked,
   };
 }

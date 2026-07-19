@@ -168,6 +168,30 @@ export function hasSubmittedAuction(
   return state.pendingAuction.mySubmission !== undefined;
 }
 
+/**
+ * Whether the viewer has an actionable interactive moment right now: their
+ * turn, an auction bid they still owe, or a pending inbound trade offer. Used
+ * to interrupt AI presentation pacing (auto-catch-up), matching the "Skip"
+ * effect described in the AI turn presentation design doc.
+ */
+export function viewerNeedsInteraction(
+  state: GameState,
+  viewerId: string | null,
+): boolean {
+  if (!viewerId || state.phase === "game_over") return false;
+  if (isMyTurn(state, viewerId)) return true;
+  if (
+    isAuctionBiddingPhase(state) &&
+    canParticipateInAuction(state, viewerId) &&
+    !hasSubmittedAuction(state, viewerId)
+  ) {
+    return true;
+  }
+  return (state.tradeOffers ?? []).some(
+    (offer) => offer.recipientId === viewerId && offer.status === "pending",
+  );
+}
+
 /** Merge broadcast-safe realtime snapshots with viewer-only fields already loaded over authenticated HTTP. */
 export function mergeAuctionClientView(
   previous: GameState | null,

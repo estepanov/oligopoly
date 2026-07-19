@@ -1,4 +1,8 @@
-import type { GameLogEntry, GameState } from "@oligopoly/validation";
+import type {
+  GameAction,
+  GameLogEntry,
+  GameState,
+} from "@oligopoly/validation";
 import {
   GameRealtimeEventSchema,
   GameStateSchema,
@@ -13,8 +17,22 @@ export type GameSessionUpdate = {
   source: string;
 };
 
+/** A single AI-seat presentation beat, extracted from a `game.ai_action` WS event. */
+export type GameAiActionUpdate = {
+  source: "ai_action";
+  aiPlayerId: string;
+  displayName?: string;
+  material: boolean;
+  softTurnEnd?: boolean;
+  summary?: string;
+  stateVersion: number;
+  action: GameAction;
+  sentAt: number;
+};
+
 type UseGameRealtimeOptions = {
   onUpdate?: (update: GameSessionUpdate) => void;
+  onAiAction?: (update: GameAiActionUpdate) => void;
 };
 
 export function useGameRealtime(
@@ -58,6 +76,20 @@ export function useGameRealtime(
         if (message.timerKind) {
           setTimerKind(message.timerKind);
         }
+        return;
+      }
+      if (message.type === "game.ai_action") {
+        options.onAiAction?.({
+          source: "ai_action",
+          aiPlayerId: message.aiPlayerId,
+          displayName: message.displayName,
+          material: message.material,
+          softTurnEnd: message.softTurnEnd,
+          summary: message.summary,
+          stateVersion: message.stateVersion,
+          action: message.action,
+          sentAt: message.sentAt,
+        });
       }
     },
   });
