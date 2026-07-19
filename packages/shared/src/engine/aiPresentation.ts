@@ -42,7 +42,9 @@ function ownershipChanged(
     prev.tiles.map((t) => [String(t.position), t.ownerId ?? null]),
   );
   for (const tile of next.tiles) {
-    if ((prevOwners.get(String(tile.position)) ?? null) !== (tile.ownerId ?? null)) {
+    if (
+      (prevOwners.get(String(tile.position)) ?? null) !== (tile.ownerId ?? null)
+    ) {
       return true;
     }
   }
@@ -124,13 +126,10 @@ export function classifyAiPresentationBeat(
     Object.keys(prev.syndicates ?? {}).length
   )
     reason = "syndicate_break";
-  else if (Boolean(next.winnerId) && !prev.winnerId)
-    reason = "win_threshold";
+  else if (Boolean(next.winnerId) && !prev.winnerId) reason = "win_threshold";
   else if (Boolean(next.finalRound) && !prev.finalRound)
     reason = "disruption_window";
-  else if (
-    maxAbsCapitalDelta(prev, next) >= AI_PRESENTATION_CAPITAL_THRESHOLD
-  )
+  else if (maxAbsCapitalDelta(prev, next) >= AI_PRESENTATION_CAPITAL_THRESHOLD)
     reason = "capital_transfer";
 
   const material = reason !== null;

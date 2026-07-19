@@ -120,17 +120,17 @@ export {
   replaceKickedPlayerWithAi,
   resolveAiPersonality,
 } from "./engine/aiControl.js";
-export {
-  AI_PRESENTATION_CAPITAL_THRESHOLD,
-  classifyAiPresentationBeat,
-  isAiSeatForPresentation,
-} from "./engine/aiPresentation.js";
+export { generateFriendlyAiName } from "./engine/aiNames.js";
 export type {
   AiPresentationBeat,
   AiPresentationContext,
   AiPresentationReason,
 } from "./engine/aiPresentation.js";
-export { generateFriendlyAiName } from "./engine/aiNames.js";
+export {
+  AI_PRESENTATION_CAPITAL_THRESHOLD,
+  classifyAiPresentationBeat,
+  isAiSeatForPresentation,
+} from "./engine/aiPresentation.js";
 export type {
   DeclineAuctionType,
   PendingAuctionState,
