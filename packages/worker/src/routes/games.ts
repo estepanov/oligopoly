@@ -429,20 +429,25 @@ gameRoutes.post("/:id/action", async (c) => {
 
   try {
     const engineStartedAt = nowMs();
-    const result = applyAction(gameState, subject, engineInput);
+    const engineResult = applyAction(gameState, subject, engineInput);
     timings.push({
       name: "engine",
       duration: nowMs() - engineStartedAt,
     });
 
     const persistStartedAt = nowMs();
-    const logEntries = await persistGameActionResult(db, id, result, {
-      gameRoom: c.env?.GAME_ROOM,
-      actorId: subject,
-      kv: c.env?.KV,
-      notify: false,
-      expectedStateJson: row.state_json,
-    });
+    const { result, logEntries } = await persistGameActionResult(
+      db,
+      id,
+      engineResult,
+      {
+        gameRoom: c.env?.GAME_ROOM,
+        actorId: subject,
+        kv: c.env?.KV,
+        notify: false,
+        expectedStateJson: row.state_json,
+      },
+    );
     timings.push({
       name: "persist",
       duration: nowMs() - persistStartedAt,

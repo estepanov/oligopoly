@@ -30,6 +30,11 @@ type PersistOptions = {
   };
 };
 
+export type PersistGameActionResult = {
+  result: ApplyActionResult;
+  logEntries: GameLogEntry[];
+};
+
 type BroadcastGameState = Omit<
   ApplyActionResult["state"],
   | "affinityAssignments"
@@ -188,14 +193,14 @@ export async function persistGameActionResult(
   gameId: string,
   result: ApplyActionResult,
   options: PersistOptions = {},
-): Promise<GameLogEntry[]> {
+): Promise<PersistGameActionResult> {
   const previousVersion =
     options.expectedStateJson != null
       ? (normalizeGameState(
           JSON.parse(options.expectedStateJson) as Record<string, unknown>,
         ).stateVersion ?? 0)
       : (result.state.stateVersion ?? 0);
-  result = {
+  const persistedResult: ApplyActionResult = {
     ...result,
     state: {
       ...result.state,
@@ -203,13 +208,13 @@ export async function persistGameActionResult(
     },
   };
   const now = Date.now();
-  const stateJson = JSON.stringify(result.state);
-  const logRows = result.logEntries.map((entry) => ({
+  const stateJson = JSON.stringify(persistedResult.state);
+  const logRows = persistedResult.logEntries.map((entry) => ({
     entry,
     apiEntry: {
       id: crypto.randomUUID(),
       gameId,
-      round: result.state.round,
+      round: persistedResult.state.round,
       playerId: entry.playerId ?? null,
       actionType: entry.actionType,
       payload: entry.payload ?? null,
@@ -247,13 +252,21 @@ export async function persistGameActionResult(
 
   const batchStatements: D1PreparedStatement[] = [stateUpdate];
 
-  if (result.state.phase === "game_over" && result.state.winnerId) {
+  if (
+    persistedResult.state.phase === "game_over" &&
+    persistedResult.state.winnerId
+  ) {
     batchStatements.push(
       db
         .prepare(
           `UPDATE games SET status = 'completed', winner_id = ?, ended_at = ? WHERE id = ?${appliedGuardSql}`,
         )
-        .bind(result.state.winnerId, now, gameId, ...appliedGuardBinds),
+        .bind(
+          persistedResult.state.winnerId,
+          now,
+          gameId,
+          ...appliedGuardBinds,
+        ),
     );
 
     batchStatements.push(
@@ -292,21 +305,31 @@ export async function persistGameActionResult(
     }
   }
 
-  if (result.state.phase === "game_over" && result.state.winnerId) {
-    await processGameCompletion(db, options.kv, gameId, result.state, now);
+  if (
+    persistedResult.state.phase === "game_over" &&
+    persistedResult.state.winnerId
+  ) {
+    await processGameCompletion(
+      db,
+      options.kv,
+      gameId,
+      persistedResult.state,
+      now,
+    );
   }
 
+  const persistedLogEntries = logRows.map(({ apiEntry }) => apiEntry);
   if (options.notify !== false) {
     await notifyGameActionResult(
       gameId,
-      result,
-      logRows.map(({ apiEntry }) => apiEntry),
+      persistedResult,
+      persistedLogEntries,
       options,
       now,
     );
   }
 
-  return logRows.map(({ apiEntry }) => apiEntry);
+  return { result: persistedResult, logEntries: persistedLogEntries };
 }
 
 export async function notifyGameActionResult(

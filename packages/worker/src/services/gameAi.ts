@@ -131,14 +131,14 @@ export async function stepGameAiTurn(
   const fallbackDecision = chooseAiAction(gameState);
   if (!fallbackDecision) return { applied: false, reason: "not_ai_turn" };
 
-  const { decision, result } = await chooseAndApplyAiDecision(
+  const { decision, result: engineResult } = await chooseAndApplyAiDecision(
     gameState,
     fallbackDecision,
     kv,
     aiEnv,
   );
 
-  await persistGameActionResult(db, gameId, result, {
+  const { result } = await persistGameActionResult(db, gameId, engineResult, {
     gameRoom,
     kv,
     expectedStateJson: row.state_json,
@@ -186,13 +186,14 @@ export async function persistStateMutation(
   logEntries: ApplyActionResult["logEntries"],
   gameRoom?: DurableObjectNamespace,
   expectedStateJson?: string | null,
-): Promise<void> {
-  await persistGameActionResult(
+): Promise<InternalGameState> {
+  const { result } = await persistGameActionResult(
     db,
     gameId,
     { state: nextState, logEntries },
     { gameRoom, actorId: "system", expectedStateJson },
   );
+  return result.state;
 }
 
 async function applyAuctionPhaseTransition(
@@ -213,15 +214,20 @@ async function applyAuctionPhaseTransition(
   const result = transition(gameState);
   if (!result) return false;
 
-  await persistGameActionResult(db, gameId, result, {
-    gameRoom,
-    actorId: "system",
-    expectedStateJson: row.state_json,
-  });
+  const { result: persistedResult } = await persistGameActionResult(
+    db,
+    gameId,
+    result,
+    {
+      gameRoom,
+      actorId: "system",
+      expectedStateJson: row.state_json,
+    },
+  );
 
   if (
-    result.state.phase === "waiting_for_auction_bids" &&
-    chooseAiAction(result.state)
+    persistedResult.state.phase === "waiting_for_auction_bids" &&
+    chooseAiAction(persistedResult.state)
   ) {
     await runAiTurnLoop(db, gameId, gameRoom, AI_LOOP_MAX_STEPS, kv, aiEnv);
   }
@@ -316,17 +322,20 @@ export async function applyTimeoutTakeoverAndStep(
     return { applied: false, reason: "not_ai_turn" };
   }
 
-  const { decision, result } = await chooseAndApplyAiDecision(
+  const { decision, result: engineResult } = await chooseAndApplyAiDecision(
     gameState,
     fallbackDecision,
     kv,
     aiEnv,
   );
 
-  await persistGameActionResult(
+  const { result } = await persistGameActionResult(
     db,
     gameId,
-    { state: result.state, logEntries: [...logEntries, ...result.logEntries] },
+    {
+      state: engineResult.state,
+      logEntries: [...logEntries, ...engineResult.logEntries],
+    },
     {
       gameRoom,
       expectedStateJson: row.state_json,
@@ -359,7 +368,7 @@ export async function kickPlayerToAiReplacement(
     personality,
   });
 
-  await persistStateMutation(
+  const persistedState = await persistStateMutation(
     db,
     gameId,
     nextState,
@@ -374,7 +383,7 @@ export async function kickPlayerToAiReplacement(
     row.state_json,
   );
 
-  return nextState;
+  return persistedState;
 }
 
 export async function notifyGameSchedule(

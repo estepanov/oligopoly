@@ -360,6 +360,78 @@ describe("notifyGameActionResult", () => {
 });
 
 describe("persistGameActionResult", () => {
+  it("returns and broadcasts the guarded persisted stateVersion", async () => {
+    const db = createD1Stub();
+    const { room, events } = captureBroadcastRoom();
+    const expectedStateJson = JSON.stringify({
+      gameId: "game-1",
+      round: 1,
+      stateVersion: 4,
+    });
+    db._tables.games.push({
+      id: "game-1",
+      state_json: expectedStateJson,
+      status: "active",
+    });
+
+    const persisted = await persistGameActionResult(
+      db,
+      "game-1",
+      {
+        state: {
+          gameId: "game-1",
+          round: 2,
+          stateVersion: 4,
+        } as never,
+        logEntries: [],
+      },
+      { expectedStateJson, gameRoom: room },
+    );
+
+    const storedState = JSON.parse(
+      db._tables.games[0]?.state_json ?? "{}",
+    ) as Record<string, unknown>;
+    const event = events[0] as {
+      state: Record<string, unknown>;
+    };
+    expect(persisted.result.state.stateVersion).toBe(5);
+    expect(storedState.stateVersion).toBe(5);
+    expect(event.state.stateVersion).toBe(5);
+  });
+
+  it("returns the bumped stateVersion when notifications are disabled", async () => {
+    const db = createD1Stub();
+    db._tables.games.push({
+      id: "game-1",
+      state_json: JSON.stringify({
+        gameId: "game-1",
+        round: 1,
+        stateVersion: 2,
+      }),
+      status: "active",
+    });
+
+    const persisted = await persistGameActionResult(
+      db,
+      "game-1",
+      {
+        state: {
+          gameId: "game-1",
+          round: 2,
+          stateVersion: 2,
+        } as never,
+        logEntries: [],
+      },
+      { notify: false },
+    );
+
+    expect(persisted.result.state.stateVersion).toBe(3);
+    const storedState = JSON.parse(
+      db._tables.games[0]?.state_json ?? "{}",
+    ) as Record<string, unknown>;
+    expect(storedState.stateVersion).toBe(3);
+  });
+
   it("rejects stale state writes before inserting logs", async () => {
     const db = createD1Stub();
     db._tables.games.push({
