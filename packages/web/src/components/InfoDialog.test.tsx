@@ -37,7 +37,7 @@ describe("InfoDialog", () => {
     expect(trigger).toHaveFocus();
   });
 
-  it("notifies onOpenChange when opened and closed", () => {
+  it("notifies onOpenChange only on open and close transitions", () => {
     const onOpenChange = vi.fn();
     render(
       <InfoDialog
@@ -49,15 +49,14 @@ describe("InfoDialog", () => {
       </InfoDialog>,
     );
 
-    expect(onOpenChange).toHaveBeenCalledTimes(1);
-    expect(onOpenChange).toHaveBeenNthCalledWith(1, false);
+    expect(onOpenChange).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: /explain tile/i }));
-    expect(onOpenChange).toHaveBeenCalledWith(true);
-    const callsAfterOpen = onOpenChange.mock.calls.length;
+    expect(onOpenChange).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
 
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(onOpenChange).toHaveBeenCalledTimes(callsAfterOpen + 1);
+    expect(onOpenChange).toHaveBeenCalledTimes(2);
     expect(onOpenChange).toHaveBeenLastCalledWith(false);
   });
 });
