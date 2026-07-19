@@ -72,6 +72,23 @@
   margin: 0.5rem 0 0;
 }
 
+.aiWatchingBanner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  background: var(--color-accent-soft);
+}
+
+.aiWatchingCopy {
+  display: grid;
+  gap: 0.2rem;
+}
+
 .statusChip,
 .gameBoardHighlight,
 .turnGuidance {

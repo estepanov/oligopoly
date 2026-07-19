@@ -1,5 +1,6 @@
 import { useDeferredValue, useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
+import { AiWatchingBanner } from "../components/AiWatchingBanner";
 import { useAuth } from "../components/AuthContext";
 import { BoardGrid } from "../components/BoardGrid";
 import { GameActionLog } from "../components/GameActionLog";
@@ -33,12 +34,18 @@ export function GameDetailPage() {
     myTurn,
     runAction,
     refresh,
+    presentationState,
+    presentationMode,
+    currentPresentationBeat,
+    skipPresentation,
+    actionsLocked,
   } = useGameSession(id, user?.userId ?? null);
-  const deferredState = useDeferredValue(state);
+  const viewState = presentationState ?? state;
+  const deferredState = useDeferredValue(viewState);
   const deferredLogEntries = useDeferredValue(logEntries);
   const actorId = useMemo(
-    () => (state ? currentActorId(state) : null),
-    [state],
+    () => (viewState ? currentActorId(viewState) : null),
+    [viewState],
   );
   const deferredActorId = useMemo(
     () => (deferredState ? currentActorId(deferredState) : null),
@@ -48,6 +55,15 @@ export function GameDetailPage() {
     () => (deferredState ? playerNameMap(deferredState) : undefined),
     [deferredState],
   );
+  const presentationName = useMemo(() => {
+    if (currentPresentationBeat?.displayName) {
+      return currentPresentationBeat.displayName;
+    }
+    if (viewState && currentPresentationBeat?.aiPlayerId) {
+      return playerDisplayName(viewState, currentPresentationBeat.aiPlayerId);
+    }
+    return "AI player";
+  }, [currentPresentationBeat, viewState]);
 
   if (!id) {
     return (
@@ -62,10 +78,10 @@ export function GameDetailPage() {
     <div className="gamePage">
       <GameStatusHeader
         gameId={id}
-        state={state}
+        state={viewState}
         actorId={actorId}
         myPlayerId={myPlayerId}
-        myTurn={myTurn}
+        myTurn={actionsLocked ? false : myTurn}
         wsStatus={wsStatus}
         turnDeadline={turnDeadline}
         timerKind={timerKind}
@@ -80,6 +96,12 @@ export function GameDetailPage() {
               {error}
             </p>
           )}
+          <AiWatchingBanner
+            open={presentationMode === "watching"}
+            name={presentationName}
+            summary={currentPresentationBeat?.summary}
+            onSkip={skipPresentation}
+          />
           {state ? (
             <>
               <dl className="detailsGrid">
@@ -107,7 +129,7 @@ export function GameDetailPage() {
                 state={state}
                 myPlayerId={myPlayerId}
                 tileNames={tileNames}
-                busy={busyAction}
+                busy={busyAction || actionsLocked}
                 pendingAction={pendingAction}
                 onAction={runAction}
               />
@@ -128,7 +150,7 @@ export function GameDetailPage() {
                 <button
                   type="button"
                   className="button buttonSecondary"
-                  disabled={busyAction}
+                  disabled={busyAction || actionsLocked}
                   onClick={() => void refresh()}
                 >
                   Refresh

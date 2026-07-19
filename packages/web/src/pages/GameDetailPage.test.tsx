@@ -1,11 +1,12 @@
 import type { GameState } from "@oligopoly/validation";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, vi } from "vitest";
 import { GameDetailPage } from "./GameDetailPage";
 
 const runAction = vi.fn();
 const refresh = vi.fn();
+const skipPresentation = vi.fn();
 const sessionOverride = vi.hoisted(() => ({
   value: {} as Record<string, unknown>,
 }));
@@ -107,6 +108,11 @@ vi.mock("../hooks/useGameSession", () => ({
     myTurn: true,
     runAction,
     refresh,
+    presentationState: state,
+    presentationMode: "idle",
+    currentPresentationBeat: null,
+    skipPresentation,
+    actionsLocked: false,
     ...sessionOverride.value,
   }),
 }));
@@ -211,5 +217,36 @@ describe("GameDetailPage", () => {
     expect(
       screen.getByText("Ended turn confirmed in 183 ms"),
     ).toBeInTheDocument();
+  });
+
+  it("shows the paced AI state and locks controls while watching", () => {
+    const presentationState = {
+      ...state,
+      currentPlayerIndex: 1,
+    };
+    sessionOverride.value = {
+      presentationState,
+      presentationMode: "watching",
+      currentPresentationBeat: {
+        aiPlayerId: "human-2",
+        displayName: "Nova Blake",
+        summary: "changed tile ownership",
+      },
+      actionsLocked: true,
+    };
+
+    renderPage();
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Watching · Nova Blake",
+    );
+    expect(screen.getByText("changed tile ownership")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "End turn" })).toBeDisabled();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Grace" }).closest("li"),
+    ).toHaveClass("playerSummaryItemActive");
+
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    expect(skipPresentation).toHaveBeenCalledOnce();
   });
 });
