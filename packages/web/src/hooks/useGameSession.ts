@@ -24,7 +24,6 @@ import { ApiError } from "../api/http";
 import { type BoardTileDetails, buildTileMaps } from "../lib/boardDisplay";
 import {
   currentActorId,
-  isAiControlledActor,
   isMyTurn,
   mergeAuctionClientView,
   viewerNeedsInteraction,
@@ -114,6 +113,11 @@ export function useGameSession(
   // to). Buffer by `stateVersion` until both halves of the pair are known,
   // per the pairing strategy in the AI turn presentation design doc.
   const pendingAiRef = useRef<Map<number, GameAiActionUpdate>>(new Map());
+  // Mirrors `state`, but assigned synchronously wherever canonical state is
+  // produced (rather than only at render time via `stateRef.current = state`)
+  // so that an `ai_action` arriving in the same tick as its pairing
+  // `action_applied`/snapshot can match immediately, without waiting for a
+  // React commit to land the ref update.
   const stateRef = useRef<GameState | null>(state);
   stateRef.current = state;
 
@@ -127,7 +131,9 @@ export function useGameSession(
       // `filterTradeOffersForViewer`), so we always take the server's `tradeOffers`
       // verbatim. If a future broadcast path ever omitted `tradeOffers`, that would
       // be a server-side bug to fix at the source, not something to patch here.
-      setState((current) => mergeAuctionClientView(current, update.state));
+      const merged = mergeAuctionClientView(stateRef.current, update.state);
+      stateRef.current = merged;
+      setState(merged);
       if (update.logEntries?.length) {
         setLogEntries((current) =>
           appendLogEntries(current, update.logEntries),
@@ -135,13 +141,13 @@ export function useGameSession(
       }
       setStatusLine(update.source);
 
-      const version = update.state.stateVersion;
+      const version = merged.stateVersion;
       if (version === undefined) return;
       for (const [pendingVersion, pendingBeat] of pendingAiRef.current) {
         if (pendingVersion > version) continue;
         pendingAiRef.current.delete(pendingVersion);
         if (pendingVersion === version) {
-          pushAiAction(pendingBeat, update.state);
+          pushAiAction(pendingBeat, merged);
         }
       }
     },
@@ -307,17 +313,18 @@ export function useGameSession(
 
   useEffect(() => {
     if (!gameId || state?.phase === "game_over") return;
-    const actorId = state ? currentActorId(state) : null;
-    const shouldPoll =
-      wsStatus !== "connected" ||
-      (state ? isAiControlledActor(state, actorId) : false);
-    if (!shouldPoll) return;
+    // WS delivers `game.action_applied`/`game.ai_action` for every turn,
+    // including AI-controlled ones, so no backup poll is needed while
+    // connected — polling here would call `refresh()` -> `skipPresentation()`
+    // on a timer and cut the AI presentation pacing short. Only fall back to
+    // polling when the socket is down.
+    if (wsStatus === "connected") return;
 
     const interval = window.setInterval(() => {
       void refresh();
     }, 2500);
     return () => window.clearInterval(interval);
-  }, [gameId, refresh, state, wsStatus]);
+  }, [gameId, refresh, state?.phase, wsStatus]);
 
   return {
     game,
