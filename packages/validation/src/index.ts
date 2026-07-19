@@ -230,6 +230,25 @@ export const GameRealtimeEventSchema = z.discriminatedUnion("type", [
     aiPlayerId: z.string(),
     personality: AiPersonalitySchema,
     action: GameActionSchema,
+    material: z.boolean(),
+    reason: z
+      .enum([
+        "ownership_change",
+        "auction_opened",
+        "auction_settled",
+        "capital_transfer",
+        "bankruptcy",
+        "syndicate_form",
+        "syndicate_break",
+        "win_threshold",
+        "disruption_window",
+      ])
+      .nullable(),
+    softTurnEnd: z.boolean().optional(),
+    stateVersion: z.number().int().nonnegative(),
+    logCursor: z.number().int().nonnegative().optional(),
+    summary: z.string().optional(),
+    displayName: z.string().optional(),
   }),
   z.object({
     type: z.literal("game.schedule"),
