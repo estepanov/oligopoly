@@ -49,10 +49,15 @@ describe("InfoDialog", () => {
       </InfoDialog>,
     );
 
+    expect(onOpenChange).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).toHaveBeenNthCalledWith(1, false);
+
     fireEvent.click(screen.getByRole("button", { name: /explain tile/i }));
     expect(onOpenChange).toHaveBeenCalledWith(true);
+    const callsAfterOpen = onOpenChange.mock.calls.length;
 
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onOpenChange).toHaveBeenCalledTimes(callsAfterOpen + 1);
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
   });
 });
