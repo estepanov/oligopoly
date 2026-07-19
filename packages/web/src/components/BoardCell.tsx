@@ -1,5 +1,6 @@
 import type { GameState } from "@oligopoly/validation";
 import type { CSSProperties } from "react";
+import { useCallback, useState } from "react";
 import { type BoardTileDetails, tileLabel } from "../lib/boardDisplay";
 import { compactOccupantLabel, occupantLabels } from "../lib/boardOccupants";
 import {
@@ -67,6 +68,20 @@ export function BoardCell({
   const label = tileLabel(position, tileNames);
   const displayName = boardTileDisplayName(position, label);
   const details = tileDetails.get(String(position));
+  const [viewedPosition, setViewedPosition] = useState(position);
+  const viewedKey = String(viewedPosition);
+  const effectivePosition = tileDetails.has(viewedKey)
+    ? viewedPosition
+    : position;
+  const viewedDetails = tileDetails.get(String(effectivePosition));
+  const viewedTileState = tilesByPosition.get(String(effectivePosition));
+  const viewedOwnerId = viewedTileState?.ownerId ?? null;
+  const viewedOccupants =
+    occupantsByPosition.get(String(effectivePosition)) ?? [];
+  const viewedLabel = tileLabel(effectivePosition, tileNames);
+  const handleOpenChange = useCallback(() => {
+    setViewedPosition(position);
+  }, [position]);
   const mortgaged = tileState?.mortgaged ?? false;
   const developmentTokens = tileState?.developmentTokens ?? 0;
   const statusLabel = tileStatusLabel({
@@ -77,8 +92,9 @@ export function BoardCell({
 
   return (
     <InfoDialog
-      title={label}
+      title={viewedLabel}
       triggerLabel={`Open details for ${label}`}
+      onOpenChange={handleOpenChange}
       triggerClassName={[
         "boardGridCell",
         `boardGridCell-${placement.edge}`,
@@ -144,16 +160,17 @@ export function BoardCell({
       }
     >
       <BoardTileDetailsContent
-        details={details}
-        occupants={occupants}
+        details={viewedDetails}
+        occupants={viewedOccupants}
         occupantsByPosition={occupantsByPosition}
-        ownerId={ownerId}
-        position={position}
+        ownerId={viewedOwnerId}
+        position={effectivePosition}
         state={state}
         tileDetails={tileDetails}
-        tileState={tileState}
+        tileState={viewedTileState}
         tilesByPosition={tilesByPosition}
         myPlayerId={myPlayerId}
+        onSelectSetMember={setViewedPosition}
       />
     </InfoDialog>
   );

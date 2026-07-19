@@ -1843,6 +1843,15 @@
   background: color-mix(in srgb, var(--color-surface) 76%, transparent);
 }
 
+button.boardSetItem {
+  width: 100%;
+  margin: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
 .boardSetItemSelected {
   border-color: color-mix(
     in srgb,
@@ -1913,6 +1922,18 @@
 .boardSetItemSelected .boardSetStatus {
   color: var(--color-button-text);
   background: var(--color-accent-strong);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @keyframes pageIn {
