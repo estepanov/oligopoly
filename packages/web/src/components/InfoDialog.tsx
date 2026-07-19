@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 type InfoDialogProps = {
@@ -8,6 +8,7 @@ type InfoDialogProps = {
   triggerClassName?: string;
   triggerStyle?: CSSProperties;
   triggerContent?: ReactNode;
+  /** Called only on open/close transitions — never on mount. */
   onOpenChange?: (open: boolean) => void;
   children: ReactNode;
 };
@@ -28,6 +29,16 @@ export function InfoDialog({
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const wasOpenRef = useRef(false);
+  const openRef = useRef(false);
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+
+  const updateOpen = useCallback((next: boolean) => {
+    if (openRef.current === next) return;
+    openRef.current = next;
+    setOpen(next);
+    onOpenChangeRef.current?.(next);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -55,7 +66,7 @@ export function InfoDialog({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        setOpen(false);
+        updateOpen(false);
         return;
       }
       if (event.key !== "Tab") {
@@ -105,7 +116,7 @@ export function InfoDialog({
         htmlElement.inert = previousInert;
       }
     };
-  }, [open]);
+  }, [open, updateOpen]);
 
   useEffect(() => {
     if (wasOpenRef.current && !open) {
@@ -113,10 +124,6 @@ export function InfoDialog({
     }
     wasOpenRef.current = open;
   }, [open]);
-
-  useEffect(() => {
-    onOpenChange?.(open);
-  }, [open, onOpenChange]);
 
   return (
     <>
@@ -126,7 +133,7 @@ export function InfoDialog({
         className={triggerClassName}
         style={triggerStyle}
         aria-label={triggerLabel}
-        onClick={() => setOpen(true)}
+        onClick={() => updateOpen(true)}
       >
         {triggerContent}
       </button>
@@ -138,7 +145,7 @@ export function InfoDialog({
               className="modalBackdropDismiss"
               tabIndex={-1}
               aria-label={`Close ${title}`}
-              onMouseDown={() => setOpen(false)}
+              onMouseDown={() => updateOpen(false)}
             />
             <section
               ref={dialogRef}
@@ -154,7 +161,7 @@ export function InfoDialog({
                   type="button"
                   className="button buttonSecondary"
                   aria-label={`Close ${title}`}
-                  onClick={() => setOpen(false)}
+                  onClick={() => updateOpen(false)}
                 >
                   Close
                 </button>

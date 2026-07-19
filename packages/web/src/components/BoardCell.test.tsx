@@ -2,82 +2,14 @@ import type { GameState } from "@oligopoly/validation";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { BoardCell } from "./BoardCell";
-
-function baseState(overrides: Partial<GameState> = {}): GameState {
-  return {
-    gameId: "g",
-    round: 1,
-    phase: "waiting_for_roll",
-    currentPlayerIndex: 0,
-    turnOrder: ["me"],
-    freeMarketPool: 0,
-    pendingBuyTilePosition: null,
-    lastDiceRoll: null,
-    winnerId: null,
-    eliminatedPlayerIds: [],
-    myAffinityCardId: null,
-    players: [
-      {
-        playerId: "me",
-        displayName: "Ada",
-        position: 0,
-        capital: 500,
-        ownedTilePositions: [],
-        mortgagedTilePositions: [],
-        developmentTokens: {},
-        trustworthiness: 7,
-        actionPointsRemaining: 2,
-        inRegulation: false,
-        doublesCount: 0,
-        isOnDiagonal: false,
-      },
-    ],
-    tiles: [
-      {
-        position: 1,
-        ownerId: null,
-        mortgaged: false,
-        developmentTokens: 0,
-      },
-      {
-        position: 3,
-        ownerId: null,
-        mortgaged: false,
-        developmentTokens: 0,
-      },
-    ],
-    ...overrides,
-  };
-}
-
-const tileDetails = new Map([
-  [
-    "1",
-    {
-      position: 1,
-      name: "Alpha Asset",
-      type: "sector_tile" as const,
-      sectorId: "energy",
-      cost: 100,
-      baseRent: 10,
-    },
-  ],
-  [
-    "3",
-    {
-      position: 3,
-      name: "Beta Asset",
-      type: "sector_tile" as const,
-      sectorId: "energy",
-      cost: 120,
-      baseRent: 12,
-    },
-  ],
-]);
+import {
+  setNavigationGameState,
+  setNavigationTileDetails,
+} from "./setNavigationTestFixtures";
 
 describe("BoardCell set browsing", () => {
   it("updates dialog title and details when selecting another set member, then restores opener focus on close", () => {
-    const state = baseState();
+    const state = setNavigationGameState();
     const tilesByPosition = new Map(
       (state.tiles ?? []).map((tile) => [String(tile.position), tile]),
     );
@@ -97,7 +29,7 @@ describe("BoardCell set browsing", () => {
         occupants={[]}
         actorId={null}
         tileNames={tileNames}
-        tileDetails={tileDetails}
+        tileDetails={setNavigationTileDetails}
         myPlayerId="me"
         tileState={tilesByPosition.get("1")}
         tilesByPosition={tilesByPosition}

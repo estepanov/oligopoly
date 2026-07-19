@@ -6,7 +6,7 @@ import {
   MAX_DEVELOPMENT_TOKENS,
 } from "@oligopoly/shared";
 import type { GameState } from "@oligopoly/validation";
-import type { BoardTileDetails } from "./boardDisplay";
+import { type BoardTileDetails, tileLabel } from "./boardDisplay";
 import { occupantLabels } from "./boardOccupants";
 import { playerDisplayName } from "./gameDisplay";
 
@@ -257,7 +257,7 @@ export function currentRentRowId({
   return null;
 }
 
-type TileSetMember = {
+export type TileSetMember = {
   developmentTokens: number;
   label: string;
   mortgaged: boolean;
@@ -267,6 +267,43 @@ type TileSetMember = {
   selected: boolean;
   statusLabel: string;
 };
+
+export function resolveViewedTile({
+  openerPosition,
+  viewedPosition,
+  tileDetails,
+  tilesByPosition,
+  occupantsByPosition,
+  tileNames,
+}: {
+  openerPosition: number | string;
+  viewedPosition: number | string;
+  tileDetails: Map<string, BoardTileDetails>;
+  tilesByPosition: Map<string, NonNullable<GameState["tiles"]>[number]>;
+  occupantsByPosition: Map<string, NonNullable<GameState["players"]>>;
+  tileNames: Map<string, string>;
+}): {
+  position: number | string;
+  details: BoardTileDetails | undefined;
+  tileState: NonNullable<GameState["tiles"]>[number] | undefined;
+  ownerId: string | null;
+  occupants: NonNullable<GameState["players"]>;
+  label: string;
+} {
+  const position = tileDetails.has(String(viewedPosition))
+    ? viewedPosition
+    : openerPosition;
+  const key = String(position);
+  const tileState = tilesByPosition.get(key);
+  return {
+    position,
+    details: tileDetails.get(key),
+    tileState,
+    ownerId: tileState?.ownerId ?? null,
+    occupants: occupantsByPosition.get(key) ?? [],
+    label: tileLabel(position, tileNames),
+  };
+}
 
 export type TileSetInfo = {
   members: TileSetMember[];
