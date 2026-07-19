@@ -13,6 +13,7 @@ const sessionOverride = vi.hoisted(() => ({
 
 const state: GameState = {
   gameId: "game-1",
+  stateVersion: 1,
   round: 1,
   phase: "action",
   currentPlayerIndex: 0,
@@ -113,6 +114,7 @@ vi.mock("../hooks/useGameSession", () => ({
     currentPresentationBeat: null,
     skipPresentation,
     actionsLocked: false,
+    controls: { locked: false, busy: false, myTurnEffective: true },
     ...sessionOverride.value,
   }),
 }));
@@ -198,6 +200,7 @@ describe("GameDetailPage", () => {
         startedAt: Date.now(),
       },
       statusLine: "Rolled dice...",
+      controls: { locked: false, busy: true, myTurnEffective: true },
     };
 
     renderPage();
@@ -233,6 +236,7 @@ describe("GameDetailPage", () => {
         summary: "changed tile ownership",
       },
       actionsLocked: true,
+      controls: { locked: true, busy: true, myTurnEffective: false },
     };
 
     renderPage();

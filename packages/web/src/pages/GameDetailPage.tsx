@@ -23,7 +23,6 @@ export function GameDetailPage() {
     tileDetails,
     error,
     loading,
-    busyAction,
     pendingAction,
     lastActionLatencyMs,
     statusLine,
@@ -31,14 +30,13 @@ export function GameDetailPage() {
     turnDeadline,
     timerKind,
     myPlayerId,
-    myTurn,
     runAction,
     refresh,
     presentationState,
     presentationMode,
     currentPresentationBeat,
     skipPresentation,
-    actionsLocked,
+    controls,
   } = useGameSession(id, user?.userId ?? null);
   const viewState = presentationState ?? state;
   const deferredState = useDeferredValue(viewState);
@@ -81,7 +79,7 @@ export function GameDetailPage() {
         state={viewState}
         actorId={actorId}
         myPlayerId={myPlayerId}
-        myTurn={actionsLocked ? false : myTurn}
+        myTurn={controls.myTurnEffective}
         wsStatus={wsStatus}
         turnDeadline={turnDeadline}
         timerKind={timerKind}
@@ -108,7 +106,7 @@ export function GameDetailPage() {
                 <dt className="muted">Realtime</dt>
                 <dd>{wsStatus}</dd>
                 <dt className="muted">Your turn</dt>
-                <dd>{myTurn ? "Yes" : "No"}</dd>
+                <dd>{controls.myTurnEffective ? "Yes" : "No"}</dd>
                 <dt className="muted">
                   {timerKind === "auction_bids"
                     ? "Auction closes"
@@ -129,7 +127,7 @@ export function GameDetailPage() {
                 state={state}
                 myPlayerId={myPlayerId}
                 tileNames={tileNames}
-                busy={busyAction || actionsLocked}
+                busy={controls.busy}
                 pendingAction={pendingAction}
                 onAction={runAction}
               />
@@ -150,7 +148,7 @@ export function GameDetailPage() {
                 <button
                   type="button"
                   className="button buttonSecondary"
-                  disabled={busyAction || actionsLocked}
+                  disabled={controls.busy}
                   onClick={() => void refresh()}
                 >
                   Refresh

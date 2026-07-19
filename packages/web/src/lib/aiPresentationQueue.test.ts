@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   type AiPresentationBeatEvent,
   advancePresentation,
+  bufferAiAction,
   createPresentationQueue,
   enqueueAiBeat,
   enqueueCanonical,
   LAG_BUDGET_MS,
   MATERIAL_PAUSE_MS,
   NON_MATERIAL_PAUSE_MS,
+  type PendingAiBeatInput,
   pauseMsFor,
   QUEUE_CAP,
   SOFT_TURN_END_PAUSE_MS,
@@ -48,10 +50,18 @@ function beat(
   };
 }
 
+function pendingBeat(
+  version: number,
+  overrides: Partial<PendingAiBeatInput> = {},
+): PendingAiBeatInput {
+  const { state: _state, ...rest } = beat(version, overrides);
+  return rest;
+}
+
 describe("aiPresentationQueue", () => {
   it("enters watching on material beat and skip catches up", () => {
     let q = createPresentationQueue(state(1));
-    q = enqueueCanonical(q, state(1), "human", false);
+    q = enqueueCanonical(q, state(1), false, 0);
     q = enqueueAiBeat(q, beat(2), state(2), false, 10_000);
     expect(q.mode).toBe("watching");
     expect(q.presentationState?.stateVersion).toBe(2);
@@ -75,11 +85,11 @@ describe("aiPresentationQueue", () => {
     // would.
     let q = createPresentationQueue(state(1));
 
-    q = enqueueCanonical(q, state(2), "human", false);
+    q = enqueueCanonical(q, state(2), false, 0);
     q = enqueueAiBeat(q, beat(2), state(2), false, 10_000);
     expect(q.mode).toBe("watching");
 
-    q = enqueueCanonical(q, state(3), "human", false);
+    q = enqueueCanonical(q, state(3), false, 0);
     q = enqueueAiBeat(q, beat(3), state(3), false, 10_100);
     expect(q.queue).toHaveLength(1);
 
@@ -89,7 +99,7 @@ describe("aiPresentationQueue", () => {
     };
     expect(viewerHasUrgentObligation(humanTurnCanonical, "human")).toBe(false);
 
-    q = enqueueCanonical(q, humanTurnCanonical, "human", false);
+    q = enqueueCanonical(q, humanTurnCanonical, false, 0);
     // Must NOT drain: still watching the first beat, second still queued.
     expect(q.mode).toBe("watching");
     expect(q.currentBeat?.stateVersion).toBe(2);
@@ -120,7 +130,7 @@ describe("aiPresentationQueue", () => {
   it("drops older versions and catches up on a gap", () => {
     let q = createPresentationQueue(state(1));
     q = enqueueAiBeat(q, beat(2), state(2), false, 10_000);
-    q = enqueueCanonical(q, state(5), "human", false);
+    q = enqueueCanonical(q, state(5), false, 0);
     expect(q.mode).toBe("caught_up");
     expect(q.presentationState?.stateVersion).toBe(5);
   });
@@ -209,7 +219,7 @@ describe("aiPresentationQueue", () => {
 
   it("presents an AI beat when its canonical state arrived first", () => {
     let q = createPresentationQueue(state(1));
-    q = enqueueCanonical(q, state(2), "human", false);
+    q = enqueueCanonical(q, state(2), false, 0);
     q = enqueueAiBeat(q, beat(2), state(2), false, 10_000);
 
     expect(q.mode).toBe("watching");
@@ -219,12 +229,12 @@ describe("aiPresentationQueue", () => {
 
   it("does not re-arm canonical pending after skip and duplicate canonical", () => {
     let q = createPresentationQueue(state(1));
-    q = enqueueCanonical(q, state(2), "human", false);
+    q = enqueueCanonical(q, state(2), false, 0);
     q = enqueueAiBeat(q, beat(2), state(2), false, 10_000);
     q = skipPresentation(q, state(2));
 
     expect(q.canonicalPendingBeatVersion).toBeNull();
-    q = enqueueCanonical(q, state(2), "human", false);
+    q = enqueueCanonical(q, state(2), false, 0);
     expect(q.canonicalPendingBeatVersion).toBeNull();
 
     q = enqueueAiBeat(q, beat(2), state(2), false, 20_000);
@@ -241,5 +251,54 @@ describe("aiPresentationQueue", () => {
     ).toBe(q);
     q = advancePresentation(q, state(2), 10_000 + MATERIAL_PAUSE_MS);
     expect(q.mode).toBe("caught_up");
+  });
+});
+
+describe("bufferAiAction / enqueueCanonical flush", () => {
+  it("buffers a beat that arrives before its matching canonical state, then flushes on arrival", () => {
+    let q = createPresentationQueue(state(1));
+    q = bufferAiAction(q, pendingBeat(2));
+    expect(q.mode).toBe("caught_up");
+    expect(q.pendingAiByVersion.has(2)).toBe(true);
+
+    q = enqueueCanonical(q, state(2), false, 10_000);
+
+    expect(q.mode).toBe("watching");
+    expect(q.currentBeat?.stateVersion).toBe(2);
+    expect(q.pendingAiByVersion.size).toBe(0);
+  });
+
+  it("drops stale buffered beats older than the arriving canonical version", () => {
+    let q = createPresentationQueue(state(1));
+    q = bufferAiAction(q, pendingBeat(2));
+
+    // Canonical jumps straight to 5 without a matching beat ever arriving for
+    // 2 — the stale buffered entry must not leak into a later, unrelated
+    // pairing at some future version 2 (e.g. after a `gameId` reset).
+    q = enqueueCanonical(q, state(5), false, 10_000);
+
+    expect(q.mode).toBe("caught_up");
+    expect(q.presentationState?.stateVersion).toBe(5);
+    expect(q.pendingAiByVersion.size).toBe(0);
+  });
+
+  it("keeps a buffered beat for a version canonical hasn't reached yet", () => {
+    let q = createPresentationQueue(state(1));
+    q = bufferAiAction(q, pendingBeat(3));
+
+    q = enqueueCanonical(q, state(2), false, 10_000);
+
+    expect(q.mode).toBe("caught_up");
+    expect(q.pendingAiByVersion.has(3)).toBe(true);
+  });
+
+  it("an urgent obligation skips presentation without losing track of a buffered beat's version bookkeeping", () => {
+    let q = createPresentationQueue(state(1));
+    q = bufferAiAction(q, pendingBeat(2));
+
+    q = enqueueCanonical(q, state(2), true, 10_000);
+
+    expect(q.mode).toBe("caught_up");
+    expect(q.lastAppliedVersion).toBe(2);
   });
 });

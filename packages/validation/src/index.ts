@@ -84,7 +84,9 @@ export * from "./validationShared.js";
 
 import { GameActionSchema, GameStateSchema } from "./gameSchemas.js";
 import {
+  AiActionBroadcastSchema,
   AiPersonalitySchema,
+  AiPresentationReasonSchema,
   AuctionTypeSchema,
   type GameErrorKeys,
   GameLogEntrySchema,
@@ -229,22 +231,13 @@ export const GameRealtimeEventSchema = z.discriminatedUnion("type", [
     gameId: z.string(),
     aiPlayerId: z.string(),
     personality: AiPersonalitySchema,
-    action: GameActionSchema,
+    /** Redacted server-side before broadcast — never the full `GameActionSchema`
+     * union, since a sealed `auction_bid` omits `amount`. See `AiActionBroadcastSchema`. */
+    action: AiActionBroadcastSchema,
     material: z.boolean(),
-    reason: z
-      .enum([
-        "ownership_change",
-        "auction_opened",
-        "auction_settled",
-        "capital_transfer",
-        "bankruptcy",
-        "syndicate_form",
-        "syndicate_break",
-        "win_threshold",
-        "disruption_window",
-      ])
-      .nullable(),
-    softTurnEnd: z.boolean().optional(),
+    reason: AiPresentationReasonSchema.nullable(),
+    /** Server always emits this (no client-side `?? false` fallback needed). */
+    softTurnEnd: z.boolean(),
     stateVersion: z.number().int().nonnegative(),
     logCursor: z.number().int().nonnegative().optional(),
     summary: z.string().optional(),

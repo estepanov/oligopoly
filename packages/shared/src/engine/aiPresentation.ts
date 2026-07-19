@@ -1,18 +1,11 @@
-import type { GameAction } from "@oligopoly/validation";
+import type { AiPresentationReason, GameAction } from "@oligopoly/validation";
 import type { InternalGameState } from "./gameStateTypes.js";
 
 export const AI_PRESENTATION_CAPITAL_THRESHOLD = 50;
 
-export type AiPresentationReason =
-  | "ownership_change"
-  | "auction_opened"
-  | "auction_settled"
-  | "capital_transfer"
-  | "bankruptcy"
-  | "syndicate_form"
-  | "syndicate_break"
-  | "win_threshold"
-  | "disruption_window";
+/** Canonical union lives in `@oligopoly/validation`'s `AiPresentationReasonSchema`
+ * so the wire schema (`game.ai_action.reason`) and this engine type can't drift. */
+export type { AiPresentationReason } from "@oligopoly/validation";
 
 export type AiPresentationBeat = {
   material: boolean;

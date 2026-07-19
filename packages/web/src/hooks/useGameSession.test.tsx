@@ -64,7 +64,7 @@ const summary: GameSummary = {
 
 function gameState(
   round: number,
-  stateVersion?: number,
+  stateVersion: number = round,
   currentPlayerIndex = 0,
 ): GameState {
   return {

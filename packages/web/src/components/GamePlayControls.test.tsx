@@ -19,6 +19,7 @@ const tileNames = new Map([
 function baseGameState(overrides: Partial<GameState> = {}): GameState {
   return {
     gameId: "g",
+    stateVersion: 0,
     round: 1,
     phase: "waiting_for_roll",
     currentPlayerIndex: 0,
@@ -200,6 +201,7 @@ describe("GamePlayControls economics dialogs", () => {
   it("shows currency-valued development economics with active affinity modifiers", () => {
     const state: GameState = {
       gameId: "g",
+      stateVersion: 0,
       round: 1,
       phase: "action",
       currentPlayerIndex: 0,
@@ -265,6 +267,7 @@ describe("GamePlayControls economics dialogs", () => {
   it("formats action extra money labels with custom currency multipliers", () => {
     const state: GameState = {
       gameId: "g",
+      stateVersion: 0,
       round: 1,
       phase: "action",
       currentPlayerIndex: 0,
@@ -333,6 +336,7 @@ describe("GamePlayControls economics dialogs", () => {
   it("keeps trade response controls visible during insider peek", () => {
     const state: GameState = {
       gameId: "g",
+      stateVersion: 0,
       round: 1,
       phase: "waiting_for_insider_peek",
       currentPlayerIndex: 0,

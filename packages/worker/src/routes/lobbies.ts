@@ -1298,6 +1298,7 @@ lobbyRoutes.post("/:id/start", async (c) => {
   };
   const initialState: InternalGameState = {
     gameId,
+    stateVersion: 0,
     round: 1,
     phase: "waiting_for_market_event",
     currentPlayerIndex: 0,

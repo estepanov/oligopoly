@@ -208,7 +208,7 @@ gameRoutes.get("/:id/state", async (c) => {
   if (!isPlayer) {
     const state: PersistedGameState = row.state_json
       ? (JSON.parse(row.state_json) as PersistedGameState)
-      : { gameId: id, round: 0 };
+      : { gameId: id, stateVersion: 0, round: 0 };
 
     const spectatorEnabled = state.settings?.spectatorMode === "enabled";
     if (!spectatorEnabled) {
@@ -220,7 +220,7 @@ gameRoutes.get("/:id/state", async (c) => {
 
   const state: PersistedGameState = row.state_json
     ? (JSON.parse(row.state_json) as PersistedGameState)
-    : { gameId: id, round: 0 };
+    : { gameId: id, stateVersion: 0, round: 0 };
 
   return c.json(toClientGameState(state, "player", subject));
 });

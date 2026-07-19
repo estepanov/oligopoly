@@ -13,6 +13,11 @@ export type AiPresentationBeatEvent = {
   sentAt: number;
 };
 
+/** A `game.ai_action` beat received before its matching canonical state
+ * (same `stateVersion`) has arrived — everything but the `state` snapshot,
+ * which `enqueueCanonical` fills in once that canonical update lands. */
+export type PendingAiBeatInput = Omit<AiPresentationBeatEvent, "state">;
+
 export type AiPresentationQueueState = {
   mode: PresentationMode;
   presentationState: GameState | null;
@@ -21,6 +26,10 @@ export type AiPresentationQueueState = {
   currentBeatPresentedAtMs: number | null;
   canonicalPendingBeatVersion: number | null;
   lastAppliedVersion: number;
+  /** AI beats whose matching canonical `stateVersion` hasn't arrived yet —
+   * `game.ai_action` and `game.action_applied`/snapshot events can arrive
+   * over WS in either order. Flushed by `enqueueCanonical`. */
+  pendingAiByVersion: Map<number, PendingAiBeatInput>;
 };
 
 export const MATERIAL_PAUSE_MS = 1200;
@@ -40,6 +49,7 @@ export function createPresentationQueue(
     currentBeatPresentedAtMs: null,
     canonicalPendingBeatVersion: null,
     lastAppliedVersion: canonical?.stateVersion ?? 0,
+    pendingAiByVersion: new Map(),
   };
 }
 
@@ -53,33 +63,69 @@ export function pauseMsFor(beat: AiPresentationBeatEvent): number {
   return NON_MATERIAL_PAUSE_MS;
 }
 
+/** Buffer an AI beat that arrived before its matching canonical state. Stale
+ * or matched entries are reaped by `enqueueCanonical`, not here. */
+export function bufferAiAction(
+  q: AiPresentationQueueState,
+  beatInput: PendingAiBeatInput,
+): AiPresentationQueueState {
+  const pendingAiByVersion = new Map(q.pendingAiByVersion);
+  pendingAiByVersion.set(beatInput.stateVersion, beatInput);
+  return { ...q, pendingAiByVersion };
+}
+
 export function enqueueCanonical(
   q: AiPresentationQueueState,
   canonical: GameState,
-  viewerId: string | null,
   urgentObligation: boolean,
+  nowMs: number,
 ): AiPresentationQueueState {
-  void viewerId;
+  const canonicalVersion = canonical.stateVersion;
+
+  // Reap any buffered AI beat at or below this version: an exact match pairs
+  // with this canonical update; anything strictly older is stale (superseded
+  // by a version bump the client never got a matching beat for) and is
+  // dropped rather than left to leak into a future, unrelated pairing.
+  const pendingAiByVersion = new Map(q.pendingAiByVersion);
+  let matchedBeat: PendingAiBeatInput | undefined;
+  for (const [version, beatInput] of pendingAiByVersion) {
+    if (version > canonicalVersion) continue;
+    pendingAiByVersion.delete(version);
+    if (version === canonicalVersion) matchedBeat = beatInput;
+  }
+  const base: AiPresentationQueueState = { ...q, pendingAiByVersion };
+
+  // A buffered beat pairing with this exact canonical update takes the same
+  // path a same-tick beat would (`enqueueAiBeat`, including its own urgent-
+  // obligation handling) — it is NOT subject to the version-gap catch-up
+  // check below, since it is a fully paired, in-order beat, not a jump.
+  if (matchedBeat) {
+    return enqueueAiBeat(
+      base,
+      { ...matchedBeat, state: canonical },
+      canonical,
+      urgentObligation,
+      nowMs,
+    );
+  }
 
   // Note: canonical `isMyTurn` alone must NOT land here — only an urgent
   // mid-loop obligation (auction bid owed, pending inbound trade) or a
   // version gap too large for the queue to bridge force an immediate
   // catch-up. Otherwise queued/current AI beats would be discarded the
   // instant canonical flips to the viewer's turn, even though the loop that
-  // produced them already finished server-side. See `viewerCanActOnOwnTurn`.
+  // produced them already finished server-side.
   if (
     urgentObligation ||
-    (canonical.stateVersion ?? q.lastAppliedVersion) - q.lastAppliedVersion >
-      q.queue.length + 1
+    canonicalVersion - base.lastAppliedVersion > base.queue.length + 1
   ) {
-    return skipPresentation(q, canonical);
+    return skipPresentation(base, canonical);
   }
 
-  if (q.mode === "caught_up") {
-    const canonicalVersion = canonical.stateVersion ?? q.lastAppliedVersion;
-    if (canonicalVersion > q.lastAppliedVersion) {
+  if (base.mode === "caught_up") {
+    if (canonicalVersion > base.lastAppliedVersion) {
       return {
-        ...q,
+        ...base,
         presentationState: canonical,
         canonicalPendingBeatVersion: canonicalVersion,
         lastAppliedVersion: canonicalVersion,
@@ -87,12 +133,12 @@ export function enqueueCanonical(
     }
 
     return {
-      ...q,
+      ...base,
       presentationState: canonical,
     };
   }
 
-  return q;
+  return base;
 }
 
 export function enqueueAiBeat(
@@ -164,7 +210,7 @@ export function skipPresentation(
     currentBeat: null,
     currentBeatPresentedAtMs: null,
     canonicalPendingBeatVersion: null,
-    lastAppliedVersion: canonical.stateVersion ?? q.lastAppliedVersion,
+    lastAppliedVersion: canonical.stateVersion,
   };
 }
 

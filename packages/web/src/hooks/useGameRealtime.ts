@@ -1,5 +1,5 @@
 import type {
-  GameAction,
+  AiActionBroadcast,
   GameLogEntry,
   GameState,
 } from "@oligopoly/validation";
@@ -17,16 +17,18 @@ export type GameSessionUpdate = {
   source: string;
 };
 
-/** A single AI-seat presentation beat, extracted from a `game.ai_action` WS event. */
+/** A single AI-seat presentation beat, extracted from a `game.ai_action` WS event.
+ * `action` is redacted server-side (see `redactAiActionForBroadcast` in
+ * `@oligopoly/worker`) and unused on the client — kept only for wire parity. */
 export type GameAiActionUpdate = {
   source: "ai_action";
   aiPlayerId: string;
   displayName?: string;
   material: boolean;
-  softTurnEnd?: boolean;
+  softTurnEnd: boolean;
   summary?: string;
   stateVersion: number;
-  action: GameAction;
+  action: AiActionBroadcast;
   sentAt: number;
 };
 

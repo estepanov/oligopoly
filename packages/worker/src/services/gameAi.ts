@@ -11,6 +11,7 @@ import {
   finalizeAuctionSettleIfReady,
   type InternalGameState,
   isAiControlledActor,
+  isAiSeatForPresentation,
   normalizeGameState,
   replaceKickedPlayerWithAi,
 } from "@oligopoly/shared";
@@ -44,7 +45,9 @@ export type StepAiTurnResult =
       applied: true;
       decision: AiDecision;
       result: ApplyActionResult;
-      presentationBeat: AiPresentationBeat;
+      /** Only classified when the actor `isAiSeatForPresentation` — a timeout
+       * takeover never presents, so it's never classified there either. */
+      presentationBeat?: AiPresentationBeat;
     }
   | {
       applied: false;
@@ -146,24 +149,33 @@ export async function stepGameAiTurn(
     aiEnv,
   );
 
-  const presentationBeat = classifyAiPresentationBeat(
-    gameState,
+  const isPresentationSeat = isAiSeatForPresentation(
     engineResult.state,
-    decision.action,
-    presentationContext,
+    decision.actorId,
   );
+  const presentationBeat = isPresentationSeat
+    ? classifyAiPresentationBeat(
+        gameState,
+        engineResult.state,
+        decision.action,
+        presentationContext,
+      )
+    : undefined;
 
   const { result } = await persistGameActionResult(db, gameId, engineResult, {
     gameRoom,
     kv,
     expectedStateJson: row.state_json,
-    aiMeta: {
-      aiPlayerId: decision.actorId,
-      personality: decision.personality,
-      action: decision.action,
-      prevState: gameState,
-      turnHadMaterial: presentationContext.turnHadMaterial,
-    },
+    ...(isPresentationSeat && presentationBeat
+      ? {
+          aiMeta: {
+            aiPlayerId: decision.actorId,
+            personality: decision.personality,
+            action: decision.action,
+            presentationBeat,
+          },
+        }
+      : {}),
   });
 
   return { applied: true, decision, result, presentationBeat };
@@ -199,7 +211,7 @@ export async function runAiTurnLoop(
       turnActorId = step.decision.actorId;
       turnHadMaterial = false;
     }
-    if (step.presentationBeat.material) turnHadMaterial = true;
+    if (step.presentationBeat?.material) turnHadMaterial = true;
     if (step.decision.action.type === "end_turn") {
       turnActorId = null;
       turnHadMaterial = false;
@@ -360,13 +372,19 @@ export async function applyTimeoutTakeoverAndStep(
   );
 
   // Timeout takeovers are not presentation AI seats (`isAiSeatForPresentation`
-  // excludes them), so `turnHadMaterial` here has no effect on any broadcast.
-  const presentationBeat = classifyAiPresentationBeat(
-    gameState,
+  // excludes them) — never classify or emit `game.ai_action` for this path.
+  const isPresentationSeat = isAiSeatForPresentation(
     engineResult.state,
-    decision.action,
-    { turnHadMaterial: false },
+    decision.actorId,
   );
+  const presentationBeat = isPresentationSeat
+    ? classifyAiPresentationBeat(
+        gameState,
+        engineResult.state,
+        decision.action,
+        { turnHadMaterial: false },
+      )
+    : undefined;
 
   const { result } = await persistGameActionResult(
     db,
@@ -378,13 +396,16 @@ export async function applyTimeoutTakeoverAndStep(
     {
       gameRoom,
       expectedStateJson: row.state_json,
-      aiMeta: {
-        aiPlayerId: decision.actorId,
-        personality: decision.personality,
-        action: decision.action,
-        prevState: gameState,
-        turnHadMaterial: false,
-      },
+      ...(isPresentationSeat && presentationBeat
+        ? {
+            aiMeta: {
+              aiPlayerId: decision.actorId,
+              personality: decision.personality,
+              action: decision.action,
+              presentationBeat,
+            },
+          }
+        : {}),
     },
   );
 

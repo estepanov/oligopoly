@@ -1,7 +1,6 @@
 import {
+  type AiPresentationBeat,
   type ApplyActionResult,
-  classifyAiPresentationBeat,
-  type InternalGameState,
   isAiSeatForPresentation,
   normalizeGameState,
 } from "@oligopoly/shared";
@@ -29,12 +28,16 @@ type PersistOptions = {
   kv?: KVNamespace;
   notify?: boolean;
   expectedStateJson?: string | null;
+  /** Only set by callers when `isAiSeatForPresentation` already held true for
+   * this actor — see `stepGameAiTurn` / `applyTimeoutTakeoverAndStep`. Carries
+   * the ALREADY-classified beat so `notifyGameActionResult` never re-runs
+   * `classifyAiPresentationBeat` (avoids the double-classification the beat
+   * would otherwise need `prevState`/`turnHadMaterial` for). */
   aiMeta?: {
     aiPlayerId: string;
     personality: AiPersonality;
     action: GameAction;
-    prevState: InternalGameState;
-    turnHadMaterial: boolean;
+    presentationBeat: AiPresentationBeat;
   };
 };
 
@@ -370,33 +373,60 @@ export async function notifyGameActionResult(
     ...broadcastEventStateFields(splitBroadcastPayload(baseState)),
   });
 
-  if (options.aiMeta) {
-    const { aiPlayerId, personality, action, prevState, turnHadMaterial } =
+  if (
+    options.aiMeta &&
+    isAiSeatForPresentation(result.state, options.aiMeta.aiPlayerId)
+  ) {
+    const { aiPlayerId, personality, action, presentationBeat } =
       options.aiMeta;
-    if (isAiSeatForPresentation(result.state, aiPlayerId)) {
-      const beat = classifyAiPresentationBeat(prevState, result.state, action, {
-        turnHadMaterial,
-      });
-      const displayName =
-        result.state.players.find((p) => p.playerId === aiPlayerId)
-          ?.displayName ??
-        result.state.aiPlayers?.find((p) => p.playerId === aiPlayerId)?.name;
-      await broadcastGameEvent(options.gameRoom, gameId, {
-        type: "game.ai_action",
-        sentAt,
-        gameId,
-        aiPlayerId,
-        personality,
-        action,
-        material: beat.material,
-        reason: beat.reason,
-        softTurnEnd: beat.softTurnEnd,
-        stateVersion: result.state.stateVersion ?? 0,
-        summary: beat.summary,
-        displayName,
-      });
-    }
+    const displayName =
+      result.state.players.find((p) => p.playerId === aiPlayerId)
+        ?.displayName ??
+      result.state.aiPlayers?.find((p) => p.playerId === aiPlayerId)?.name;
+    await broadcastGameEvent(options.gameRoom, gameId, {
+      type: "game.ai_action",
+      sentAt,
+      gameId,
+      aiPlayerId,
+      personality,
+      action: redactAiActionForBroadcast(action, result.state),
+      material: presentationBeat.material,
+      reason: presentationBeat.reason,
+      softTurnEnd: presentationBeat.softTurnEnd,
+      stateVersion: result.state.stateVersion,
+      summary: presentationBeat.summary,
+      displayName,
+    });
   }
+}
+
+/**
+ * Strips private terms off an AI action before it rides the `game.ai_action`
+ * broadcast — every other player (and any spectator) receives this event, so
+ * it must never carry another player's private state. Mirrors the redaction
+ * already applied to `tradeOffers`/`pendingAuction` on the main state payload,
+ * but at the per-action-field level since `action` is emitted whole here.
+ */
+function redactAiActionForBroadcast(
+  action: GameAction,
+  state: ApplyActionResult["state"],
+): Record<string, unknown> {
+  if (
+    action.type === "auction_bid" &&
+    state.pendingAuction?.auctionType === "sealed_bids"
+  ) {
+    return { type: action.type, tilePosition: action.tilePosition };
+  }
+  if (action.type === "propose_trade") {
+    return { type: action.type, recipientId: action.recipientId };
+  }
+  if (action.type === "counter_trade") {
+    return { type: action.type, offerId: action.offerId };
+  }
+  if (action.type === "propose_contract") {
+    return { type: action.type, partyB: action.partyB };
+  }
+  return action;
 }
 
 export function toActionResponse(

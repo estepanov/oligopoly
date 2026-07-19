@@ -29,11 +29,7 @@ import {
   viewerHasUrgentObligation,
 } from "../lib/gameUi";
 import { useAiPresentation } from "./useAiPresentation";
-import {
-  type GameAiActionUpdate,
-  type GameSessionUpdate,
-  useGameRealtime,
-} from "./useGameRealtime";
+import { type GameSessionUpdate, useGameRealtime } from "./useGameRealtime";
 
 type PendingGameAction = {
   label: string;
@@ -98,7 +94,7 @@ export function useGameSession(
   // Only an urgent obligation (auction bid owed / pending inbound trade)
   // forces an immediate presentation catch-up. Canonical "my turn" alone
   // must not drain a queue of already-arrived AI beats — see
-  // `viewerCanActOnOwnTurn` / `enqueueCanonical` for why.
+  // `enqueueCanonical` for why.
   const urgentObligation = useMemo(
     () => (state ? viewerHasUrgentObligation(state, myPlayerId) : false),
     [state, myPlayerId],
@@ -110,69 +106,41 @@ export function useGameSession(
     currentPresentationBeat,
     pushAiAction,
     skip: skipPresentation,
-  } = useAiPresentation(state, myPlayerId, urgentObligation);
+  } = useAiPresentation(state, urgentObligation);
 
-  // AI beats and their matching canonical state can arrive over WS in either
-  // order (ai_action usually follows action_applied, but is not guaranteed
-  // to). Buffer by `stateVersion` until both halves of the pair are known,
-  // per the pairing strategy in the AI turn presentation design doc.
-  const pendingAiRef = useRef<Map<number, GameAiActionUpdate>>(new Map());
   // Mirrors `state`, but assigned synchronously wherever canonical state is
   // produced (rather than only at render time via `stateRef.current = state`)
-  // so that an `ai_action` arriving in the same tick as its pairing
-  // `action_applied`/snapshot can match immediately, without waiting for a
-  // React commit to land the ref update.
+  // so `mergeAuctionClientView` always merges against the latest canonical
+  // state even across same-tick updates, without waiting for a React commit
+  // to land the ref update.
   const stateRef = useRef<GameState | null>(state);
   stateRef.current = state;
 
-  const applySessionUpdate = useCallback(
-    (update: GameSessionUpdate) => {
-      // `mergeAuctionClientView` exists because auctions hold client-LOCAL state
-      // (the optimistic `mySubmission`) that a server broadcast would otherwise
-      // wipe. `tradeOffers` deliberately has NO symmetric merge: there is no
-      // client-local trade state to preserve — every broadcast carries the
-      // viewer's own offers (the DO re-injects them per viewer via
-      // `filterTradeOffersForViewer`), so we always take the server's `tradeOffers`
-      // verbatim. If a future broadcast path ever omitted `tradeOffers`, that would
-      // be a server-side bug to fix at the source, not something to patch here.
-      const merged = mergeAuctionClientView(stateRef.current, update.state);
-      stateRef.current = merged;
-      setState(merged);
-      if (update.logEntries?.length) {
-        setLogEntries((current) =>
-          appendLogEntries(current, update.logEntries),
-        );
-      }
-      setStatusLine(update.source);
+  const applySessionUpdate = useCallback((update: GameSessionUpdate) => {
+    // `mergeAuctionClientView` exists because auctions hold client-LOCAL state
+    // (the optimistic `mySubmission`) that a server broadcast would otherwise
+    // wipe. `tradeOffers` deliberately has NO symmetric merge: there is no
+    // client-local trade state to preserve — every broadcast carries the
+    // viewer's own offers (the DO re-injects them per viewer via
+    // `filterTradeOffersForViewer`), so we always take the server's `tradeOffers`
+    // verbatim. If a future broadcast path ever omitted `tradeOffers`, that would
+    // be a server-side bug to fix at the source, not something to patch here.
+    const merged = mergeAuctionClientView(stateRef.current, update.state);
+    stateRef.current = merged;
+    setState(merged);
+    if (update.logEntries?.length) {
+      setLogEntries((current) => appendLogEntries(current, update.logEntries));
+    }
+    setStatusLine(update.source);
+  }, []);
 
-      const version = merged.stateVersion;
-      if (version === undefined) return;
-      for (const [pendingVersion, pendingBeat] of pendingAiRef.current) {
-        if (pendingVersion > version) continue;
-        pendingAiRef.current.delete(pendingVersion);
-        if (pendingVersion === version) {
-          pushAiAction(pendingBeat, merged);
-        }
-      }
-    },
-    [pushAiAction],
-  );
-
-  const handleAiAction = useCallback(
-    (update: GameAiActionUpdate) => {
-      const current = stateRef.current;
-      if (current && current.stateVersion === update.stateVersion) {
-        pushAiAction(update, current);
-        return;
-      }
-      pendingAiRef.current.set(update.stateVersion, update);
-    },
-    [pushAiAction],
-  );
-
+  // AI beats and their matching canonical state can arrive over WS in either
+  // order (`game.ai_action` usually follows `game.action_applied`, but is not
+  // guaranteed to) — `useAiPresentation`'s queue owns the pairing/buffering,
+  // this hook only forwards the raw WS event into it.
   const { wsStatus, turnDeadline, timerKind } = useGameRealtime(gameId, {
     onUpdate: applySessionUpdate,
-    onAiAction: handleAiAction,
+    onAiAction: pushAiAction,
   });
 
   const previousWsStatusRef = useRef(wsStatus);
@@ -330,6 +298,20 @@ export function useGameSession(
     return () => window.clearInterval(interval);
   }, [gameId, refresh, state?.phase, wsStatus]);
 
+  const myTurn = state ? isMyTurn(state, myPlayerId) : false;
+
+  // Single view-model for "can the viewer act right now", so consumers (the
+  // status header, play controls, and the details panel) all agree instead
+  // of each re-deriving their own `busyAction || actionsLocked` combination.
+  const controls = useMemo(
+    () => ({
+      locked: actionsLocked,
+      busy: busyAction || actionsLocked,
+      myTurnEffective: actionsLocked ? false : myTurn,
+    }),
+    [actionsLocked, busyAction, myTurn],
+  );
+
   return {
     game,
     state,
@@ -346,7 +328,7 @@ export function useGameSession(
     turnDeadline,
     timerKind,
     myPlayerId,
-    myTurn: state ? isMyTurn(state, myPlayerId) : false,
+    myTurn,
     currentPlayerId: state ? currentActorId(state) : null,
     runAction,
     refresh,
@@ -356,5 +338,6 @@ export function useGameSession(
     currentPresentationBeat,
     skipPresentation,
     actionsLocked,
+    controls,
   };
 }

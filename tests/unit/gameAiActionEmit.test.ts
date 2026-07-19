@@ -94,6 +94,23 @@ function endTurnState() {
   };
 }
 
+/** AI owes a bid in a sealed auction — a private submission the broadcast must not leak. */
+function sealedAuctionBidState() {
+  return normalizeGameState({
+    ...buyDecisionState(),
+    phase: "waiting_for_auction_bids",
+    pendingBuyTilePosition: null,
+    pendingAuction: {
+      tilePosition: 1,
+      trigger: "player_initiated",
+      auctionType: "sealed_bids",
+      submissions: {},
+      eligiblePlayerIds: ["human-a", "ai:bot"],
+      resumePhase: "action",
+    },
+  });
+}
+
 function pushGameRow(
   db: ReturnType<typeof createWorkerD1Stub>,
   gameId: string,
@@ -178,6 +195,33 @@ describe("stepGameAiTurn game.ai_action emission", () => {
       unknown
     >;
     expect(event.softTurnEnd).toBe(false);
+  });
+
+  it("redacts the bid amount from a sealed auction_bid before broadcast", async () => {
+    const db = createWorkerD1Stub();
+    const { room, events } = captureBroadcastRoom();
+    pushGameRow(db, "game-1", sealedAuctionBidState());
+
+    const step = await stepGameAiTurn(db, "game-1", room);
+
+    expect(step.applied).toBe(true);
+    if (!step.applied) throw new Error("expected step to apply");
+    expect(step.decision.action.type).toBe("auction_bid");
+    if (step.decision.action.type !== "auction_bid") {
+      throw new Error("expected an auction_bid decision");
+    }
+    // The engine's real decision carries a private bid amount...
+    expect(step.decision.action.amount).toBeGreaterThan(0);
+
+    const aiActionEvents = events.filter((e) => e.type === "game.ai_action");
+    expect(aiActionEvents).toHaveLength(1);
+    const event = aiActionEvents[0] as Record<string, unknown>;
+    // ...but the broadcast event must never carry it.
+    expect(event.action).toEqual({
+      type: "auction_bid",
+      tilePosition: 1,
+    });
+    expect(event.action).not.toHaveProperty("amount");
   });
 
   it("does not emit game.ai_action for timeout takeovers (not a presentation AI seat)", async () => {
