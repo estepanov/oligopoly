@@ -312,6 +312,7 @@ export type GameWinSummary = z.infer<typeof GameWinSummarySchema>;
 
 export const GameStateSchema = z.object({
   gameId: z.string(),
+  stateVersion: z.number().int().nonnegative().optional(),
   round: z.number().int(),
   phase: GamePhaseSchema.optional(),
   currentPlayerIndex: z.number().int().min(0).optional(),

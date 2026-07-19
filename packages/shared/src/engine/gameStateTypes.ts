@@ -68,6 +68,7 @@ export interface MarketEventModifiersState {
 
 export interface InternalGameState {
   gameId: string;
+  stateVersion?: number;
   round: number;
   phase: GamePhase;
   currentPlayerIndex: number;

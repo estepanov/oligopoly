@@ -1,4 +1,4 @@
-import type { ApplyActionResult } from "@oligopoly/shared";
+import { type ApplyActionResult, normalizeGameState } from "@oligopoly/shared";
 import type {
   AiPersonality,
   GameAction,
@@ -189,6 +189,19 @@ export async function persistGameActionResult(
   result: ApplyActionResult,
   options: PersistOptions = {},
 ): Promise<GameLogEntry[]> {
+  const previousVersion =
+    options.expectedStateJson != null
+      ? (normalizeGameState(
+          JSON.parse(options.expectedStateJson) as Record<string, unknown>,
+        ).stateVersion ?? 0)
+      : (result.state.stateVersion ?? 0);
+  result = {
+    ...result,
+    state: {
+      ...result.state,
+      stateVersion: previousVersion + 1,
+    },
+  };
   const now = Date.now();
   const stateJson = JSON.stringify(result.state);
   const logRows = result.logEntries.map((entry) => ({

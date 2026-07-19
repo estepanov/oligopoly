@@ -152,3 +152,25 @@ describe("classifyAiPresentationBeat", () => {
     expect(beat.reason).toBe("capital_transfer");
   });
 });
+
+describe("stateVersion", () => {
+  it("defaults stateVersion to 0", () => {
+    const state = normalizeGameState({
+      gameId: "g-version",
+      round: 1,
+      phase: "waiting_for_roll",
+      currentPlayerIndex: 0,
+      turnOrder: ["a"],
+      freeMarketPool: 0,
+      affinityAssignments: {},
+      players: [],
+      tiles: [],
+      pendingBuyTilePosition: null,
+      lastDiceRoll: null,
+      winnerId: null,
+      eliminatedPlayerIds: [],
+      settings: {},
+    });
+    expect(state.stateVersion).toBe(0);
+  });
+});
