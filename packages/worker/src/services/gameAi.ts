@@ -1,9 +1,11 @@
 import {
   type AiDecision,
+  type AiPresentationBeat,
   type ApplyActionResult,
   applyAction,
   applyTimeoutTakeover,
   chooseAiAction,
+  classifyAiPresentationBeat,
   closeAuctionBidWindowIfReady,
   expirePendingTradeOffers,
   finalizeAuctionSettleIfReady,
@@ -42,11 +44,16 @@ export type StepAiTurnResult =
       applied: true;
       decision: AiDecision;
       result: ApplyActionResult;
+      presentationBeat: AiPresentationBeat;
     }
   | {
       applied: false;
       reason: StepAiTurnFailureReason;
     };
+
+export type AiPresentationStepContext = {
+  turnHadMaterial: boolean;
+};
 
 async function loadGameRow(
   db: D1Database,
@@ -115,6 +122,7 @@ export async function stepGameAiTurn(
   gameRoom?: DurableObjectNamespace,
   kv?: KVNamespace,
   aiEnv?: OpenRouterAiEnv,
+  presentationContext: AiPresentationStepContext = { turnHadMaterial: false },
 ): Promise<StepAiTurnResult> {
   const row = await loadGameRow(db, gameId);
   if (!row) return { applied: false, reason: "not_found" };
@@ -138,6 +146,13 @@ export async function stepGameAiTurn(
     aiEnv,
   );
 
+  const presentationBeat = classifyAiPresentationBeat(
+    gameState,
+    engineResult.state,
+    decision.action,
+    presentationContext,
+  );
+
   const { result } = await persistGameActionResult(db, gameId, engineResult, {
     gameRoom,
     kv,
@@ -146,10 +161,12 @@ export async function stepGameAiTurn(
       aiPlayerId: decision.actorId,
       personality: decision.personality,
       action: decision.action,
+      prevState: gameState,
+      turnHadMaterial: presentationContext.turnHadMaterial,
     },
   });
 
-  return { applied: true, decision, result };
+  return { applied: true, decision, result, presentationBeat };
 }
 
 export async function runAiTurnLoop(
@@ -161,10 +178,14 @@ export async function runAiTurnLoop(
   aiEnv?: OpenRouterAiEnv,
 ): Promise<number> {
   let steps = 0;
+  let turnActorId: string | null = null;
+  let turnHadMaterial = false;
   for (let i = 0; i < maxSteps; i++) {
     let step: StepAiTurnResult;
     try {
-      step = await stepGameAiTurn(db, gameId, gameRoom, kv, aiEnv);
+      step = await stepGameAiTurn(db, gameId, gameRoom, kv, aiEnv, {
+        turnHadMaterial,
+      });
     } catch (err) {
       // An optimistic-concurrency conflict means another writer advanced the
       // game between our read and persist. The AI loop is best-effort; stop
@@ -174,6 +195,15 @@ export async function runAiTurnLoop(
     }
     if (!step.applied) break;
     steps += 1;
+    if (step.decision.actorId !== turnActorId) {
+      turnActorId = step.decision.actorId;
+      turnHadMaterial = false;
+    }
+    if (step.presentationBeat.material) turnHadMaterial = true;
+    if (step.decision.action.type === "end_turn") {
+      turnActorId = null;
+      turnHadMaterial = false;
+    }
     if (step.result.state.phase === "game_over") break;
   }
   return steps;
@@ -329,6 +359,15 @@ export async function applyTimeoutTakeoverAndStep(
     aiEnv,
   );
 
+  // Timeout takeovers are not presentation AI seats (`isAiSeatForPresentation`
+  // excludes them), so `turnHadMaterial` here has no effect on any broadcast.
+  const presentationBeat = classifyAiPresentationBeat(
+    gameState,
+    engineResult.state,
+    decision.action,
+    { turnHadMaterial: false },
+  );
+
   const { result } = await persistGameActionResult(
     db,
     gameId,
@@ -343,11 +382,13 @@ export async function applyTimeoutTakeoverAndStep(
         aiPlayerId: decision.actorId,
         personality: decision.personality,
         action: decision.action,
+        prevState: gameState,
+        turnHadMaterial: false,
       },
     },
   );
 
-  return { applied: true, decision, result };
+  return { applied: true, decision, result, presentationBeat };
 }
 
 export async function kickPlayerToAiReplacement(

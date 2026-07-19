@@ -1,4 +1,10 @@
-import { type ApplyActionResult, normalizeGameState } from "@oligopoly/shared";
+import {
+  type ApplyActionResult,
+  classifyAiPresentationBeat,
+  type InternalGameState,
+  isAiSeatForPresentation,
+  normalizeGameState,
+} from "@oligopoly/shared";
 import type {
   AiPersonality,
   GameAction,
@@ -27,6 +33,8 @@ type PersistOptions = {
     aiPlayerId: string;
     personality: AiPersonality;
     action: GameAction;
+    prevState: InternalGameState;
+    turnHadMaterial: boolean;
   };
 };
 
@@ -361,6 +369,34 @@ export async function notifyGameActionResult(
     logEntries: broadcastLogEntries,
     ...broadcastEventStateFields(splitBroadcastPayload(baseState)),
   });
+
+  if (options.aiMeta) {
+    const { aiPlayerId, personality, action, prevState, turnHadMaterial } =
+      options.aiMeta;
+    if (isAiSeatForPresentation(result.state, aiPlayerId)) {
+      const beat = classifyAiPresentationBeat(prevState, result.state, action, {
+        turnHadMaterial,
+      });
+      const displayName =
+        result.state.players.find((p) => p.playerId === aiPlayerId)
+          ?.displayName ??
+        result.state.aiPlayers?.find((p) => p.playerId === aiPlayerId)?.name;
+      await broadcastGameEvent(options.gameRoom, gameId, {
+        type: "game.ai_action",
+        sentAt,
+        gameId,
+        aiPlayerId,
+        personality,
+        action,
+        material: beat.material,
+        reason: beat.reason,
+        softTurnEnd: beat.softTurnEnd,
+        stateVersion: result.state.stateVersion ?? 0,
+        summary: beat.summary,
+        displayName,
+      });
+    }
+  }
 }
 
 export function toActionResponse(
