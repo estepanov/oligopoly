@@ -1,11 +1,12 @@
 import type { GameState } from "@oligopoly/validation";
 import type { CSSProperties } from "react";
-import { useCallback, useState } from "react";
+import { useTileSetDialogNavigation } from "../hooks/useTileSetDialogNavigation";
 import { type BoardTileDetails, tileLabel } from "../lib/boardDisplay";
 import { compactOccupantLabel, occupantLabels } from "../lib/boardOccupants";
 import {
   boardTileDisplayName,
   developmentTokenIndexes,
+  resolveViewedTile,
   sectorClass,
   tileStatusLabel,
   tileTypeLabel,
@@ -68,20 +69,20 @@ export function BoardCell({
   const label = tileLabel(position, tileNames);
   const displayName = boardTileDisplayName(position, label);
   const details = tileDetails.get(String(position));
-  const [viewedPosition, setViewedPosition] = useState(position);
-  const viewedKey = String(viewedPosition);
-  const effectivePosition = tileDetails.has(viewedKey)
-    ? viewedPosition
-    : position;
-  const viewedDetails = tileDetails.get(String(effectivePosition));
-  const viewedTileState = tilesByPosition.get(String(effectivePosition));
-  const viewedOwnerId = viewedTileState?.ownerId ?? null;
-  const viewedOccupants =
-    occupantsByPosition.get(String(effectivePosition)) ?? [];
-  const viewedLabel = tileLabel(effectivePosition, tileNames);
-  const handleOpenChange = useCallback(() => {
-    setViewedPosition(position);
-  }, [position]);
+  const {
+    viewedPosition,
+    viewAnnouncement,
+    onDialogOpenChange,
+    onSelectSetMember,
+  } = useTileSetDialogNavigation(position);
+  const viewed = resolveViewedTile({
+    openerPosition: position,
+    viewedPosition,
+    tileDetails,
+    tilesByPosition,
+    occupantsByPosition,
+    tileNames,
+  });
   const mortgaged = tileState?.mortgaged ?? false;
   const developmentTokens = tileState?.developmentTokens ?? 0;
   const statusLabel = tileStatusLabel({
@@ -92,9 +93,9 @@ export function BoardCell({
 
   return (
     <InfoDialog
-      title={viewedLabel}
+      title={viewed.label}
       triggerLabel={`Open details for ${label}`}
-      onOpenChange={handleOpenChange}
+      onOpenChange={onDialogOpenChange}
       triggerClassName={[
         "boardGridCell",
         `boardGridCell-${placement.edge}`,
@@ -160,17 +161,18 @@ export function BoardCell({
       }
     >
       <BoardTileDetailsContent
-        details={viewedDetails}
-        occupants={viewedOccupants}
+        details={viewed.details}
+        occupants={viewed.occupants}
         occupantsByPosition={occupantsByPosition}
-        ownerId={viewedOwnerId}
-        position={effectivePosition}
+        ownerId={viewed.ownerId}
+        position={viewed.position}
         state={state}
         tileDetails={tileDetails}
-        tileState={viewedTileState}
+        tileState={viewed.tileState}
         tilesByPosition={tilesByPosition}
         myPlayerId={myPlayerId}
-        onSelectSetMember={setViewedPosition}
+        viewAnnouncement={viewAnnouncement}
+        onSelectSetMember={onSelectSetMember}
       />
     </InfoDialog>
   );

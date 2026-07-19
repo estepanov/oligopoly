@@ -1,5 +1,4 @@
 import type { GameState } from "@oligopoly/validation";
-import { useState } from "react";
 import type { BoardTileDetails } from "../lib/boardDisplay";
 import { occupantLabels } from "../lib/boardOccupants";
 import {
@@ -14,6 +13,7 @@ import {
 } from "../lib/boardTileDetails";
 import { formatCurrencyAmount, playerDisplayName } from "../lib/gameDisplay";
 import { getTileEconomics } from "../lib/tileEconomics";
+import { BoardSetMemberItem } from "./BoardSetMemberItem";
 import { TileEconomicsExplainContent } from "./TileEconomicsExplainContent";
 
 type BoardTileDetailsContentProps = {
@@ -27,7 +27,8 @@ type BoardTileDetailsContentProps = {
   tileState: NonNullable<GameState["tiles"]>[number] | undefined;
   tilesByPosition: Map<string, NonNullable<GameState["tiles"]>[number]>;
   myPlayerId: string | null;
-  onSelectSetMember?: (position: number | string) => void;
+  viewAnnouncement: string;
+  onSelectSetMember: (position: number | string, label: string) => void;
 };
 
 export function BoardTileDetailsContent({
@@ -41,9 +42,9 @@ export function BoardTileDetailsContent({
   tileState,
   tilesByPosition,
   myPlayerId,
+  viewAnnouncement,
   onSelectSetMember,
 }: BoardTileDetailsContentProps) {
-  const [viewAnnouncement, setViewAnnouncement] = useState("");
   const currencySettings = state.settings;
   const developmentTokens = tileState?.developmentTokens ?? 0;
   const mortgaged = tileState?.mortgaged ?? false;
@@ -206,54 +207,13 @@ export function BoardTileDetailsContent({
               <strong>{setInfo.title}</strong>
             </div>
             <ul className="boardSetList">
-              {setInfo.members.map((member) => {
-                const className = [
-                  "boardSetItem",
-                  member.selected ? "boardSetItemSelected" : "",
-                  member.mortgaged ? "boardSetItemMortgaged" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ");
-                const body = (
-                  <>
-                    <span className="boardSetPosition">{member.position}</span>
-                    <span className="boardSetMain">
-                      <strong>{member.label}</strong>
-                      <span>
-                        Owned by {member.ownerLabel}
-                        {member.occupantLabel
-                          ? ` | Players here: ${member.occupantLabel}`
-                          : ""}
-                      </span>
-                    </span>
-                    <span className="boardSetStatus">
-                      {member.selected ? "Selected" : member.statusLabel}
-                    </span>
-                  </>
-                );
-
-                return (
-                  <li key={String(member.position)}>
-                    {onSelectSetMember ? (
-                      <button
-                        type="button"
-                        className={className}
-                        aria-pressed={member.selected}
-                        onClick={(event) => {
-                          if (member.selected) return;
-                          event.currentTarget.focus();
-                          setViewAnnouncement(`Viewing ${member.label}`);
-                          onSelectSetMember(member.position);
-                        }}
-                      >
-                        {body}
-                      </button>
-                    ) : (
-                      <div className={className}>{body}</div>
-                    )}
-                  </li>
-                );
-              })}
+              {setInfo.members.map((member) => (
+                <BoardSetMemberItem
+                  key={String(member.position)}
+                  member={member}
+                  onSelect={onSelectSetMember}
+                />
+              ))}
             </ul>
           </div>
         </section>
