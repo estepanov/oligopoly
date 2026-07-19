@@ -8,6 +8,7 @@ type InfoDialogProps = {
   triggerClassName?: string;
   triggerStyle?: CSSProperties;
   triggerContent?: ReactNode;
+  onOpenChange?: (open: boolean) => void;
   children: ReactNode;
 };
 
@@ -17,6 +18,7 @@ export function InfoDialog({
   triggerClassName = "infoButton",
   triggerStyle,
   triggerContent = "i",
+  onOpenChange,
   children,
 }: InfoDialogProps) {
   const [open, setOpen] = useState(false);
@@ -111,6 +113,10 @@ export function InfoDialog({
     }
     wasOpenRef.current = open;
   }, [open]);
+
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
 
   return (
     <>
