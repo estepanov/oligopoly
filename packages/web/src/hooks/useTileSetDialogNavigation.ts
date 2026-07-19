@@ -2,8 +2,9 @@ import { useCallback, useState } from "react";
 
 /**
  * Owns set-browsing state for a board-tile details dialog: which tile is
- * viewed, live-region copy, reset on open/close, and member selection.
+ * viewed, live-region copy, reset on close, and member selection.
  * Relies on a stable opener `position` for the mounted cell.
+ * Selected-member no-ops are handled in `BoardSetMemberItem` (UI layer).
  */
 export function useTileSetDialogNavigation(openerPosition: number | string) {
   const [viewedPosition, setViewedPosition] = useState(openerPosition);
@@ -12,9 +13,9 @@ export function useTileSetDialogNavigation(openerPosition: number | string) {
   const onDialogOpenChange = useCallback(
     (open: boolean) => {
       // Real open/close transitions only (InfoDialog never notifies on mount).
-      // Reset on both so reopen always starts on the opener cell's tile.
-      setViewedPosition(openerPosition);
+      // Close resets; next open starts from opener via this + initial useState.
       if (!open) {
+        setViewedPosition(openerPosition);
         setViewAnnouncement("");
       }
     },
@@ -23,11 +24,10 @@ export function useTileSetDialogNavigation(openerPosition: number | string) {
 
   const onSelectSetMember = useCallback(
     (nextPosition: number | string, label: string) => {
-      if (String(nextPosition) === String(viewedPosition)) return;
       setViewAnnouncement(`Viewing ${label}`);
       setViewedPosition(nextPosition);
     },
-    [viewedPosition],
+    [],
   );
 
   return {

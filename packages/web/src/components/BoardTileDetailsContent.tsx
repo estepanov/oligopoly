@@ -122,7 +122,7 @@ export function BoardTileDetailsContent({
 
   return (
     <div className="tileDetailsSurface">
-      <div className="visuallyHidden" role="status">
+      <div className="visuallyHidden" role="status" aria-live="polite">
         {viewAnnouncement}
       </div>
       <section className="tileDetailsHero">

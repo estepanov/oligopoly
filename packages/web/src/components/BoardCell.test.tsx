@@ -1,11 +1,11 @@
 import type { GameState } from "@oligopoly/validation";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { BoardCell } from "./BoardCell";
 import {
   setNavigationGameState,
   setNavigationTileDetails,
-} from "./setNavigationTestFixtures";
+} from "../test/fixtures/setNavigationTestFixtures";
+import { BoardCell } from "./BoardCell";
 
 describe("BoardCell set browsing", () => {
   it("updates dialog title and details when selecting another set member, then restores opener focus on close", () => {

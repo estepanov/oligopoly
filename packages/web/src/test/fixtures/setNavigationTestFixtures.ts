@@ -1,5 +1,5 @@
 import type { GameState } from "@oligopoly/validation";
-import type { BoardTileDetails } from "../lib/boardDisplay";
+import type { BoardTileDetails } from "../../lib/boardDisplay";
 
 export function setNavigationGameState(
   overrides: Partial<GameState> = {},

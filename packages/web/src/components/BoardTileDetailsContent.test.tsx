@@ -1,11 +1,11 @@
 import type { GameState } from "@oligopoly/validation";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { BoardTileDetailsContent } from "./BoardTileDetailsContent";
 import {
   setNavigationGameState,
   setNavigationTileDetails,
-} from "./setNavigationTestFixtures";
+} from "../test/fixtures/setNavigationTestFixtures";
+import { BoardTileDetailsContent } from "./BoardTileDetailsContent";
 
 function renderContent(
   position: number,
