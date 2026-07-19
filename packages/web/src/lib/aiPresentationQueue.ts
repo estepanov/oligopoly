@@ -18,6 +18,8 @@ export type AiPresentationQueueState = {
   presentationState: GameState | null;
   queue: AiPresentationBeatEvent[];
   currentBeat: AiPresentationBeatEvent | null;
+  currentBeatPresentedAtMs: number | null;
+  canonicalPendingBeatVersion: number | null;
   lastAppliedVersion: number;
 };
 
@@ -35,6 +37,8 @@ export function createPresentationQueue(
     presentationState: canonical,
     queue: [],
     currentBeat: null,
+    currentBeatPresentedAtMs: null,
+    canonicalPendingBeatVersion: null,
     lastAppliedVersion: canonical?.stateVersion ?? 0,
   };
 }
@@ -59,11 +63,20 @@ export function enqueueCanonical(
 
   if (
     needsInteraction ||
-    q.mode === "caught_up" ||
     (canonical.stateVersion ?? q.lastAppliedVersion) - q.lastAppliedVersion >
       q.queue.length + 1
   ) {
     return skipPresentation(q, canonical);
+  }
+
+  if (q.mode === "caught_up") {
+    const canonicalVersion = canonical.stateVersion ?? q.lastAppliedVersion;
+    return {
+      ...q,
+      presentationState: canonical,
+      canonicalPendingBeatVersion: canonicalVersion,
+      lastAppliedVersion: canonicalVersion,
+    };
   }
 
   return q;
@@ -74,18 +87,26 @@ export function enqueueAiBeat(
   beat: AiPresentationBeatEvent,
   canonical: GameState,
   needsInteraction: boolean,
+  nowMs: number,
 ): AiPresentationQueueState {
   if (needsInteraction) {
     return skipPresentation(q, canonical);
   }
 
+  const pairsWithPendingCanonical =
+    q.mode === "caught_up" &&
+    q.currentBeat === null &&
+    q.canonicalPendingBeatVersion === beat.stateVersion &&
+    q.lastAppliedVersion === beat.stateVersion;
   const latestPendingVersion =
     q.queue.at(-1)?.stateVersion ??
     q.currentBeat?.stateVersion ??
     q.lastAppliedVersion;
   if (
-    beat.stateVersion <= q.lastAppliedVersion ||
-    beat.stateVersion <= latestPendingVersion
+    beat.stateVersion < q.lastAppliedVersion ||
+    (beat.stateVersion === q.lastAppliedVersion &&
+      !pairsWithPendingCanonical) ||
+    (beat.stateVersion <= latestPendingVersion && !pairsWithPendingCanonical)
   ) {
     return q;
   }
@@ -96,6 +117,8 @@ export function enqueueAiBeat(
       mode: "watching",
       presentationState: beat.state,
       currentBeat: beat,
+      currentBeatPresentedAtMs: nowMs,
+      canonicalPendingBeatVersion: null,
       lastAppliedVersion: beat.stateVersion,
     };
   }
@@ -122,6 +145,8 @@ export function skipPresentation(
     presentationState: canonical,
     queue: [],
     currentBeat: null,
+    currentBeatPresentedAtMs: null,
+    canonicalPendingBeatVersion: null,
     lastAppliedVersion: canonical.stateVersion ?? q.lastAppliedVersion,
   };
 }
@@ -133,7 +158,8 @@ export function advancePresentation(
 ): AiPresentationQueueState {
   if (
     q.currentBeat === null ||
-    nowMs < q.currentBeat.sentAt + pauseMsFor(q.currentBeat)
+    q.currentBeatPresentedAtMs === null ||
+    nowMs < q.currentBeatPresentedAtMs + pauseMsFor(q.currentBeat)
   ) {
     return q;
   }
@@ -149,6 +175,8 @@ export function advancePresentation(
     presentationState: nextBeat.state,
     queue: remainingQueue,
     currentBeat: nextBeat,
+    currentBeatPresentedAtMs: nowMs,
+    canonicalPendingBeatVersion: null,
     lastAppliedVersion: nextBeat.stateVersion,
   };
 }

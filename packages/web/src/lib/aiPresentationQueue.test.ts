@@ -51,7 +51,7 @@ describe("aiPresentationQueue", () => {
   it("enters watching on material beat and skip catches up", () => {
     let q = createPresentationQueue(state(1));
     q = enqueueCanonical(q, state(1), "human", false);
-    q = enqueueAiBeat(q, beat(2), state(2), false);
+    q = enqueueAiBeat(q, beat(2), state(2), false, 10_000);
     expect(q.mode).toBe("watching");
     expect(q.presentationState?.stateVersion).toBe(2);
     q = skipPresentation(q, state(2));
@@ -61,13 +61,13 @@ describe("aiPresentationQueue", () => {
 
   it("auto catch-up when viewer needs interaction", () => {
     let q = createPresentationQueue(state(1));
-    q = enqueueAiBeat(q, beat(2), state(2), true);
+    q = enqueueAiBeat(q, beat(2), state(2), true, 10_000);
     expect(q.mode).toBe("caught_up");
   });
 
   it("drops older versions and catches up on a gap", () => {
     let q = createPresentationQueue(state(1));
-    q = enqueueAiBeat(q, beat(2), state(2), false);
+    q = enqueueAiBeat(q, beat(2), state(2), false, 10_000);
     q = enqueueCanonical(q, state(5), "human", false);
     expect(q.mode).toBe("caught_up");
     expect(q.presentationState?.stateVersion).toBe(5);
@@ -85,39 +85,47 @@ describe("aiPresentationQueue", () => {
 
   it("waits for the current pause, promotes queued beats, then catches up", () => {
     let q = createPresentationQueue(state(1));
-    q = enqueueAiBeat(q, beat(2), state(3), false);
-    q = enqueueAiBeat(q, beat(3), state(3), false);
+    q = enqueueAiBeat(q, beat(2), state(3), false, 2_000);
+    q = enqueueAiBeat(q, beat(3), state(3), false, 2_001);
 
-    expect(advancePresentation(q, state(3), 3199)).toBe(q);
+    expect(advancePresentation(q, state(3), 3_199)).toBe(q);
 
-    q = advancePresentation(q, state(3), 3200);
+    q = advancePresentation(q, state(3), 3_200);
     expect(q.currentBeat?.stateVersion).toBe(3);
     expect(q.presentationState?.stateVersion).toBe(3);
     expect(q.lastAppliedVersion).toBe(3);
 
-    q = advancePresentation(q, state(3), 4200);
+    expect(advancePresentation(q, state(3), 4_399)).toBe(q);
+    q = advancePresentation(q, state(3), 4_400);
     expect(q.mode).toBe("caught_up");
     expect(q.currentBeat).toBeNull();
   });
 
   it("ignores beats already applied or pending", () => {
     let q = createPresentationQueue(state(1));
-    q = enqueueAiBeat(q, beat(2), state(3), false);
-    q = enqueueAiBeat(q, beat(3), state(3), false);
+    q = enqueueAiBeat(q, beat(2), state(3), false, 2_000);
+    q = enqueueAiBeat(q, beat(3), state(3), false, 2_001);
 
-    expect(enqueueAiBeat(q, beat(2), state(3), false)).toBe(q);
-    expect(enqueueAiBeat(q, beat(3), state(3), false)).toBe(q);
+    expect(enqueueAiBeat(q, beat(2), state(3), false, 2_002)).toBe(q);
+    expect(enqueueAiBeat(q, beat(3), state(3), false, 2_002)).toBe(q);
   });
 
   it("catches up when the queue reaches its cap", () => {
     let q = createPresentationQueue(state(1));
-    q = enqueueAiBeat(q, beat(2, { sentAt: 0 }), state(QUEUE_CAP + 2), false);
+    q = enqueueAiBeat(
+      q,
+      beat(2, { sentAt: 0 }),
+      state(QUEUE_CAP + 2),
+      false,
+      0,
+    );
     for (let version = 3; version <= QUEUE_CAP + 1; version += 1) {
       q = enqueueAiBeat(
         q,
         beat(version, { sentAt: 0 }),
         state(QUEUE_CAP + 2),
         false,
+        0,
       );
     }
 
@@ -126,6 +134,7 @@ describe("aiPresentationQueue", () => {
       beat(QUEUE_CAP + 2, { sentAt: 0 }),
       state(QUEUE_CAP + 2),
       false,
+      0,
     );
     expect(q.mode).toBe("caught_up");
     expect(q.queue).toHaveLength(0);
@@ -133,15 +142,37 @@ describe("aiPresentationQueue", () => {
 
   it("catches up when event-time lag exceeds the budget", () => {
     let q = createPresentationQueue(state(1));
-    q = enqueueAiBeat(q, beat(2, { sentAt: 1000 }), state(3), false);
+    q = enqueueAiBeat(q, beat(2, { sentAt: 1000 }), state(3), false, 5_000);
     q = enqueueAiBeat(
       q,
       beat(3, { sentAt: 1001 + LAG_BUDGET_MS }),
       state(3),
       false,
+      5_001,
     );
 
     expect(q.mode).toBe("caught_up");
     expect(q.presentationState?.stateVersion).toBe(3);
+  });
+
+  it("presents an AI beat when its canonical state arrived first", () => {
+    let q = createPresentationQueue(state(1));
+    q = enqueueCanonical(q, state(2), "human", false);
+    q = enqueueAiBeat(q, beat(2), state(2), false, 10_000);
+
+    expect(q.mode).toBe("watching");
+    expect(q.currentBeat?.stateVersion).toBe(2);
+    expect(q.presentationState?.stateVersion).toBe(2);
+  });
+
+  it("measures the pause from local presentation time, not sentAt", () => {
+    let q = createPresentationQueue(state(1));
+    q = enqueueAiBeat(q, beat(2, { sentAt: 1 }), state(2), false, 10_000);
+
+    expect(
+      advancePresentation(q, state(2), 10_000 + MATERIAL_PAUSE_MS - 1),
+    ).toBe(q);
+    q = advancePresentation(q, state(2), 10_000 + MATERIAL_PAUSE_MS);
+    expect(q.mode).toBe("caught_up");
   });
 });
