@@ -1,4 +1,5 @@
 import type { GameState } from "@oligopoly/validation";
+import { useState } from "react";
 import type { BoardTileDetails } from "../lib/boardDisplay";
 import { occupantLabels } from "../lib/boardOccupants";
 import {
@@ -26,6 +27,7 @@ type BoardTileDetailsContentProps = {
   tileState: NonNullable<GameState["tiles"]>[number] | undefined;
   tilesByPosition: Map<string, NonNullable<GameState["tiles"]>[number]>;
   myPlayerId: string | null;
+  onSelectSetMember?: (position: number | string) => void;
 };
 
 export function BoardTileDetailsContent({
@@ -39,7 +41,9 @@ export function BoardTileDetailsContent({
   tileState,
   tilesByPosition,
   myPlayerId,
+  onSelectSetMember,
 }: BoardTileDetailsContentProps) {
+  const [viewAnnouncement, setViewAnnouncement] = useState("");
   const currencySettings = state.settings;
   const developmentTokens = tileState?.developmentTokens ?? 0;
   const mortgaged = tileState?.mortgaged ?? false;
@@ -117,6 +121,9 @@ export function BoardTileDetailsContent({
 
   return (
     <div className="tileDetailsSurface">
+      <div className="visuallyHidden" role="status" aria-live="polite">
+        {viewAnnouncement}
+      </div>
       <section className="tileDetailsHero">
         <span
           className={`tileDetailsHeroAccent ${sectorClass(details)}`}
@@ -199,32 +206,53 @@ export function BoardTileDetailsContent({
               <strong>{setInfo.title}</strong>
             </div>
             <ul className="boardSetList">
-              {setInfo.members.map((member) => (
-                <li
-                  key={String(member.position)}
-                  className={[
-                    "boardSetItem",
-                    member.selected ? "boardSetItemSelected" : "",
-                    member.mortgaged ? "boardSetItemMortgaged" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                >
-                  <span className="boardSetPosition">{member.position}</span>
-                  <span className="boardSetMain">
-                    <strong>{member.label}</strong>
-                    <span>
-                      Owned by {member.ownerLabel}
-                      {member.occupantLabel
-                        ? ` | Players here: ${member.occupantLabel}`
-                        : ""}
+              {setInfo.members.map((member) => {
+                const className = [
+                  "boardSetItem",
+                  member.selected ? "boardSetItemSelected" : "",
+                  member.mortgaged ? "boardSetItemMortgaged" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                const body = (
+                  <>
+                    <span className="boardSetPosition">{member.position}</span>
+                    <span className="boardSetMain">
+                      <strong>{member.label}</strong>
+                      <span>
+                        Owned by {member.ownerLabel}
+                        {member.occupantLabel
+                          ? ` | Players here: ${member.occupantLabel}`
+                          : ""}
+                      </span>
                     </span>
-                  </span>
-                  <span className="boardSetStatus">
-                    {member.selected ? "Selected" : member.statusLabel}
-                  </span>
-                </li>
-              ))}
+                    <span className="boardSetStatus">
+                      {member.selected ? "Selected" : member.statusLabel}
+                    </span>
+                  </>
+                );
+
+                return (
+                  <li key={String(member.position)}>
+                    {onSelectSetMember ? (
+                      <button
+                        type="button"
+                        className={className}
+                        aria-pressed={member.selected}
+                        onClick={() => {
+                          if (member.selected) return;
+                          setViewAnnouncement(`Viewing ${member.label}`);
+                          onSelectSetMember(member.position);
+                        }}
+                      >
+                        {body}
+                      </button>
+                    ) : (
+                      <div className={className}>{body}</div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </section>
