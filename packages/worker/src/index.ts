@@ -53,9 +53,11 @@ app.use(
   "*",
   cors({
     origin: (origin, c) => {
-      const allowed = c.env?.ALLOWED_ORIGINS?.split(",")
+      const allowed = (
+        c.env?.ALLOWED_ORIGINS?.split(",") ?? ["http://localhost:5173"]
+      )
         .map((entry: string) => entry.trim())
-        .filter(Boolean) ?? ["http://localhost:5173"];
+        .filter(Boolean);
       if (!origin) {
         return "";
       }

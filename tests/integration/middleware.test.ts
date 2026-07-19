@@ -10,9 +10,10 @@ const createRequestWithEnv = (
     headers?: HeadersInit;
     kvGet?: KvGet;
     db?: D1Database;
+    allowedOrigins?: string;
   } = {},
 ) => {
-  const { method, headers, kvGet, db } = options;
+  const { method, headers, kvGet, db, allowedOrigins } = options;
   return app.request(
     path,
     {
@@ -20,7 +21,9 @@ const createRequestWithEnv = (
       headers,
     },
     {
-      ALLOWED_ORIGINS: "http://localhost:5173",
+      ...(allowedOrigins === undefined
+        ? {}
+        : { ALLOWED_ORIGINS: allowedOrigins }),
       DB: db,
       KV: kvGet ? ({ get: kvGet } as KVNamespace) : undefined,
     },
@@ -29,6 +32,22 @@ const createRequestWithEnv = (
 
 describe("cors", () => {
   it("allows configured origins", async () => {
+    const res = await createRequestWithEnv("/api/health", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://localhost:5173",
+        "Access-Control-Request-Method": "GET",
+      },
+      allowedOrigins: "http://localhost:5173",
+    });
+
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
+      "http://localhost:5173",
+    );
+  });
+
+  it("falls back to localhost:5173 when ALLOWED_ORIGINS is unset", async () => {
     const res = await createRequestWithEnv("/api/health", {
       method: "OPTIONS",
       headers: {
@@ -50,6 +69,7 @@ describe("cors", () => {
         Origin: "http://127.0.0.1:5191",
         "Access-Control-Request-Method": "GET",
       },
+      allowedOrigins: "http://localhost:5173",
     });
 
     expect(res.status).toBe(204);
@@ -65,6 +85,7 @@ describe("cors", () => {
         Origin: "https://oligopoly.online",
         "Access-Control-Request-Method": "GET",
       },
+      allowedOrigins: "http://localhost:5173",
     });
 
     expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
