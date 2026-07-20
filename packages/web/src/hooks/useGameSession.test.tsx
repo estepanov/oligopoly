@@ -120,6 +120,7 @@ function aiActionUpdate(
   overrides: Partial<AiPresentationBeatInput> = {},
 ): AiPresentationBeatInput {
   return {
+    gameId: "game-1",
     aiPlayerId: "opponent",
     displayName: "Grace",
     material: true,

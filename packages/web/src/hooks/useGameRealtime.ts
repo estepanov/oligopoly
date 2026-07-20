@@ -67,6 +67,7 @@ export function useGameRealtime(
       }
       if (message.type === "game.ai_action") {
         options.onAiAction?.({
+          gameId: message.gameId,
           aiPlayerId: message.aiPlayerId,
           displayName: message.displayName,
           material: message.material,

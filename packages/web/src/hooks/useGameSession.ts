@@ -106,7 +106,7 @@ export function useGameSession(
     currentPresentationBeat,
     pushAiAction,
     skip: skipPresentation,
-  } = useAiPresentation(state, urgentObligation);
+  } = useAiPresentation(state, urgentObligation, gameId);
 
   // Mirrors `state`, but assigned synchronously at every write site (via
   // `commitCanonicalState`) instead of only at render time, so
@@ -194,6 +194,13 @@ export function useGameSession(
       setLoading(false);
       return;
     }
+
+    // Drop the previous table immediately on route change so presentation
+    // pairing cannot reuse a stale canonical snapshot / board against the
+    // next game's `game.ai_action` at a colliding `stateVersion`.
+    setGame(null);
+    commitCanonicalState(null);
+    setLogEntries([]);
 
     let cancelled = false;
     (async () => {
@@ -330,7 +337,6 @@ export function useGameSession(
     tileDetails,
     error,
     loading,
-    busyAction,
     pendingAction,
     lastActionLatencyMs,
     statusLine,
@@ -342,7 +348,6 @@ export function useGameSession(
     currentPlayerId: state ? currentActorId(state) : null,
     runAction,
     refresh,
-    canonicalState: state,
     presentationState,
     presentationMode,
     currentPresentationBeat,

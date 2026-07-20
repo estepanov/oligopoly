@@ -123,16 +123,23 @@ export function GameDetailPage() {
                 </dd>
               </dl>
 
-              <GamePlayControls
-                state={state}
-                myPlayerId={myPlayerId}
-                tileNames={tileNames}
-                busy={controls.busy}
-                pendingAction={pendingAction}
-                onAction={runAction}
-              />
+              {presentationMode === "watching" ? (
+                <p className="muted">
+                  Play controls unlock when AI presentation catches up — use
+                  Skip to jump ahead.
+                </p>
+              ) : (
+                <GamePlayControls
+                  state={state}
+                  myPlayerId={myPlayerId}
+                  tileNames={tileNames}
+                  busy={controls.busy}
+                  pendingAction={pendingAction}
+                  onAction={runAction}
+                />
+              )}
 
-              {pendingAction && (
+              {presentationMode !== "watching" && pendingAction && (
                 <div className="actionPendingBanner" role="status">
                   <span className="actionPendingPulse" aria-hidden="true" />
                   <span>
@@ -148,7 +155,7 @@ export function GameDetailPage() {
                 <button
                   type="button"
                   className="button buttonSecondary"
-                  disabled={controls.busy}
+                  disabled={controls.busy && presentationMode !== "watching"}
                   onClick={() => void refresh()}
                 >
                   Refresh

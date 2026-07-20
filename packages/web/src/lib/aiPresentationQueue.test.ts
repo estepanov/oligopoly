@@ -38,6 +38,7 @@ function beat(
   overrides: Partial<AiPresentationBeatEvent> = {},
 ): AiPresentationBeatEvent {
   return {
+    gameId: "g1",
     stateVersion: version,
     state: state(version),
     aiPlayerId: "ai:bot",
@@ -240,6 +241,34 @@ describe("aiPresentationQueue", () => {
     q = enqueueAiBeat(q, beat(2), state(2), false, 20_000);
     expect(q.mode).toBe("caught_up");
     expect(q.currentBeat).toBeNull();
+  });
+
+  it("does not rewind presentationState to a stale caught_up canonical", () => {
+    let q = createPresentationQueue(state(1));
+    q = enqueueCanonical(q, state(3), false, 0);
+    expect(q.presentationState?.stateVersion).toBe(3);
+    expect(q.lastAppliedVersion).toBe(3);
+
+    q = enqueueCanonical(q, state(2), false, 0);
+    expect(q.presentationState?.stateVersion).toBe(3);
+    expect(q.lastAppliedVersion).toBe(3);
+  });
+
+  it("rejects an AI beat whose gameId does not match canonical", () => {
+    let q = createPresentationQueue(state(1));
+    q = enqueueAiBeat(
+      q,
+      beat(2, {
+        gameId: "other-game",
+        state: { ...state(2), gameId: "other-game" },
+      }),
+      state(2),
+      false,
+      10_000,
+    );
+    expect(q.mode).toBe("caught_up");
+    expect(q.currentBeat).toBeNull();
+    expect(q.presentationState?.stateVersion).toBe(1);
   });
 
   it("measures the pause from local presentation time, not sentAt", () => {

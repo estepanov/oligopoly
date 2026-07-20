@@ -98,7 +98,6 @@ vi.mock("../hooks/useGameSession", () => ({
     ]),
     error: null,
     loading: false,
-    busyAction: false,
     pendingAction: null,
     lastActionLatencyMs: null,
     statusLine: "Connected",
@@ -192,7 +191,6 @@ describe("GameDetailPage", () => {
   it("shows immediate pending feedback while an action is being confirmed", () => {
     sessionOverride.value = {
       state: { ...state, phase: "waiting_for_roll" },
-      busyAction: true,
       pendingAction: {
         label: "Rolled dice",
         type: "roll_dice",
@@ -221,7 +219,7 @@ describe("GameDetailPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the paced AI state and locks controls while watching", () => {
+  it("shows the paced AI state and collapses play controls while watching", () => {
     const presentationState = {
       ...state,
       currentPlayerIndex: 1,
@@ -243,7 +241,12 @@ describe("GameDetailPage", () => {
       "Watching · Nova Blake",
     );
     expect(screen.getByText("changed tile ownership")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "End turn" })).toBeDisabled();
+    expect(
+      screen.getByText(/play controls unlock when ai presentation catches up/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "End turn" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("heading", { level: 3, name: "Grace" }).closest("li"),
     ).toHaveClass("playerSummaryItemActive");

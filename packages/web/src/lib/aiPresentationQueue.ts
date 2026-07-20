@@ -3,6 +3,8 @@ import type { GameState } from "@oligopoly/validation";
 export type PresentationMode = "watching" | "caught_up";
 
 export type AiPresentationBeatEvent = {
+  /** Must match the session/canonical `gameId` before a beat may pair or present. */
+  gameId: string;
   stateVersion: number;
   state: GameState;
   aiPlayerId: string;
@@ -124,7 +126,7 @@ export function enqueueCanonical(
   // path a same-tick beat would (`enqueueAiBeat`, including its own urgent-
   // obligation handling) — it is NOT subject to the version-gap catch-up
   // check below, since it is a fully paired, in-order beat, not a jump.
-  if (matchedBeat) {
+  if (matchedBeat && matchedBeat.gameId === canonical.gameId) {
     return enqueueAiBeat(
       base,
       { ...matchedBeat, state: canonical },
@@ -148,6 +150,11 @@ export function enqueueCanonical(
   }
 
   if (base.mode === "caught_up") {
+    if (canonicalVersion < base.lastAppliedVersion) {
+      // Duplicate/out-of-order realtime must not rewind the board after Skip
+      // or a later beat already advanced presentation bookkeeping.
+      return base;
+    }
     if (canonicalVersion > base.lastAppliedVersion) {
       // No AI beat has arrived for this version yet — record the canonical
       // half so a same-version beat arriving via `useAiPresentation`'s
@@ -167,6 +174,8 @@ export function enqueueCanonical(
       };
     }
 
+    // Same version: refresh presentation (e.g. auction `mySubmission` merge)
+    // without treating it as a new advance.
     return {
       ...base,
       presentationState: canonical,
@@ -189,6 +198,13 @@ export function enqueueAiBeat(
   // once the queue drains (see `advancePresentation`).
   if (urgentObligation) {
     return skipPresentation(q, canonical);
+  }
+
+  if (
+    beat.gameId !== canonical.gameId ||
+    beat.state.gameId !== canonical.gameId
+  ) {
+    return q;
   }
 
   const pendingHalf = q.pendingByVersion.get(beat.stateVersion);

@@ -29,35 +29,61 @@ export type { AiPresentationBeatInput } from "../lib/aiPresentationQueue";
 export function useAiPresentation(
   canonical: GameState | null,
   urgentObligation: boolean,
+  gameId: string | undefined,
 ) {
   const [queue, setQueue] = useState<AiPresentationQueueState>(() =>
-    createPresentationQueue(canonical),
+    createPresentationQueue(canonical?.gameId === gameId ? canonical : null),
   );
   const canonicalRef = useRef(canonical);
   canonicalRef.current = canonical;
+  const gameIdRef = useRef(gameId);
+  gameIdRef.current = gameId;
 
   // Tracks the game the queue was built for. A `gameId` change (SPA
   // navigation between tables without unmounting this hook) must throw away
   // any queued/buffered beats from the PREVIOUS game rather than risk
   // pairing a stale beat against the new game's canonical state at a
   // coincidentally-matching `stateVersion`.
-  const previousGameIdRef = useRef<string | null>(canonical?.gameId ?? null);
+  const previousGameIdRef = useRef<string | null>(gameId ?? null);
 
   useEffect(() => {
-    if (!canonical) return;
-    if (previousGameIdRef.current !== canonical.gameId) {
-      previousGameIdRef.current = canonical.gameId;
-      setQueue(createPresentationQueue(canonical));
+    const activeGameId = gameId ?? null;
+    if (previousGameIdRef.current !== activeGameId) {
+      previousGameIdRef.current = activeGameId;
+      setQueue(
+        createPresentationQueue(
+          canonical && activeGameId && canonical.gameId === activeGameId
+            ? canonical
+            : null,
+        ),
+      );
       return;
     }
+
+    if (!canonical || !activeGameId) {
+      setQueue(createPresentationQueue(null));
+      return;
+    }
+
+    // Session may briefly retain a prior table's snapshot while the route
+    // `gameId` already changed — never pace/pair against that mismatch.
+    if (canonical.gameId !== activeGameId) {
+      return;
+    }
+
     setQueue((current) =>
       enqueueCanonical(current, canonical, urgentObligation, Date.now()),
     );
-  }, [canonical, urgentObligation]);
+  }, [canonical, urgentObligation, gameId]);
 
   const pushAiAction = useCallback(
     (beatInput: AiPresentationBeatInput) => {
       setQueue((current) => {
+        const expectedGameId = gameIdRef.current;
+        if (!expectedGameId || beatInput.gameId !== expectedGameId) {
+          return current;
+        }
+
         const latestCanonical = canonicalRef.current;
         // Fast path: canonical already reflects this beat's `stateVersion`
         // (the common, non-same-tick case — `action_applied` rendered in an
@@ -67,6 +93,7 @@ export function useAiPresentation(
         // is flushed by `enqueueCanonical` once that canonical update lands.
         if (
           latestCanonical &&
+          latestCanonical.gameId === beatInput.gameId &&
           latestCanonical.stateVersion === beatInput.stateVersion
         ) {
           return enqueueAiBeat(
@@ -85,14 +112,28 @@ export function useAiPresentation(
 
   const skip = useCallback(() => {
     const latestCanonical = canonicalRef.current;
-    if (!latestCanonical) return;
+    const expectedGameId = gameIdRef.current;
+    if (
+      !latestCanonical ||
+      !expectedGameId ||
+      latestCanonical.gameId !== expectedGameId
+    ) {
+      return;
+    }
     setQueue((current) => skipPresentation(current, latestCanonical));
   }, []);
 
   const { currentBeat, currentBeatPresentedAtMs } = queue;
   useEffect(() => {
     const latestCanonical = canonicalRef.current;
-    if (!currentBeat || currentBeatPresentedAtMs === null || !latestCanonical) {
+    const expectedGameId = gameIdRef.current;
+    if (
+      !currentBeat ||
+      currentBeatPresentedAtMs === null ||
+      !latestCanonical ||
+      !expectedGameId ||
+      latestCanonical.gameId !== expectedGameId
+    ) {
       return;
     }
     const remainingMs = Math.max(
@@ -101,7 +142,13 @@ export function useAiPresentation(
     );
     const timer = window.setTimeout(() => {
       setQueue((current) => {
-        const canonicalForAdvance = canonicalRef.current ?? latestCanonical;
+        const canonicalForAdvance = canonicalRef.current;
+        if (
+          !canonicalForAdvance ||
+          canonicalForAdvance.gameId !== gameIdRef.current
+        ) {
+          return current;
+        }
         return advancePresentation(current, canonicalForAdvance, Date.now());
       });
     }, remainingMs);
