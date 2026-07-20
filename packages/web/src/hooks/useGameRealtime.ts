@@ -5,6 +5,7 @@ import {
 } from "@oligopoly/validation";
 import { useState } from "react";
 import { gameWebSocketUrl } from "../api/games";
+import type { AiPresentationBeatInput } from "../lib/aiPresentationQueue";
 import { useRealtimeChannel } from "./useRealtimeChannel";
 
 export type GameSessionUpdate = {
@@ -15,6 +16,10 @@ export type GameSessionUpdate = {
 
 type UseGameRealtimeOptions = {
   onUpdate?: (update: GameSessionUpdate) => void;
+  /** A single AI-seat presentation beat, mapped from a `game.ai_action` WS
+   * event into the one beat-input shape shared by `useGameSession` and the
+   * presentation queue (`material` / `softTurnEnd` / `summary` / `stateVersion`). */
+  onAiAction?: (update: AiPresentationBeatInput) => void;
 };
 
 export function useGameRealtime(
@@ -58,6 +63,19 @@ export function useGameRealtime(
         if (message.timerKind) {
           setTimerKind(message.timerKind);
         }
+        return;
+      }
+      if (message.type === "game.ai_action") {
+        options.onAiAction?.({
+          gameId: message.gameId,
+          aiPlayerId: message.aiPlayerId,
+          displayName: message.displayName,
+          material: message.material,
+          softTurnEnd: message.softTurnEnd,
+          summary: message.summary,
+          stateVersion: message.stateVersion,
+          sentAt: message.sentAt,
+        });
       }
     },
   });

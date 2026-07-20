@@ -6,6 +6,7 @@ export function setNavigationGameState(
 ): GameState {
   return {
     gameId: "g",
+    stateVersion: 0,
     round: 1,
     phase: "waiting_for_roll",
     currentPlayerIndex: 0,

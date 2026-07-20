@@ -7,6 +7,7 @@ import { TradeNegotiationPanel } from "./trade-negotiation";
 function tradeState(overrides: Partial<GameState> = {}): GameState {
   return {
     gameId: "g",
+    stateVersion: 0,
     round: 1,
     phase: "action",
     currentPlayerIndex: 0,

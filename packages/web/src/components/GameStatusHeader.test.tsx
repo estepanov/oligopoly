@@ -7,6 +7,7 @@ import { GameStatusHeader } from "./GameStatusHeader";
 function baseGameState(overrides: Partial<GameState> = {}): GameState {
   return {
     gameId: "game-1",
+    stateVersion: 0,
     round: 1,
     phase: "waiting_for_roll",
     currentPlayerIndex: 0,

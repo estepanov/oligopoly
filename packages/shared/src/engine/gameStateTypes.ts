@@ -68,6 +68,8 @@ export interface MarketEventModifiersState {
 
 export interface InternalGameState {
   gameId: string;
+  /** Defaulted to 0 only by `normalizeGameState`; required afterward. */
+  stateVersion: number;
   round: number;
   phase: GamePhase;
   currentPlayerIndex: number;

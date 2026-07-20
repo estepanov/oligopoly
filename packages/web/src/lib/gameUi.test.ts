@@ -5,10 +5,12 @@ import {
   gameActionAvailability,
   turnGuidance,
 } from "./gameStepUi";
+import { viewerHasUrgentObligation } from "./gameUi";
 
 function baseGameState(overrides: Partial<GameState> = {}): GameState {
   return {
     gameId: "game-1",
+    stateVersion: 0,
     round: 1,
     phase: "waiting_for_roll",
     currentPlayerIndex: 0,
@@ -156,5 +158,159 @@ describe("game UI descriptors", () => {
 
     expect(step.eyebrow).toBe("Live auction");
     expect(step.title).toBe("Raise your bid or hold");
+  });
+});
+
+describe("viewerHasUrgentObligation", () => {
+  const ownTurnState = {
+    gameId: "g",
+    stateVersion: 0,
+    round: 1,
+    phase: "waiting_for_roll",
+    currentPlayerIndex: 0,
+    turnOrder: ["me", "ai:bot"],
+    players: [],
+  } as GameState;
+
+  it("is false on my own turn with no auction/trade owed", () => {
+    // The headline fix: it's the viewer's own turn per canonical state, but
+    // there is no auction bid or trade response owed, so presentation should
+    // be free to keep draining queued AI beats rather than treating this as
+    // an urgent interrupt.
+    expect(viewerHasUrgentObligation(ownTurnState, "me")).toBe(false);
+  });
+
+  it("is false during game_over even when the viewer still owes an auction bid", () => {
+    expect(
+      viewerHasUrgentObligation(
+        {
+          gameId: "g",
+          stateVersion: 0,
+          round: 1,
+          phase: "game_over",
+          currentPlayerIndex: 0,
+          turnOrder: ["me", "ai:bot"],
+          players: [],
+        } as GameState,
+        "me",
+      ),
+    ).toBe(false);
+  });
+
+  it("is true for an owed auction bid even off my turn", () => {
+    expect(
+      viewerHasUrgentObligation(
+        {
+          gameId: "g",
+          stateVersion: 0,
+          round: 1,
+          phase: "waiting_for_auction_bids",
+          currentPlayerIndex: 1,
+          turnOrder: ["me", "ai:bot"],
+          players: [],
+          pendingAuction: {
+            tilePosition: 3,
+            trigger: "player_initiated",
+            auctionType: "sealed_bids",
+            submissions: {},
+            eligiblePlayerIds: ["me", "ai:bot"],
+            resumePhase: "action",
+          },
+        } as GameState,
+        "me",
+      ),
+    ).toBe(true);
+  });
+
+  it("is false when the viewer already submitted an auction bid", () => {
+    expect(
+      viewerHasUrgentObligation(
+        {
+          gameId: "g",
+          stateVersion: 0,
+          round: 1,
+          phase: "waiting_for_auction_bids",
+          currentPlayerIndex: 1,
+          turnOrder: ["me", "ai:bot"],
+          players: [],
+          pendingAuction: {
+            tilePosition: 3,
+            trigger: "player_initiated",
+            auctionType: "sealed_bids",
+            submissions: {},
+            eligiblePlayerIds: ["me", "ai:bot"],
+            resumePhase: "action",
+            mySubmission: 10,
+          },
+        } as GameState,
+        "me",
+      ),
+    ).toBe(false);
+  });
+
+  it("is true for a pending inbound trade even off my turn", () => {
+    expect(
+      viewerHasUrgentObligation(
+        {
+          gameId: "g",
+          stateVersion: 0,
+          round: 1,
+          phase: "action",
+          currentPlayerIndex: 1,
+          turnOrder: ["me", "ai:bot"],
+          players: [],
+          tradeOffers: [
+            {
+              id: "trade-1",
+              gameId: "g",
+              proposerId: "ai:bot",
+              recipientId: "me",
+              gives: { capital: 0, tilePositions: [] },
+              receives: { capital: 0, tilePositions: [] },
+              status: "pending",
+              createdAt: 1,
+              expiresAt: 2,
+              counterCount: 0,
+            },
+          ],
+        } as GameState,
+        "me",
+      ),
+    ).toBe(true);
+  });
+
+  it("is false when the viewer's trade offer is not pending", () => {
+    expect(
+      viewerHasUrgentObligation(
+        {
+          gameId: "g",
+          stateVersion: 0,
+          round: 1,
+          phase: "action",
+          currentPlayerIndex: 1,
+          turnOrder: ["me", "ai:bot"],
+          players: [],
+          tradeOffers: [
+            {
+              id: "trade-1",
+              gameId: "g",
+              proposerId: "ai:bot",
+              recipientId: "me",
+              gives: { capital: 0, tilePositions: [] },
+              receives: { capital: 0, tilePositions: [] },
+              status: "accepted",
+              createdAt: 1,
+              expiresAt: 2,
+              counterCount: 0,
+            },
+          ],
+        } as GameState,
+        "me",
+      ),
+    ).toBe(false);
+  });
+
+  it("is false without a viewer id", () => {
+    expect(viewerHasUrgentObligation(ownTurnState, null)).toBe(false);
   });
 });
