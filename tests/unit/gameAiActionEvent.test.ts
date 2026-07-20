@@ -9,7 +9,6 @@ describe("game.ai_action event", () => {
       gameId: "g1",
       aiPlayerId: "ai:bot",
       personality: "opportunist",
-      action: { type: "end_turn" },
       material: false,
       reason: null,
       softTurnEnd: true,
@@ -22,6 +21,7 @@ describe("game.ai_action event", () => {
     if (parsed.type === "game.ai_action") {
       expect(parsed.softTurnEnd).toBe(true);
       expect(parsed.stateVersion).toBe(3);
+      expect(parsed).not.toHaveProperty("action");
     }
   });
 
@@ -33,7 +33,6 @@ describe("game.ai_action event", () => {
         gameId: "g1",
         aiPlayerId: "ai:bot",
         personality: "opportunist",
-        action: { type: "end_turn" },
         reason: null,
         // `material` and `stateVersion` intentionally omitted.
       }),

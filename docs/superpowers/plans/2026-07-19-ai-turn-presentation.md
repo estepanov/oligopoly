@@ -18,6 +18,7 @@
 - Capital material threshold: `50`.
 - Client pacing defaults: material ~1200ms, soft turn-end ~600ms, non-material coalesce ~0–200ms.
 - Skip and auto-catch-up are **local only** (no server call).
+- Auto-catch-up is **urgent-only**: `viewerHasUrgentObligation` (auction bid owed / pending inbound trade). Canonical “your turn” / `isMyTurn` alone must **not** drain the presentation queue (that reintroduces the solo-vs-AI snap-back bug).
 - Queue cap `50` or lag `>8000ms` behind canonical → auto-Skip.
 - WS down → jump-to-latest (playable); no fine-grained beats required.
 - While `watching`, disable primary play actions; never submit from stale presentation state.
@@ -42,7 +43,7 @@
 | `packages/web/src/hooks/useAiPresentation.ts` | Timers + React state over the reducer |
 | `packages/web/src/hooks/useGameRealtime.ts` | Handle `game.ai_action` |
 | `packages/web/src/hooks/useGameSession.ts` | Wire presentation; expose watching/skip/presentationState |
-| `packages/web/src/lib/gameUi.ts` | `viewerNeedsInteraction` helper |
+| `packages/web/src/lib/gameUi.ts` | `viewerHasUrgentObligation` helper (urgent-only auto-catch-up) |
 | `packages/web/src/pages/GameDetailPage.tsx` | Board/HUD use presentation state; Watching + Skip chrome; gate controls |
 | `tests/unit/aiPresentation.test.ts` | Classifier + seat filter |
 | `packages/web/src/lib/aiPresentationQueue.test.ts` | Queue unit tests |
@@ -956,7 +957,9 @@ EOF
 
 ---
 
-### Task 6: `viewerNeedsInteraction` + realtime/session wiring + hook
+### Task 6: `viewerHasUrgentObligation` + realtime/session wiring + hook
+
+> **Shipped note (post-review):** Auto-catch-up uses **`viewerHasUrgentObligation` only** — not a combined `viewerNeedsInteraction` that includes bare `isMyTurn`. Steps below that still say `viewerNeedsInteraction` are historical; implement urgent-only.
 
 **Files:**
 - Modify: `packages/web/src/lib/gameUi.ts`

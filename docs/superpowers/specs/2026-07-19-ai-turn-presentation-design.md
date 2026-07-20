@@ -57,7 +57,7 @@ Client
 
 1. Server remains sole authority; presentation never delays legality or other humans’ server-side ability to act.
 2. While `watching`, the client must not submit primary turn actions from a stale view.
-3. Human-interactive moments for the viewer (your turn, you owe a bid, trade inbox, etc.) interrupt pacing (same effect as Skip).
+3. **Urgent** interactive moments for the viewer (auction bid still owed, pending inbound trade — `viewerHasUrgentObligation`) interrupt pacing immediately (same effect as Skip). Canonical “your turn” alone does **not** auto-Skip: a fast-finishing AI loop often advances canonical to the human’s turn before queued AI beats have drained, and force-catching up on `isMyTurn` would erase the presentation this feature exists to show. The queue drains into your turn naturally; controls unlock when presentation catches up.
 4. Pacing failure must degrade to today’s behavior, never block play.
 
 ## Components
@@ -81,16 +81,16 @@ Pure helper: `(prev, next, action) → { material, reason, softTurnEnd? }`.
 
 ### Worker — emit `game.ai_action`
 
-Extend the existing realtime event (keep `type`, `gameId`, `aiPlayerId`, `personality`, `action`) with presentation fields:
+Emit a presentation-only envelope (not a second copy of the applied `GameAction`):
 
+- `type`, `gameId`, `aiPlayerId`, `personality`
 - `material: boolean`
-- `reason: MaterialReason | null` (enum/union in validation)
-- `softTurnEnd?: boolean`
+- `reason: MaterialReason | null` (canonical `AiPresentationReasonSchema`)
+- `softTurnEnd: boolean` (always present)
 - `stateVersion: number` (ordering against canonical updates)
-- `logCursor` / action-log index when available
-- optional `summary: string` for HUD (“bought Emerging Tech for 120”)
+- optional `logCursor` / `summary` / `displayName`
 
-Emit only when the applied actor is an AI seat (dedicated / permanent replacement). Emit alongside existing persistence broadcasts from the AI step path.
+Do **not** include `action` on this event — clients pace from `material` / `reason` / `summary` / paired `game.action_applied` state. Private bid/trade terms must never ride this fan-out. Emit only when the applied actor is an AI seat (dedicated / permanent replacement), alongside existing persistence broadcasts from the AI step path.
 
 ### Web — `AiPresentationController`
 
@@ -126,7 +126,7 @@ Hook/module owned by the game session layer:
 2. Server AI loop completes quickly; emits `game.ai_action` per AI seat apply.
 3. Client updates `canonicalState` from authoritative events.
 4. Controller enqueues beats; board walks material/soft beats on `presentationState`.
-5. Queue empty **or** canonical phase needs this viewer → `caught_up`.
+5. Queue empty **or** an urgent obligation (`viewerHasUrgentObligation`) → `caught_up`. Canonical “your turn” alone does not force this step.
 
 ### Skip
 
@@ -163,7 +163,7 @@ Clears queue, aligns presentation to canonical, enables actions if legal. Other 
 | --- | --- |
 | Unit (shared) | Classifier: buy; uneventful turn → soft end; rent above/below threshold; auction open/settle; non-AI actor → no emit path |
 | Integration (worker) | AI step emits `game.ai_action` with expected `material` / `reason` |
-| Unit (web) | Queue order; material vs soft; Skip; auto-catch-up on your turn/bid; version gap → catch-up |
+| Unit (web) | Queue order; material vs soft; Skip; auto-catch-up on urgent obligation only (not bare my-turn); version gap → catch-up |
 | Manual | Solo vs 3 AI: material seats visible, Skip returns control; mixed 2H+2AI: other human’s turn not mistaken for yours |
 
 ## Docs impact (implementation change set)

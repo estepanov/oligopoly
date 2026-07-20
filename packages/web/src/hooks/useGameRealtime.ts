@@ -17,11 +17,8 @@ export type GameSessionUpdate = {
 type UseGameRealtimeOptions = {
   onUpdate?: (update: GameSessionUpdate) => void;
   /** A single AI-seat presentation beat, mapped from a `game.ai_action` WS
-   * event straight into the one beat-input shape shared end-to-end by
-   * `useGameSession` and the presentation queue. The event's `action` field
-   * is redacted server-side (see `redactAiActionForBroadcast` in
-   * `@oligopoly/worker`) and unused on the client, so it is dropped here
-   * rather than threaded through as dead wire parity. */
+   * event into the one beat-input shape shared by `useGameSession` and the
+   * presentation queue (`material` / `softTurnEnd` / `summary` / `stateVersion`). */
   onAiAction?: (update: AiPresentationBeatInput) => void;
 };
 

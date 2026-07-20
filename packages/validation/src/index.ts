@@ -84,7 +84,6 @@ export * from "./validationShared.js";
 
 import { GameActionSchema, GameStateSchema } from "./gameSchemas.js";
 import {
-  AiActionBroadcastSchema,
   AiPersonalitySchema,
   AiPresentationReasonSchema,
   AuctionTypeSchema,
@@ -231,9 +230,9 @@ export const GameRealtimeEventSchema = z.discriminatedUnion("type", [
     gameId: z.string(),
     aiPlayerId: z.string(),
     personality: AiPersonalitySchema,
-    /** Redacted server-side before broadcast — never the full `GameActionSchema`
-     * union, since a sealed `auction_bid` omits `amount`. See `AiActionBroadcastSchema`. */
-    action: AiActionBroadcastSchema,
+    /** Presentation metadata only — clients pace from these fields plus the
+     * paired `game.action_applied` state. The applied `GameAction` is not on
+     * this event (avoids private bid/trade/contract terms on fan-out). */
     material: z.boolean(),
     reason: AiPresentationReasonSchema.nullable(),
     /** Server always emits this (no client-side `?? false` fallback needed). */

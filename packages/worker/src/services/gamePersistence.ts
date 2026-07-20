@@ -4,11 +4,7 @@ import {
   isAiSeatForPresentation,
   normalizeGameState,
 } from "@oligopoly/shared";
-import type {
-  AiPersonality,
-  GameAction,
-  GameLogEntry,
-} from "@oligopoly/validation";
+import type { AiPersonality, GameLogEntry } from "@oligopoly/validation";
 import { GameErrorKeys } from "@oligopoly/validation";
 import {
   type PersistedGameState,
@@ -36,7 +32,6 @@ type PersistOptions = {
   aiMeta?: {
     aiPlayerId: string;
     personality: AiPersonality;
-    action: GameAction;
     presentationBeat: AiPresentationBeat;
   };
 };
@@ -377,8 +372,7 @@ export async function notifyGameActionResult(
     options.aiMeta &&
     isAiSeatForPresentation(result.state, options.aiMeta.aiPlayerId)
   ) {
-    const { aiPlayerId, personality, action, presentationBeat } =
-      options.aiMeta;
+    const { aiPlayerId, personality, presentationBeat } = options.aiMeta;
     const displayName =
       result.state.players.find((p) => p.playerId === aiPlayerId)
         ?.displayName ??
@@ -389,7 +383,6 @@ export async function notifyGameActionResult(
       gameId,
       aiPlayerId,
       personality,
-      action: redactAiActionForBroadcast(action, result.state),
       material: presentationBeat.material,
       reason: presentationBeat.reason,
       softTurnEnd: presentationBeat.softTurnEnd,
@@ -398,35 +391,6 @@ export async function notifyGameActionResult(
       displayName,
     });
   }
-}
-
-/**
- * Strips private terms off an AI action before it rides the `game.ai_action`
- * broadcast — every other player (and any spectator) receives this event, so
- * it must never carry another player's private state. Mirrors the redaction
- * already applied to `tradeOffers`/`pendingAuction` on the main state payload,
- * but at the per-action-field level since `action` is emitted whole here.
- */
-function redactAiActionForBroadcast(
-  action: GameAction,
-  state: ApplyActionResult["state"],
-): Record<string, unknown> {
-  if (
-    action.type === "auction_bid" &&
-    state.pendingAuction?.auctionType === "sealed_bids"
-  ) {
-    return { type: action.type, tilePosition: action.tilePosition };
-  }
-  if (action.type === "propose_trade") {
-    return { type: action.type, recipientId: action.recipientId };
-  }
-  if (action.type === "counter_trade") {
-    return { type: action.type, offerId: action.offerId };
-  }
-  if (action.type === "propose_contract") {
-    return { type: action.type, partyB: action.partyB };
-  }
-  return action;
 }
 
 export function toActionResponse(

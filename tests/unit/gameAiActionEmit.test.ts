@@ -197,7 +197,7 @@ describe("stepGameAiTurn game.ai_action emission", () => {
     expect(event.softTurnEnd).toBe(false);
   });
 
-  it("redacts the bid amount from a sealed auction_bid before broadcast", async () => {
+  it("omits the applied GameAction from game.ai_action (no private bid terms)", async () => {
     const db = createWorkerD1Stub();
     const { room, events } = captureBroadcastRoom();
     pushGameRow(db, "game-1", sealedAuctionBidState());
@@ -216,12 +216,10 @@ describe("stepGameAiTurn game.ai_action emission", () => {
     const aiActionEvents = events.filter((e) => e.type === "game.ai_action");
     expect(aiActionEvents).toHaveLength(1);
     const event = aiActionEvents[0] as Record<string, unknown>;
-    // ...but the broadcast event must never carry it.
-    expect(event.action).toEqual({
-      type: "auction_bid",
-      tilePosition: 1,
-    });
-    expect(event.action).not.toHaveProperty("amount");
+    // ...but presentation beats never carry the applied action on the wire.
+    expect(event).not.toHaveProperty("action");
+    expect(typeof event.material).toBe("boolean");
+    expect(typeof event.stateVersion).toBe("number");
   });
 
   it("does not emit game.ai_action for timeout takeovers (not a presentation AI seat)", async () => {

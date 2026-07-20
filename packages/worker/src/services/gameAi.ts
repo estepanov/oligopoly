@@ -171,7 +171,6 @@ export async function stepGameAiTurn(
           aiMeta: {
             aiPlayerId: decision.actorId,
             personality: decision.personality,
-            action: decision.action,
             presentationBeat,
           },
         }

@@ -556,18 +556,6 @@ export const AI_PRESENTATION_REASONS = [
 export const AiPresentationReasonSchema = z.enum(AI_PRESENTATION_REASONS);
 export type AiPresentationReason = z.infer<typeof AiPresentationReasonSchema>;
 
-/** Redacted shape of a broadcast AI action: private fields (auction bid
- * amounts, trade/contract terms) are stripped server-side before this ever
- * reaches the wire — see `redactAiActionForBroadcast` in
- * `@oligopoly/worker`'s `gamePersistence.ts`. `passthrough()` deliberately
- * accepts any surviving fields rather than the full `GameActionSchema` union,
- * since a redacted sealed `auction_bid` (no `amount`) would otherwise fail
- * discriminated-union validation. */
-export const AiActionBroadcastSchema = z
-  .object({ type: z.string() })
-  .passthrough();
-export type AiActionBroadcast = z.infer<typeof AiActionBroadcastSchema>;
-
 export const LobbyAiSlotSchema = z.object({
   id: z.string(),
   name: z.string().min(1).max(32),
