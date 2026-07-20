@@ -300,6 +300,36 @@ describe("useGameSession", () => {
     expect(result.current.currentPresentationBeat?.stateVersion).toBe(2);
     expect(result.current.myTurn).toBe(true);
     expect(result.current.controls.locked).toBe(true);
+    expect(result.current.controls.submitting).toBe(false);
+    expect(result.current.controls.busy).toBe(true);
+  });
+
+  it("does not rewind canonical state when a stale older snapshot arrives", async () => {
+    vi.mocked(fetchGameState).mockResolvedValueOnce(gameState(1, 1, 1));
+    vi.mocked(fetchGameLog).mockResolvedValueOnce({ log: [] });
+
+    const { result } = renderHook(() => useGameSession("game-1", "me"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      realtimeCallbacks.onUpdate?.({
+        state: gameState(5, 5, 1),
+        source: "Realtime schedule update",
+      });
+    });
+    expect(result.current.state?.stateVersion).toBe(5);
+
+    act(() => {
+      // Simulate a late HTTP action response (or out-of-order WS) carrying a
+      // pre-AI snapshot after newer realtime state already applied.
+      realtimeCallbacks.onUpdate?.({
+        state: gameState(2, 2, 1),
+        source: "Stale action response",
+      });
+    });
+
+    expect(result.current.state?.stateVersion).toBe(5);
+    expect(result.current.statusLine).toBe("Realtime schedule update");
   });
 
   it("only falls back to polling while the WS is disconnected, not while connected", async () => {

@@ -112,7 +112,12 @@ vi.mock("../hooks/useGameSession", () => ({
     presentationMode: "idle",
     currentPresentationBeat: null,
     skipPresentation,
-    controls: { locked: false, busy: false, myTurnEffective: true },
+    controls: {
+      locked: false,
+      submitting: false,
+      busy: false,
+      myTurnEffective: true,
+    },
     ...sessionOverride.value,
   }),
 }));
@@ -197,13 +202,19 @@ describe("GameDetailPage", () => {
         startedAt: Date.now(),
       },
       statusLine: "Rolled dice...",
-      controls: { locked: false, busy: true, myTurnEffective: true },
+      controls: {
+        locked: false,
+        submitting: true,
+        busy: true,
+        myTurnEffective: true,
+      },
     };
 
     renderPage();
 
     expect(screen.getByRole("status")).toHaveTextContent("Rolled dice");
     expect(screen.getByRole("button", { name: "Rolling..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
   });
 
   it("reports measured action latency after confirmation", () => {
@@ -232,7 +243,12 @@ describe("GameDetailPage", () => {
         displayName: "Nova Blake",
         summary: "changed tile ownership",
       },
-      controls: { locked: true, busy: true, myTurnEffective: false },
+      controls: {
+        locked: true,
+        submitting: false,
+        busy: true,
+        myTurnEffective: false,
+      },
     };
 
     renderPage();
@@ -247,6 +263,8 @@ describe("GameDetailPage", () => {
     expect(
       screen.queryByRole("button", { name: "End turn" }),
     ).not.toBeInTheDocument();
+    // Watching locks play chrome, but Refresh stays available unless submitting.
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled();
     expect(
       screen.getByRole("heading", { level: 3, name: "Grace" }).closest("li"),
     ).toHaveClass("playerSummaryItemActive");

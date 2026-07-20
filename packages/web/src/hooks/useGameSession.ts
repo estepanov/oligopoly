@@ -84,20 +84,26 @@ export function useGameSession(
     null,
   );
 
+  // Route remount (`GameDetailRoute` keys on `:id`) is the primary table-switch
+  // reset. This render-scope is a belt-and-suspenders so presentation never sees
+  // a snapshot whose `gameId` does not match the active route.
+  const scopedState = state && gameId && state.gameId === gameId ? state : null;
+
   const myPlayerId = useMemo(() => {
-    if (!myUserId || !state?.players) return null;
-    return state.players.some((player) => player.playerId === myUserId)
+    if (!myUserId || !scopedState?.players) return null;
+    return scopedState.players.some((player) => player.playerId === myUserId)
       ? myUserId
       : null;
-  }, [myUserId, state?.players]);
+  }, [myUserId, scopedState?.players]);
 
   // Only an urgent obligation (auction bid owed / pending inbound trade)
   // forces an immediate presentation catch-up. Canonical "my turn" alone
   // must not drain a queue of already-arrived AI beats — see
   // `enqueueCanonical` for why.
   const urgentObligation = useMemo(
-    () => (state ? viewerHasUrgentObligation(state, myPlayerId) : false),
-    [state, myPlayerId],
+    () =>
+      scopedState ? viewerHasUrgentObligation(scopedState, myPlayerId) : false,
+    [scopedState, myPlayerId],
   );
 
   const {
@@ -106,7 +112,7 @@ export function useGameSession(
     currentPresentationBeat,
     pushAiAction,
     skip: skipPresentation,
-  } = useAiPresentation(state, urgentObligation, gameId);
+  } = useAiPresentation(scopedState, urgentObligation);
 
   // Mirrors `state`, but assigned synchronously at every write site (via
   // `commitCanonicalState`) instead of only at render time, so
@@ -116,6 +122,18 @@ export function useGameSession(
   const stateRef = useRef<GameState | null>(state);
 
   const commitCanonicalState = useCallback((next: GameState | null) => {
+    // Ignore stale snapshots for the same game (common race: HTTP action
+    // response is pre-AI while a newer `game.action_applied`/`game.schedule`
+    // already landed). Never rewind `stateVersion` — that freezes the table
+    // on an older turn until the user hits Refresh.
+    if (
+      next &&
+      stateRef.current &&
+      next.gameId === stateRef.current.gameId &&
+      next.stateVersion < stateRef.current.stateVersion
+    ) {
+      return;
+    }
     stateRef.current = next;
     setState(next);
   }, []);
@@ -131,9 +149,16 @@ export function useGameSession(
       // `tradeOffers` verbatim. If a future broadcast path ever omitted
       // `tradeOffers`, that would be a server-side bug to fix at the source,
       // not something to patch here.
-      commitCanonicalState(
-        mergeAuctionClientView(stateRef.current, update.state),
-      );
+      const previous = stateRef.current;
+      const merged = mergeAuctionClientView(previous, update.state);
+      if (
+        previous &&
+        merged.gameId === previous.gameId &&
+        merged.stateVersion < previous.stateVersion
+      ) {
+        return;
+      }
+      commitCanonicalState(merged);
       if (update.logEntries?.length) {
         setLogEntries((current) =>
           appendLogEntries(current, update.logEntries),
@@ -195,13 +220,6 @@ export function useGameSession(
       return;
     }
 
-    // Drop the previous table immediately on route change so presentation
-    // pairing cannot reuse a stale canonical snapshot / board against the
-    // next game's `game.ai_action` at a colliding `stateVersion`.
-    setGame(null);
-    commitCanonicalState(null);
-    setLogEntries([]);
-
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -256,7 +274,7 @@ export function useGameSession(
     skipPresentation();
   }, [gameId, skipPresentation, commitCanonicalState]);
 
-  const myTurn = state ? isMyTurn(state, myPlayerId) : false;
+  const myTurn = scopedState ? isMyTurn(scopedState, myPlayerId) : false;
 
   // Single view-model for "can the viewer act right now", so consumers (the
   // status header, play controls, the details panel, and `runAction` itself)
@@ -265,6 +283,8 @@ export function useGameSession(
     const locked = presentationMode === "watching";
     return {
       locked,
+      /** True only while an HTTP action is in flight — not while Watching. */
+      submitting: busyAction,
       busy: busyAction || locked,
       myTurnEffective: locked ? false : myTurn,
     };
@@ -331,7 +351,7 @@ export function useGameSession(
 
   return {
     game,
-    state,
+    state: scopedState,
     logEntries,
     tileNames,
     tileDetails,
@@ -345,7 +365,7 @@ export function useGameSession(
     timerKind,
     myPlayerId,
     myTurn,
-    currentPlayerId: state ? currentActorId(state) : null,
+    currentPlayerId: scopedState ? currentActorId(scopedState) : null,
     runAction,
     refresh,
     presentationState,

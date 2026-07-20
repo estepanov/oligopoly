@@ -107,17 +107,21 @@ export function enqueueCanonical(
   const canonicalVersion = canonical.stateVersion;
 
   // Reap any pending half at or below this version: an AI-side entry at
-  // exactly this version pairs with this canonical update; everything else
-  // at or below (a stale AI buffer nothing ever matched, or a stale
-  // canonical marker from a version we've since moved past) is stale and is
-  // dropped rather than left to leak into a future, unrelated pairing.
+  // exactly this version pairs with this canonical update only when its
+  // `gameId` matches. A same-version half for another game is dropped and
+  // must not be treated as "no beat" for version-gap catch-up below.
   const pendingByVersion = new Map(q.pendingByVersion);
   let matchedBeat: AiPresentationBeatInput | undefined;
+  let rejectedForeignSameVersionAi = false;
   for (const [version, half] of pendingByVersion) {
     if (version > canonicalVersion) continue;
     pendingByVersion.delete(version);
     if (version === canonicalVersion && half.side === "ai") {
-      matchedBeat = half.beat;
+      if (half.beat.gameId === canonical.gameId) {
+        matchedBeat = half.beat;
+      } else {
+        rejectedForeignSameVersionAi = true;
+      }
     }
   }
   const base: AiPresentationQueueState = { ...q, pendingByVersion };
@@ -126,7 +130,7 @@ export function enqueueCanonical(
   // path a same-tick beat would (`enqueueAiBeat`, including its own urgent-
   // obligation handling) — it is NOT subject to the version-gap catch-up
   // check below, since it is a fully paired, in-order beat, not a jump.
-  if (matchedBeat && matchedBeat.gameId === canonical.gameId) {
+  if (matchedBeat) {
     return enqueueAiBeat(
       base,
       { ...matchedBeat, state: canonical },
@@ -134,6 +138,14 @@ export function enqueueCanonical(
       urgentObligation,
       nowMs,
     );
+  }
+
+  // Fail closed: a foreign same-version AI half was reaped. Returning `base`
+  // avoids the version-gap branch treating the empty slot as a missing beat
+  // and calling `skipPresentation`. (Route remount + render-scoped state
+  // should make this rare; this is the reducer backstop.)
+  if (rejectedForeignSameVersionAi) {
+    return base;
   }
 
   // Note: canonical `isMyTurn` alone must NOT land here — only an urgent

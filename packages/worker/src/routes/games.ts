@@ -513,6 +513,11 @@ gameRoutes.post("/:id/action", async (c) => {
     // an AI step that conflicts (or otherwise throws) must never surface as a
     // failure of the human's request. We swallow it here rather than letting it
     // propagate into the 409/400 catch below.
+    // Prefer returning post-AI state. The inline loop above (and/or the DO)
+    // may already have advanced the row past `result`; if the HTTP body still
+    // echoed the pre-AI snapshot, clients that apply the response after WS
+    // catch-up would rewind canonical state and look "stuck" until Refresh.
+    let responseResult = result;
     try {
       await runAiTurnLoop(
         db,
@@ -522,6 +527,18 @@ gameRoutes.post("/:id/action", async (c) => {
         c.env?.KV,
         c.env,
       );
+      const latestRow = await db
+        .prepare("SELECT state_json FROM games WHERE id = ?")
+        .bind(id)
+        .first<{ state_json: string | null }>();
+      if (latestRow?.state_json) {
+        responseResult = {
+          ...result,
+          state: normalizeGameState(
+            JSON.parse(latestRow.state_json) as Record<string, unknown>,
+          ),
+        };
+      }
     } catch (aiErr) {
       console.error("ai follow-up loop failed", { gameId: id, error: aiErr });
     }
@@ -534,7 +551,7 @@ gameRoutes.post("/:id/action", async (c) => {
     // `expirePendingTradeOffers`) so a non-participant who triggers another
     // pair's offer expiry never receives their private terms in the HTTP body.
     const response = c.json(
-      toActionResponse(result, subject, {
+      toActionResponse(responseResult, subject, {
         logEntries: redactLogEntriesForViewer(logEntries, subject),
       }),
     );

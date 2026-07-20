@@ -33,7 +33,6 @@ export function GameDetailPage() {
     runAction,
     refresh,
     presentationState,
-    presentationMode,
     currentPresentationBeat,
     skipPresentation,
     controls,
@@ -95,7 +94,7 @@ export function GameDetailPage() {
             </p>
           )}
           <AiWatchingBanner
-            open={presentationMode === "watching"}
+            open={controls.locked}
             name={presentationName}
             summary={currentPresentationBeat?.summary}
             onSkip={skipPresentation}
@@ -123,7 +122,7 @@ export function GameDetailPage() {
                 </dd>
               </dl>
 
-              {presentationMode === "watching" ? (
+              {controls.locked ? (
                 <p className="muted">
                   Play controls unlock when AI presentation catches up — use
                   Skip to jump ahead.
@@ -139,7 +138,7 @@ export function GameDetailPage() {
                 />
               )}
 
-              {presentationMode !== "watching" && pendingAction && (
+              {!controls.locked && pendingAction && (
                 <div className="actionPendingBanner" role="status">
                   <span className="actionPendingPulse" aria-hidden="true" />
                   <span>
@@ -155,7 +154,7 @@ export function GameDetailPage() {
                 <button
                   type="button"
                   className="button buttonSecondary"
-                  disabled={controls.busy && presentationMode !== "watching"}
+                  disabled={controls.submitting}
                   onClick={() => void refresh()}
                 >
                   Refresh

@@ -297,6 +297,24 @@ describe("bufferAiAction / enqueueCanonical flush", () => {
     expect(q.pendingByVersion.size).toBe(0);
   });
 
+  it("reaps a same-version AI half for another gameId without forcing catch-up", () => {
+    // Regression: reap used to delete the mismatched half then fall through
+    // into the version-gap branch as if the buffer were empty for an
+    // unrelated reason, wrongly calling skipPresentation.
+    // lastApplied=0 + canonical=2 with an empty queue is a gap (2 > 0+1)
+    // that must NOT fire after rejecting a foreign same-version half.
+    let q = createPresentationQueue(state(1));
+    q = { ...q, lastAppliedVersion: 0 };
+    q = bufferAiAction(q, pendingBeat(2, { gameId: "other-game" }));
+
+    q = enqueueCanonical(q, state(2), false, 10_000);
+
+    expect(q.mode).toBe("caught_up");
+    expect(q.lastAppliedVersion).toBe(0);
+    expect(q.presentationState?.stateVersion).toBe(1);
+    expect(q.pendingByVersion.size).toBe(0);
+  });
+
   it("drops stale buffered beats older than the arriving canonical version", () => {
     let q = createPresentationQueue(state(1));
     q = bufferAiAction(q, pendingBeat(2));

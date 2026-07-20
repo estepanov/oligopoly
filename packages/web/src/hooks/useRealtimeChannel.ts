@@ -40,6 +40,15 @@ export function useRealtimeChannel<TEvent>({
         const parsed = schema.safeParse(JSON.parse(String(event.data)));
         if (parsed.success) {
           onMessageRef.current(parsed.data);
+          return;
+        }
+        // Silent drops made "Realtime connected" look healthy while the board
+        // froze until Refresh — surface schema mismatches in local/dev.
+        if (import.meta.env.DEV) {
+          console.warn(
+            "[realtime] dropped websocket event (schema mismatch)",
+            parsed.error.issues.slice(0, 5),
+          );
         }
       } catch {
         // Ignore malformed websocket payloads.
