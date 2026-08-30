@@ -13,6 +13,7 @@ import {
 } from "../lib/boardTileDetails";
 import { formatCurrencyAmount, playerDisplayName } from "../lib/gameDisplay";
 import { getTileEconomics } from "../lib/tileEconomics";
+import { BoardSetMemberItem } from "./BoardSetMemberItem";
 import { TileEconomicsExplainContent } from "./TileEconomicsExplainContent";
 
 type BoardTileDetailsContentProps = {
@@ -26,6 +27,8 @@ type BoardTileDetailsContentProps = {
   tileState: NonNullable<GameState["tiles"]>[number] | undefined;
   tilesByPosition: Map<string, NonNullable<GameState["tiles"]>[number]>;
   myPlayerId: string | null;
+  viewAnnouncement: string;
+  onSelectSetMember: (position: number | string, label: string) => void;
 };
 
 export function BoardTileDetailsContent({
@@ -39,6 +42,8 @@ export function BoardTileDetailsContent({
   tileState,
   tilesByPosition,
   myPlayerId,
+  viewAnnouncement,
+  onSelectSetMember,
 }: BoardTileDetailsContentProps) {
   const currencySettings = state.settings;
   const developmentTokens = tileState?.developmentTokens ?? 0;
@@ -117,6 +122,9 @@ export function BoardTileDetailsContent({
 
   return (
     <div className="tileDetailsSurface">
+      <div className="visuallyHidden" role="status" aria-live="polite">
+        {viewAnnouncement}
+      </div>
       <section className="tileDetailsHero">
         <span
           className={`tileDetailsHeroAccent ${sectorClass(details)}`}
@@ -200,30 +208,11 @@ export function BoardTileDetailsContent({
             </div>
             <ul className="boardSetList">
               {setInfo.members.map((member) => (
-                <li
+                <BoardSetMemberItem
                   key={String(member.position)}
-                  className={[
-                    "boardSetItem",
-                    member.selected ? "boardSetItemSelected" : "",
-                    member.mortgaged ? "boardSetItemMortgaged" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                >
-                  <span className="boardSetPosition">{member.position}</span>
-                  <span className="boardSetMain">
-                    <strong>{member.label}</strong>
-                    <span>
-                      Owned by {member.ownerLabel}
-                      {member.occupantLabel
-                        ? ` | Players here: ${member.occupantLabel}`
-                        : ""}
-                    </span>
-                  </span>
-                  <span className="boardSetStatus">
-                    {member.selected ? "Selected" : member.statusLabel}
-                  </span>
-                </li>
+                  member={member}
+                  onSelect={onSelectSetMember}
+                />
               ))}
             </ul>
           </div>

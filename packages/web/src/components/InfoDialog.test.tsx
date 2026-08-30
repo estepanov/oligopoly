@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { vi } from "vitest";
 import { InfoDialog } from "./InfoDialog";
 
 describe("InfoDialog", () => {
@@ -34,5 +35,28 @@ describe("InfoDialog", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+  });
+
+  it("notifies onOpenChange only on open and close transitions", () => {
+    const onOpenChange = vi.fn();
+    render(
+      <InfoDialog
+        title="Tile details"
+        triggerLabel="Explain tile"
+        onOpenChange={onOpenChange}
+      >
+        <p>Body</p>
+      </InfoDialog>,
+    );
+
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /explain tile/i }));
+    expect(onOpenChange).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onOpenChange).toHaveBeenCalledTimes(2);
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
   });
 });

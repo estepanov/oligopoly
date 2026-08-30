@@ -85,6 +85,7 @@ export * from "./validationShared.js";
 import { GameActionSchema, GameStateSchema } from "./gameSchemas.js";
 import {
   AiPersonalitySchema,
+  AiPresentationReasonSchema,
   AuctionTypeSchema,
   type GameErrorKeys,
   GameLogEntrySchema,
@@ -229,7 +230,17 @@ export const GameRealtimeEventSchema = z.discriminatedUnion("type", [
     gameId: z.string(),
     aiPlayerId: z.string(),
     personality: AiPersonalitySchema,
-    action: GameActionSchema,
+    /** Presentation metadata only — clients pace from these fields plus the
+     * paired `game.action_applied` state. The applied `GameAction` is not on
+     * this event (avoids private bid/trade/contract terms on fan-out). */
+    material: z.boolean(),
+    reason: AiPresentationReasonSchema.nullable(),
+    /** Server always emits this (no client-side `?? false` fallback needed). */
+    softTurnEnd: z.boolean(),
+    stateVersion: z.number().int().nonnegative(),
+    logCursor: z.number().int().nonnegative().optional(),
+    summary: z.string().optional(),
+    displayName: z.string().optional(),
   }),
   z.object({
     type: z.literal("game.schedule"),

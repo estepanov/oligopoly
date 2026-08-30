@@ -1,10 +1,12 @@
 import type { GameState } from "@oligopoly/validation";
 import type { CSSProperties } from "react";
+import { useTileSetDialogNavigation } from "../hooks/useTileSetDialogNavigation";
 import { type BoardTileDetails, tileLabel } from "../lib/boardDisplay";
 import { compactOccupantLabel, occupantLabels } from "../lib/boardOccupants";
 import {
   boardTileDisplayName,
   developmentTokenIndexes,
+  resolveViewedTile,
   sectorClass,
   tileStatusLabel,
   tileTypeLabel,
@@ -67,6 +69,20 @@ export function BoardCell({
   const label = tileLabel(position, tileNames);
   const displayName = boardTileDisplayName(position, label);
   const details = tileDetails.get(String(position));
+  const {
+    viewedPosition,
+    viewAnnouncement,
+    onDialogOpenChange,
+    onSelectSetMember,
+  } = useTileSetDialogNavigation(position);
+  const viewed = resolveViewedTile({
+    openerPosition: position,
+    viewedPosition,
+    tileDetails,
+    tilesByPosition,
+    occupantsByPosition,
+    tileNames,
+  });
   const mortgaged = tileState?.mortgaged ?? false;
   const developmentTokens = tileState?.developmentTokens ?? 0;
   const statusLabel = tileStatusLabel({
@@ -77,8 +93,9 @@ export function BoardCell({
 
   return (
     <InfoDialog
-      title={label}
+      title={viewed.label}
       triggerLabel={`Open details for ${label}`}
+      onOpenChange={onDialogOpenChange}
       triggerClassName={[
         "boardGridCell",
         `boardGridCell-${placement.edge}`,
@@ -144,16 +161,18 @@ export function BoardCell({
       }
     >
       <BoardTileDetailsContent
-        details={details}
-        occupants={occupants}
+        details={viewed.details}
+        occupants={viewed.occupants}
         occupantsByPosition={occupantsByPosition}
-        ownerId={ownerId}
-        position={position}
+        ownerId={viewed.ownerId}
+        position={viewed.position}
         state={state}
         tileDetails={tileDetails}
-        tileState={tileState}
+        tileState={viewed.tileState}
         tilesByPosition={tilesByPosition}
         myPlayerId={myPlayerId}
+        viewAnnouncement={viewAnnouncement}
+        onSelectSetMember={onSelectSetMember}
       />
     </InfoDialog>
   );

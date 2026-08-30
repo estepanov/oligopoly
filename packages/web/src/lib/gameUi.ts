@@ -168,6 +168,30 @@ export function hasSubmittedAuction(
   return state.pendingAuction.mySubmission !== undefined;
 }
 
+/**
+ * Whether the viewer owes a mid-loop obligation that is not simply "it's my
+ * turn": an auction bid they still owe, or a pending inbound trade offer.
+ * These interrupt AI presentation pacing (auto-catch-up) immediately, even
+ * while beats are still queued, because they are time-sensitive and
+ * independent of whose turn canonical state says it is.
+ */
+export function viewerHasUrgentObligation(
+  state: GameState,
+  viewerId: string | null,
+): boolean {
+  if (!viewerId || state.phase === "game_over") return false;
+  if (
+    isAuctionBiddingPhase(state) &&
+    canParticipateInAuction(state, viewerId) &&
+    !hasSubmittedAuction(state, viewerId)
+  ) {
+    return true;
+  }
+  return (state.tradeOffers ?? []).some(
+    (offer) => offer.recipientId === viewerId && offer.status === "pending",
+  );
+}
+
 /** Merge broadcast-safe realtime snapshots with viewer-only fields already loaded over authenticated HTTP. */
 export function mergeAuctionClientView(
   previous: GameState | null,

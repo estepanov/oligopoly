@@ -8,6 +8,7 @@ const tileNames = new Map([["6", "Search Engine Corp."]]);
 function auctionState(overrides: Partial<GameState> = {}): GameState {
   return {
     gameId: "g",
+    stateVersion: 0,
     round: 1,
     phase: "waiting_for_auction_bids",
     currentPlayerIndex: 1,

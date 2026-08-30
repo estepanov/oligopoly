@@ -83,6 +83,8 @@ Mixed games may include any combination of human and AI seats up to the lobby ma
 
 When a game starts, each AI seat receives a friendly generated display name that remains stable for that game. If a kicked human seat is replaced by AI control, the replacement also receives a friendly display name for all in-game UI and action logs.
 
+> **Watching AI seats:** In games that include AI seats, the client briefly highlights meaningful AI outcomes (and uneventful AI turn endings) so the table does not jump straight back to your input. You may **Skip** to jump to the next moment you can act. This is presentation-only and does not change rules, timing, or legality on the server.
+
 ---
 
 ## Capital Currency

@@ -312,6 +312,9 @@ export type GameWinSummary = z.infer<typeof GameWinSummarySchema>;
 
 export const GameStateSchema = z.object({
   gameId: z.string(),
+  /** Defaulted to 0 only inside `normalizeGameState`; every state that has
+   * passed through the engine (which is all wire-visible state) carries one. */
+  stateVersion: z.number().int().nonnegative(),
   round: z.number().int(),
   phase: GamePhaseSchema.optional(),
   currentPlayerIndex: z.number().int().min(0).optional(),

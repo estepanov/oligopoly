@@ -1,17 +1,19 @@
 import type { GameState } from "@oligopoly/validation";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, vi } from "vitest";
 import { GameDetailPage } from "./GameDetailPage";
 
 const runAction = vi.fn();
 const refresh = vi.fn();
+const skipPresentation = vi.fn();
 const sessionOverride = vi.hoisted(() => ({
   value: {} as Record<string, unknown>,
 }));
 
 const state: GameState = {
   gameId: "game-1",
+  stateVersion: 1,
   round: 1,
   phase: "action",
   currentPlayerIndex: 0,
@@ -96,7 +98,6 @@ vi.mock("../hooks/useGameSession", () => ({
     ]),
     error: null,
     loading: false,
-    busyAction: false,
     pendingAction: null,
     lastActionLatencyMs: null,
     statusLine: "Connected",
@@ -107,6 +108,16 @@ vi.mock("../hooks/useGameSession", () => ({
     myTurn: true,
     runAction,
     refresh,
+    presentationState: state,
+    presentationMode: "idle",
+    currentPresentationBeat: null,
+    skipPresentation,
+    controls: {
+      locked: false,
+      submitting: false,
+      busy: false,
+      myTurnEffective: true,
+    },
     ...sessionOverride.value,
   }),
 }));
@@ -185,19 +196,25 @@ describe("GameDetailPage", () => {
   it("shows immediate pending feedback while an action is being confirmed", () => {
     sessionOverride.value = {
       state: { ...state, phase: "waiting_for_roll" },
-      busyAction: true,
       pendingAction: {
         label: "Rolled dice",
         type: "roll_dice",
         startedAt: Date.now(),
       },
       statusLine: "Rolled dice...",
+      controls: {
+        locked: false,
+        submitting: true,
+        busy: true,
+        myTurnEffective: true,
+      },
     };
 
     renderPage();
 
     expect(screen.getByRole("status")).toHaveTextContent("Rolled dice");
     expect(screen.getByRole("button", { name: "Rolling..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
   });
 
   it("reports measured action latency after confirmation", () => {
@@ -211,5 +228,48 @@ describe("GameDetailPage", () => {
     expect(
       screen.getByText("Ended turn confirmed in 183 ms"),
     ).toBeInTheDocument();
+  });
+
+  it("shows the paced AI state and collapses play controls while watching", () => {
+    const presentationState = {
+      ...state,
+      currentPlayerIndex: 1,
+    };
+    sessionOverride.value = {
+      presentationState,
+      presentationMode: "watching",
+      currentPresentationBeat: {
+        aiPlayerId: "human-2",
+        displayName: "Nova Blake",
+        summary: "changed tile ownership",
+      },
+      controls: {
+        locked: true,
+        submitting: false,
+        busy: true,
+        myTurnEffective: false,
+      },
+    };
+
+    renderPage();
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Watching · Nova Blake",
+    );
+    expect(screen.getByText("changed tile ownership")).toBeInTheDocument();
+    expect(
+      screen.getByText(/play controls unlock when ai presentation catches up/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "End turn" }),
+    ).not.toBeInTheDocument();
+    // Watching locks play chrome, but Refresh stays available unless submitting.
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Grace" }).closest("li"),
+    ).toHaveClass("playerSummaryItemActive");
+
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    expect(skipPresentation).toHaveBeenCalledOnce();
   });
 });

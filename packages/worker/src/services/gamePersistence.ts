@@ -1,9 +1,10 @@
-import type { ApplyActionResult } from "@oligopoly/shared";
-import type {
-  AiPersonality,
-  GameAction,
-  GameLogEntry,
-} from "@oligopoly/validation";
+import {
+  type AiPresentationBeat,
+  type ApplyActionResult,
+  isAiSeatForPresentation,
+  normalizeGameState,
+} from "@oligopoly/shared";
+import type { AiPersonality, GameLogEntry } from "@oligopoly/validation";
 import { GameErrorKeys } from "@oligopoly/validation";
 import {
   type PersistedGameState,
@@ -23,11 +24,21 @@ type PersistOptions = {
   kv?: KVNamespace;
   notify?: boolean;
   expectedStateJson?: string | null;
+  /** Only set by callers when `isAiSeatForPresentation` already held true for
+   * this actor — see `stepGameAiTurn` / `applyTimeoutTakeoverAndStep`. Carries
+   * the ALREADY-classified beat so `notifyGameActionResult` never re-runs
+   * `classifyAiPresentationBeat` (avoids the double-classification the beat
+   * would otherwise need `prevState`/`turnHadMaterial` for). */
   aiMeta?: {
     aiPlayerId: string;
     personality: AiPersonality;
-    action: GameAction;
+    presentationBeat: AiPresentationBeat;
   };
+};
+
+export type PersistGameActionResult = {
+  result: ApplyActionResult;
+  logEntries: GameLogEntry[];
 };
 
 type BroadcastGameState = Omit<
@@ -188,15 +199,28 @@ export async function persistGameActionResult(
   gameId: string,
   result: ApplyActionResult,
   options: PersistOptions = {},
-): Promise<GameLogEntry[]> {
+): Promise<PersistGameActionResult> {
+  const previousVersion =
+    options.expectedStateJson != null
+      ? (normalizeGameState(
+          JSON.parse(options.expectedStateJson) as Record<string, unknown>,
+        ).stateVersion ?? 0)
+      : (result.state.stateVersion ?? 0);
+  const persistedResult: ApplyActionResult = {
+    ...result,
+    state: {
+      ...result.state,
+      stateVersion: previousVersion + 1,
+    },
+  };
   const now = Date.now();
-  const stateJson = JSON.stringify(result.state);
-  const logRows = result.logEntries.map((entry) => ({
+  const stateJson = JSON.stringify(persistedResult.state);
+  const logRows = persistedResult.logEntries.map((entry) => ({
     entry,
     apiEntry: {
       id: crypto.randomUUID(),
       gameId,
-      round: result.state.round,
+      round: persistedResult.state.round,
       playerId: entry.playerId ?? null,
       actionType: entry.actionType,
       payload: entry.payload ?? null,
@@ -234,13 +258,21 @@ export async function persistGameActionResult(
 
   const batchStatements: D1PreparedStatement[] = [stateUpdate];
 
-  if (result.state.phase === "game_over" && result.state.winnerId) {
+  if (
+    persistedResult.state.phase === "game_over" &&
+    persistedResult.state.winnerId
+  ) {
     batchStatements.push(
       db
         .prepare(
           `UPDATE games SET status = 'completed', winner_id = ?, ended_at = ? WHERE id = ?${appliedGuardSql}`,
         )
-        .bind(result.state.winnerId, now, gameId, ...appliedGuardBinds),
+        .bind(
+          persistedResult.state.winnerId,
+          now,
+          gameId,
+          ...appliedGuardBinds,
+        ),
     );
 
     batchStatements.push(
@@ -279,21 +311,31 @@ export async function persistGameActionResult(
     }
   }
 
-  if (result.state.phase === "game_over" && result.state.winnerId) {
-    await processGameCompletion(db, options.kv, gameId, result.state, now);
+  if (
+    persistedResult.state.phase === "game_over" &&
+    persistedResult.state.winnerId
+  ) {
+    await processGameCompletion(
+      db,
+      options.kv,
+      gameId,
+      persistedResult.state,
+      now,
+    );
   }
 
+  const persistedLogEntries = logRows.map(({ apiEntry }) => apiEntry);
   if (options.notify !== false) {
     await notifyGameActionResult(
       gameId,
-      result,
-      logRows.map(({ apiEntry }) => apiEntry),
+      persistedResult,
+      persistedLogEntries,
       options,
       now,
     );
   }
 
-  return logRows.map(({ apiEntry }) => apiEntry);
+  return { result: persistedResult, logEntries: persistedLogEntries };
 }
 
 export async function notifyGameActionResult(
@@ -325,6 +367,30 @@ export async function notifyGameActionResult(
     logEntries: broadcastLogEntries,
     ...broadcastEventStateFields(splitBroadcastPayload(baseState)),
   });
+
+  if (
+    options.aiMeta &&
+    isAiSeatForPresentation(result.state, options.aiMeta.aiPlayerId)
+  ) {
+    const { aiPlayerId, personality, presentationBeat } = options.aiMeta;
+    const displayName =
+      result.state.players.find((p) => p.playerId === aiPlayerId)
+        ?.displayName ??
+      result.state.aiPlayers?.find((p) => p.playerId === aiPlayerId)?.name;
+    await broadcastGameEvent(options.gameRoom, gameId, {
+      type: "game.ai_action",
+      sentAt,
+      gameId,
+      aiPlayerId,
+      personality,
+      material: presentationBeat.material,
+      reason: presentationBeat.reason,
+      softTurnEnd: presentationBeat.softTurnEnd,
+      stateVersion: result.state.stateVersion,
+      summary: presentationBeat.summary,
+      displayName,
+    });
+  }
 }
 
 export function toActionResponse(

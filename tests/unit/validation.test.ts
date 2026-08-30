@@ -1010,17 +1010,30 @@ describe("RateCardSchema", () => {
 });
 
 describe("GameStateSchema (enhanced)", () => {
-  it("still accepts minimal state (backward compat)", () => {
+  it("accepts a minimal state once stateVersion is present", () => {
+    // `stateVersion` is required (defaulted to 0 only inside
+    // `normalizeGameState`) — every wire-visible state has passed through the
+    // engine and carries one.
     const result = GameStateSchema.safeParse({
       gameId: "game-1",
+      stateVersion: 0,
       round: 1,
     });
     expect(result.success).toBe(true);
   });
 
+  it("rejects a state missing stateVersion", () => {
+    const result = GameStateSchema.safeParse({
+      gameId: "game-1",
+      round: 1,
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("accepts full enhanced state", () => {
     const result = GameStateSchema.safeParse({
       gameId: "game-1",
+      stateVersion: 3,
       round: 3,
       phase: "action",
       currentPlayerIndex: 0,
@@ -1056,6 +1069,7 @@ describe("GameStateSchema (enhanced)", () => {
   it("preserves redacted auction view fields on client state", () => {
     const result = GameStateSchema.safeParse({
       gameId: "game-1",
+      stateVersion: 1,
       round: 1,
       phase: "waiting_for_auction_bids",
       pendingAuction: {
@@ -1081,6 +1095,7 @@ describe("GameStateSchema (enhanced)", () => {
   it("preserves handshake agreements and insider peek for web UI", () => {
     const result = GameStateSchema.safeParse({
       gameId: "game-1",
+      stateVersion: 2,
       round: 2,
       phase: "waiting_for_insider_peek",
       pendingInsiderPeek: {

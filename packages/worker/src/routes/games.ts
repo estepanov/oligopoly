@@ -14,7 +14,7 @@ import { type Context, Hono } from "hono";
 import {
   type PersistedGameState,
   redactLogEntriesForViewer,
-  toClientGameState,
+  toClientGameStateFromInternal,
 } from "../gameStateView.js";
 import { buildEngineActionInput } from "../lib/dice.js";
 import { upgradeWebSocket } from "../realtime/upgrade.js";
@@ -204,25 +204,27 @@ gameRoutes.get("/:id/state", async (c) => {
   const playerIds = JSON.parse(row.player_ids_json) as string[];
   const isPlayer = playerIds.includes(subject);
 
+  // Legacy rows may predate fields like `stateVersion` — normalize before
+  // building the client view so `toClientGameStateFromInternal`'s output
+  // always satisfies `GameStateSchema` (e.g. `stateVersion` defaults to 0).
+  const rawState = row.state_json
+    ? (JSON.parse(row.state_json) as Record<string, unknown>)
+    : { gameId: id, round: 0 };
+  const gameState = normalizeGameState(rawState);
+
   // If not a player, check whether spectator mode is enabled
   if (!isPlayer) {
-    const state: PersistedGameState = row.state_json
-      ? (JSON.parse(row.state_json) as PersistedGameState)
-      : { gameId: id, round: 0 };
-
-    const spectatorEnabled = state.settings?.spectatorMode === "enabled";
+    const spectatorEnabled = gameState.settings?.spectatorMode === "enabled";
     if (!spectatorEnabled) {
       return c.json({ error: "Forbidden" }, 403);
     }
 
-    return c.json(toClientGameState(state, "spectator", subject));
+    return c.json(
+      toClientGameStateFromInternal(gameState, "spectator", subject),
+    );
   }
 
-  const state: PersistedGameState = row.state_json
-    ? (JSON.parse(row.state_json) as PersistedGameState)
-    : { gameId: id, round: 0 };
-
-  return c.json(toClientGameState(state, "player", subject));
+  return c.json(toClientGameStateFromInternal(gameState, "player", subject));
 });
 
 // ---------------------------------------------------------------------------
@@ -429,20 +431,25 @@ gameRoutes.post("/:id/action", async (c) => {
 
   try {
     const engineStartedAt = nowMs();
-    const result = applyAction(gameState, subject, engineInput);
+    const engineResult = applyAction(gameState, subject, engineInput);
     timings.push({
       name: "engine",
       duration: nowMs() - engineStartedAt,
     });
 
     const persistStartedAt = nowMs();
-    const logEntries = await persistGameActionResult(db, id, result, {
-      gameRoom: c.env?.GAME_ROOM,
-      actorId: subject,
-      kv: c.env?.KV,
-      notify: false,
-      expectedStateJson: row.state_json,
-    });
+    const { result, logEntries } = await persistGameActionResult(
+      db,
+      id,
+      engineResult,
+      {
+        gameRoom: c.env?.GAME_ROOM,
+        actorId: subject,
+        kv: c.env?.KV,
+        notify: false,
+        expectedStateJson: row.state_json,
+      },
+    );
     timings.push({
       name: "persist",
       duration: nowMs() - persistStartedAt,
@@ -506,6 +513,11 @@ gameRoutes.post("/:id/action", async (c) => {
     // an AI step that conflicts (or otherwise throws) must never surface as a
     // failure of the human's request. We swallow it here rather than letting it
     // propagate into the 409/400 catch below.
+    // Prefer returning post-AI state. The inline loop above (and/or the DO)
+    // may already have advanced the row past `result`; if the HTTP body still
+    // echoed the pre-AI snapshot, clients that apply the response after WS
+    // catch-up would rewind canonical state and look "stuck" until Refresh.
+    let responseResult = result;
     try {
       await runAiTurnLoop(
         db,
@@ -515,6 +527,18 @@ gameRoutes.post("/:id/action", async (c) => {
         c.env?.KV,
         c.env,
       );
+      const latestRow = await db
+        .prepare("SELECT state_json FROM games WHERE id = ?")
+        .bind(id)
+        .first<{ state_json: string | null }>();
+      if (latestRow?.state_json) {
+        responseResult = {
+          ...result,
+          state: normalizeGameState(
+            JSON.parse(latestRow.state_json) as Record<string, unknown>,
+          ),
+        };
+      }
     } catch (aiErr) {
       console.error("ai follow-up loop failed", { gameId: id, error: aiErr });
     }
@@ -527,7 +551,7 @@ gameRoutes.post("/:id/action", async (c) => {
     // `expirePendingTradeOffers`) so a non-participant who triggers another
     // pair's offer expiry never receives their private terms in the HTTP body.
     const response = c.json(
-      toActionResponse(result, subject, {
+      toActionResponse(responseResult, subject, {
         logEntries: redactLogEntriesForViewer(logEntries, subject),
       }),
     );

@@ -9,6 +9,7 @@ import { SyndicateActionsPanel } from "./SyndicateActionsPanel";
 
 const actionState = (): GameState => ({
   gameId: "g",
+  stateVersion: 0,
   round: 1,
   phase: "action",
   currentPlayerIndex: 0,

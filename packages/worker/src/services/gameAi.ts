@@ -1,14 +1,17 @@
 import {
   type AiDecision,
+  type AiPresentationBeat,
   type ApplyActionResult,
   applyAction,
   applyTimeoutTakeover,
   chooseAiAction,
+  classifyAiPresentationBeat,
   closeAuctionBidWindowIfReady,
   expirePendingTradeOffers,
   finalizeAuctionSettleIfReady,
   type InternalGameState,
   isAiControlledActor,
+  isAiSeatForPresentation,
   normalizeGameState,
   replaceKickedPlayerWithAi,
 } from "@oligopoly/shared";
@@ -42,11 +45,18 @@ export type StepAiTurnResult =
       applied: true;
       decision: AiDecision;
       result: ApplyActionResult;
+      /** Only classified when the actor `isAiSeatForPresentation` — a timeout
+       * takeover never presents, so it's never classified there either. */
+      presentationBeat?: AiPresentationBeat;
     }
   | {
       applied: false;
       reason: StepAiTurnFailureReason;
     };
+
+export type AiPresentationStepContext = {
+  turnHadMaterial: boolean;
+};
 
 async function loadGameRow(
   db: D1Database,
@@ -115,6 +125,7 @@ export async function stepGameAiTurn(
   gameRoom?: DurableObjectNamespace,
   kv?: KVNamespace,
   aiEnv?: OpenRouterAiEnv,
+  presentationContext: AiPresentationStepContext = { turnHadMaterial: false },
 ): Promise<StepAiTurnResult> {
   const row = await loadGameRow(db, gameId);
   if (!row) return { applied: false, reason: "not_found" };
@@ -131,25 +142,42 @@ export async function stepGameAiTurn(
   const fallbackDecision = chooseAiAction(gameState);
   if (!fallbackDecision) return { applied: false, reason: "not_ai_turn" };
 
-  const { decision, result } = await chooseAndApplyAiDecision(
+  const { decision, result: engineResult } = await chooseAndApplyAiDecision(
     gameState,
     fallbackDecision,
     kv,
     aiEnv,
   );
 
-  await persistGameActionResult(db, gameId, result, {
+  const isPresentationSeat = isAiSeatForPresentation(
+    engineResult.state,
+    decision.actorId,
+  );
+  const presentationBeat = isPresentationSeat
+    ? classifyAiPresentationBeat(
+        gameState,
+        engineResult.state,
+        decision.action,
+        presentationContext,
+      )
+    : undefined;
+
+  const { result } = await persistGameActionResult(db, gameId, engineResult, {
     gameRoom,
     kv,
     expectedStateJson: row.state_json,
-    aiMeta: {
-      aiPlayerId: decision.actorId,
-      personality: decision.personality,
-      action: decision.action,
-    },
+    ...(isPresentationSeat && presentationBeat
+      ? {
+          aiMeta: {
+            aiPlayerId: decision.actorId,
+            personality: decision.personality,
+            presentationBeat,
+          },
+        }
+      : {}),
   });
 
-  return { applied: true, decision, result };
+  return { applied: true, decision, result, presentationBeat };
 }
 
 export async function runAiTurnLoop(
@@ -161,10 +189,14 @@ export async function runAiTurnLoop(
   aiEnv?: OpenRouterAiEnv,
 ): Promise<number> {
   let steps = 0;
+  let turnActorId: string | null = null;
+  let turnHadMaterial = false;
   for (let i = 0; i < maxSteps; i++) {
     let step: StepAiTurnResult;
     try {
-      step = await stepGameAiTurn(db, gameId, gameRoom, kv, aiEnv);
+      step = await stepGameAiTurn(db, gameId, gameRoom, kv, aiEnv, {
+        turnHadMaterial,
+      });
     } catch (err) {
       // An optimistic-concurrency conflict means another writer advanced the
       // game between our read and persist. The AI loop is best-effort; stop
@@ -174,6 +206,15 @@ export async function runAiTurnLoop(
     }
     if (!step.applied) break;
     steps += 1;
+    if (step.decision.actorId !== turnActorId) {
+      turnActorId = step.decision.actorId;
+      turnHadMaterial = false;
+    }
+    if (step.presentationBeat?.material) turnHadMaterial = true;
+    if (step.decision.action.type === "end_turn") {
+      turnActorId = null;
+      turnHadMaterial = false;
+    }
     if (step.result.state.phase === "game_over") break;
   }
   return steps;
@@ -186,13 +227,14 @@ export async function persistStateMutation(
   logEntries: ApplyActionResult["logEntries"],
   gameRoom?: DurableObjectNamespace,
   expectedStateJson?: string | null,
-): Promise<void> {
-  await persistGameActionResult(
+): Promise<InternalGameState> {
+  const { result } = await persistGameActionResult(
     db,
     gameId,
     { state: nextState, logEntries },
     { gameRoom, actorId: "system", expectedStateJson },
   );
+  return result.state;
 }
 
 async function applyAuctionPhaseTransition(
@@ -213,15 +255,20 @@ async function applyAuctionPhaseTransition(
   const result = transition(gameState);
   if (!result) return false;
 
-  await persistGameActionResult(db, gameId, result, {
-    gameRoom,
-    actorId: "system",
-    expectedStateJson: row.state_json,
-  });
+  const { result: persistedResult } = await persistGameActionResult(
+    db,
+    gameId,
+    result,
+    {
+      gameRoom,
+      actorId: "system",
+      expectedStateJson: row.state_json,
+    },
+  );
 
   if (
-    result.state.phase === "waiting_for_auction_bids" &&
-    chooseAiAction(result.state)
+    persistedResult.state.phase === "waiting_for_auction_bids" &&
+    chooseAiAction(persistedResult.state)
   ) {
     await runAiTurnLoop(db, gameId, gameRoom, AI_LOOP_MAX_STEPS, kv, aiEnv);
   }
@@ -316,25 +363,26 @@ export async function applyTimeoutTakeoverAndStep(
     return { applied: false, reason: "not_ai_turn" };
   }
 
-  const { decision, result } = await chooseAndApplyAiDecision(
+  const { decision, result: engineResult } = await chooseAndApplyAiDecision(
     gameState,
     fallbackDecision,
     kv,
     aiEnv,
   );
 
-  await persistGameActionResult(
+  // Timeout takeovers act on behalf of the human seat (`kind` stays "human"),
+  // so `isAiSeatForPresentation` always excludes them — never classify a
+  // presentation beat or emit `game.ai_action`/`aiMeta` for this path.
+  const { result } = await persistGameActionResult(
     db,
     gameId,
-    { state: result.state, logEntries: [...logEntries, ...result.logEntries] },
+    {
+      state: engineResult.state,
+      logEntries: [...logEntries, ...engineResult.logEntries],
+    },
     {
       gameRoom,
       expectedStateJson: row.state_json,
-      aiMeta: {
-        aiPlayerId: decision.actorId,
-        personality: decision.personality,
-        action: decision.action,
-      },
     },
   );
 
@@ -359,7 +407,7 @@ export async function kickPlayerToAiReplacement(
     personality,
   });
 
-  await persistStateMutation(
+  const persistedState = await persistStateMutation(
     db,
     gameId,
     nextState,
@@ -374,7 +422,7 @@ export async function kickPlayerToAiReplacement(
     row.state_json,
   );
 
-  return nextState;
+  return persistedState;
 }
 
 export async function notifyGameSchedule(

@@ -1,5 +1,6 @@
 import { useDeferredValue, useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
+import { AiWatchingBanner } from "../components/AiWatchingBanner";
 import { useAuth } from "../components/AuthContext";
 import { BoardGrid } from "../components/BoardGrid";
 import { GameActionLog } from "../components/GameActionLog";
@@ -22,7 +23,6 @@ export function GameDetailPage() {
     tileDetails,
     error,
     loading,
-    busyAction,
     pendingAction,
     lastActionLatencyMs,
     statusLine,
@@ -30,15 +30,19 @@ export function GameDetailPage() {
     turnDeadline,
     timerKind,
     myPlayerId,
-    myTurn,
     runAction,
     refresh,
+    presentationState,
+    currentPresentationBeat,
+    skipPresentation,
+    controls,
   } = useGameSession(id, user?.userId ?? null);
-  const deferredState = useDeferredValue(state);
+  const viewState = presentationState ?? state;
+  const deferredState = useDeferredValue(viewState);
   const deferredLogEntries = useDeferredValue(logEntries);
   const actorId = useMemo(
-    () => (state ? currentActorId(state) : null),
-    [state],
+    () => (viewState ? currentActorId(viewState) : null),
+    [viewState],
   );
   const deferredActorId = useMemo(
     () => (deferredState ? currentActorId(deferredState) : null),
@@ -48,6 +52,15 @@ export function GameDetailPage() {
     () => (deferredState ? playerNameMap(deferredState) : undefined),
     [deferredState],
   );
+  const presentationName = useMemo(() => {
+    if (currentPresentationBeat?.displayName) {
+      return currentPresentationBeat.displayName;
+    }
+    if (viewState && currentPresentationBeat?.aiPlayerId) {
+      return playerDisplayName(viewState, currentPresentationBeat.aiPlayerId);
+    }
+    return "AI player";
+  }, [currentPresentationBeat, viewState]);
 
   if (!id) {
     return (
@@ -62,10 +75,10 @@ export function GameDetailPage() {
     <div className="gamePage">
       <GameStatusHeader
         gameId={id}
-        state={state}
+        state={viewState}
         actorId={actorId}
         myPlayerId={myPlayerId}
-        myTurn={myTurn}
+        myTurn={controls.myTurnEffective}
         wsStatus={wsStatus}
         turnDeadline={turnDeadline}
         timerKind={timerKind}
@@ -80,13 +93,19 @@ export function GameDetailPage() {
               {error}
             </p>
           )}
+          <AiWatchingBanner
+            open={controls.locked}
+            name={presentationName}
+            summary={currentPresentationBeat?.summary}
+            onSkip={skipPresentation}
+          />
           {state ? (
             <>
               <dl className="detailsGrid">
                 <dt className="muted">Realtime</dt>
                 <dd>{wsStatus}</dd>
                 <dt className="muted">Your turn</dt>
-                <dd>{myTurn ? "Yes" : "No"}</dd>
+                <dd>{controls.myTurnEffective ? "Yes" : "No"}</dd>
                 <dt className="muted">
                   {timerKind === "auction_bids"
                     ? "Auction closes"
@@ -103,16 +122,23 @@ export function GameDetailPage() {
                 </dd>
               </dl>
 
-              <GamePlayControls
-                state={state}
-                myPlayerId={myPlayerId}
-                tileNames={tileNames}
-                busy={busyAction}
-                pendingAction={pendingAction}
-                onAction={runAction}
-              />
+              {controls.locked ? (
+                <p className="muted">
+                  Play controls unlock when AI presentation catches up — use
+                  Skip to jump ahead.
+                </p>
+              ) : (
+                <GamePlayControls
+                  state={state}
+                  myPlayerId={myPlayerId}
+                  tileNames={tileNames}
+                  busy={controls.busy}
+                  pendingAction={pendingAction}
+                  onAction={runAction}
+                />
+              )}
 
-              {pendingAction && (
+              {!controls.locked && pendingAction && (
                 <div className="actionPendingBanner" role="status">
                   <span className="actionPendingPulse" aria-hidden="true" />
                   <span>
@@ -128,7 +154,7 @@ export function GameDetailPage() {
                 <button
                   type="button"
                   className="button buttonSecondary"
-                  disabled={busyAction}
+                  disabled={controls.submitting}
                   onClick={() => void refresh()}
                 >
                   Refresh
