@@ -26,13 +26,6 @@ current UI-only change set.
 - Add a deterministic two-player local smoke script that creates two dev-login
   users, creates a lobby, joins player two, marks both players ready, starts the
   game, and verifies both game views can fetch state.
-- Align local CORS defaults for alternate Vite ports. A test frontend on
-  `127.0.0.1:5176` with a Worker on `8788` could render but dev-login failed
-  because the request origin was not accepted by the Worker.
-- Fix local browser auth for `127.0.0.1` Vite origins. During this audit,
-  direct bearer-auth API calls to Worker `8789` returned valid game summary,
-  state, and log data, but the browser route from `127.0.0.1:5191` repeatedly
-  fell back to unauthorized game-state/log requests after CORS preflights.
 - Add a browser smoke test for the two-player first-game path with isolated
   browser contexts, not shared local storage.
 - Add telemetry for first-game dropoff: login started, lobby created, invite

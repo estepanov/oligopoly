@@ -17,14 +17,19 @@ describe("isLoopbackHostname", () => {
 });
 
 describe("isLoopbackUrl", () => {
-  it("accepts loopback URLs (incl. ports and IPv6)", () => {
+  it("accepts loopback URLs and browser Origin strings (incl. ports and IPv6)", () => {
     expect(isLoopbackUrl("http://localhost:8787/api/x")).toBe(true);
     expect(isLoopbackUrl("http://127.0.0.1/api/x")).toBe(true);
     expect(isLoopbackUrl("http://[::1]:8787/api/x")).toBe(true);
+    expect(isLoopbackUrl("http://localhost:5173")).toBe(true);
+    expect(isLoopbackUrl("http://127.0.0.1:5191")).toBe(true);
+    expect(isLoopbackUrl("http://[::1]:5176")).toBe(true);
   });
 
-  it("rejects deployed and malformed URLs", () => {
+  it("rejects deployed and malformed strings", () => {
     expect(isLoopbackUrl("https://oligopoly.online/api/x")).toBe(false);
+    expect(isLoopbackUrl("https://oligopoly.online")).toBe(false);
     expect(isLoopbackUrl("not a url")).toBe(false);
+    expect(isLoopbackUrl("null")).toBe(false);
   });
 });

@@ -12,10 +12,11 @@ export function isLoopbackHostname(hostname: string): boolean {
 }
 
 /**
- * True when a URL string points at a loopback origin. The single contract used
- * by the worker's local-only request gate and the web's dev-login affordance,
- * so UI visibility and the worker's 403 can't drift. Returns false for malformed
- * URLs.
+ * True when a URL or browser `Origin` string points at a loopback origin. The
+ * single contract used by the worker's local-only request gate, CORS middleware,
+ * and the web's dev-login affordance, so UI visibility and the worker's 403
+ * can't drift. Browser origins such as `http://127.0.0.1:5191` parse through
+ * `new URL()` the same as API URLs. Returns false for malformed strings.
  */
 export function isLoopbackUrl(url: string): boolean {
   try {

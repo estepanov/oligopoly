@@ -13,9 +13,9 @@ import {
 } from "@oligopoly/shared";
 import type { HealthResponse } from "@oligopoly/validation";
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { authSubjectMiddleware } from "./middleware/authSubject";
 import { banCacheMiddleware } from "./middleware/banCache";
+import { corsMiddleware } from "./middleware/cors";
 import { rateLimitMiddleware } from "./middleware/rateLimit";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
@@ -48,17 +48,7 @@ type Variables = {
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-app.use(
-  "*",
-  cors({
-    origin: (origin, c) => {
-      const allowed = c.env?.ALLOWED_ORIGINS?.split(",") ?? [
-        "http://localhost:5173",
-      ];
-      return allowed.includes(origin) ? origin : "";
-    },
-  }),
-);
+app.use("*", corsMiddleware);
 app.use("*", authSubjectMiddleware);
 app.use("*", rateLimitMiddleware);
 app.use("*", banCacheMiddleware);
