@@ -11,11 +11,7 @@ export {
   UpdateUserSettingsInputSchema,
   VisibilitySettingSchema,
 } from "@oligopoly/validation";
-export {
-  isLoopbackHostname,
-  isLoopbackOrigin,
-  isLoopbackUrl,
-} from "./net.js";
+export { isLoopbackHostname, isLoopbackUrl } from "./net.js";
 export { serializeProfileForAudience } from "./profile/serializeProfileForAudience.js";
 export type {
   AchievementUnlock,

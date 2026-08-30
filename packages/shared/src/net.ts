@@ -12,32 +12,15 @@ export function isLoopbackHostname(hostname: string): boolean {
 }
 
 /**
- * True when a URL string points at a loopback origin. The single contract used
- * by the worker's local-only request gate and the web's dev-login affordance,
- * so UI visibility and the worker's 403 can't drift. Returns false for malformed
- * URLs.
+ * True when a URL or browser `Origin` string points at a loopback origin. The
+ * single contract used by the worker's local-only request gate, CORS middleware,
+ * and the web's dev-login affordance, so UI visibility and the worker's 403
+ * can't drift. Browser origins such as `http://127.0.0.1:5191` parse through
+ * `new URL()` the same as API URLs. Returns false for malformed strings.
  */
 export function isLoopbackUrl(url: string): boolean {
   try {
     return isLoopbackHostname(new URL(url).hostname);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * True when a browser `Origin` header value points at a loopback dev server
- * (`http(s)://localhost|127.0.0.1|::1` with any port). Used by the worker CORS
- * middleware so local Vite ports and `127.0.0.1` hosts work without listing
- * every combination in `ALLOWED_ORIGINS`.
- */
-export function isLoopbackOrigin(origin: string): boolean {
-  try {
-    const url = new URL(origin);
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return false;
-    }
-    return isLoopbackHostname(url.hostname);
   } catch {
     return false;
   }
