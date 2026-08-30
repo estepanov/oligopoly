@@ -90,6 +90,41 @@ describe("cors", () => {
 
     expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
+
+  it("does not reflect loopback Origins on a deployed worker", async () => {
+    const res = await createRequestWithEnv(
+      "https://api.oligopoly.online/api/health",
+      {
+        method: "OPTIONS",
+        headers: {
+          Origin: "http://127.0.0.1:5191",
+          "Access-Control-Request-Method": "GET",
+        },
+        allowedOrigins: "https://oligopoly.online",
+      },
+    );
+
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+
+  it("still reflects the configured production origin on a deployed worker", async () => {
+    const res = await createRequestWithEnv(
+      "https://api.oligopoly.online/api/health",
+      {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://oligopoly.online",
+          "Access-Control-Request-Method": "GET",
+        },
+        allowedOrigins: "https://oligopoly.online",
+      },
+    );
+
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://oligopoly.online",
+    );
+  });
 });
 
 describe("rateLimitMiddleware", () => {

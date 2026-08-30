@@ -134,7 +134,7 @@ Framework conventions:
 
 Global middleware order:
 
-1. CORS allowlist middleware — honors `ALLOWED_ORIGINS` and also accepts any loopback browser origin (`http(s)://localhost|127.0.0.1|::1` on any port) so local Vite dev servers work without listing every port/host combination.
+1. CORS allowlist middleware — honors `ALLOWED_ORIGINS`. Unlisted loopback browser origins (`http(s)://localhost|127.0.0.1|::1` on any port) are accepted only when the Worker request URL is itself loopback (same `isLoopbackUrl` gate as `dev-login` / `ai/step`), so local Vite ports work without listing every combination and deployed workers stay on the explicit allowlist.
 2. Rate limit middleware
 3. Ban cache middleware
 

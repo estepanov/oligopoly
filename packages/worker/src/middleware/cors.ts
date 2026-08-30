@@ -19,12 +19,21 @@ export function parseAllowedOrigins(env?: string): string[] {
     .filter(Boolean);
 }
 
-/** True when an `Origin` header may be reflected in CORS responses. */
+/**
+ * True when an `Origin` header may be reflected in CORS responses.
+ * Configured allowlist entries always win. Unlisted loopback Origins are
+ * accepted only when the Worker request itself is loopback (same gate as
+ * `dev-login` / `ai/step`), so deployed workers stay on `ALLOWED_ORIGINS`.
+ */
 export function isCorsOriginAllowed(
   origin: string,
   allowed: string[],
+  requestUrl: string,
 ): boolean {
-  return allowed.includes(origin) || isLoopbackUrl(origin);
+  return (
+    allowed.includes(origin) ||
+    (isLoopbackUrl(requestUrl) && isLoopbackUrl(origin))
+  );
 }
 
 export const corsMiddleware: MiddlewareHandler<{ Bindings: CorsBindings }> =
@@ -36,6 +45,7 @@ export const corsMiddleware: MiddlewareHandler<{ Bindings: CorsBindings }> =
       return isCorsOriginAllowed(
         origin,
         parseAllowedOrigins(c.env?.ALLOWED_ORIGINS),
+        c.req.url,
       )
         ? origin
         : "";

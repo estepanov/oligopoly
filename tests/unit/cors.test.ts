@@ -24,19 +24,44 @@ describe("parseAllowedOrigins", () => {
 });
 
 describe("isCorsOriginAllowed", () => {
-  const allowed = ["http://localhost:5173"];
+  const localAllowed = ["http://localhost:5173"];
+  const productionAllowed = ["https://oligopoly.online"];
+  const localRequest = "http://localhost:8787/api/health";
+  const deployedRequest = "https://api.oligopoly.online/api/health";
 
-  it("allows configured origins", () => {
-    expect(isCorsOriginAllowed("http://localhost:5173", allowed)).toBe(true);
+  it("allows configured origins on any worker host", () => {
+    expect(
+      isCorsOriginAllowed("http://localhost:5173", localAllowed, localRequest),
+    ).toBe(true);
+    expect(
+      isCorsOriginAllowed(
+        "https://oligopoly.online",
+        productionAllowed,
+        deployedRequest,
+      ),
+    ).toBe(true);
   });
 
-  it("allows loopback origins not listed in ALLOWED_ORIGINS", () => {
-    expect(isCorsOriginAllowed("http://127.0.0.1:5191", allowed)).toBe(true);
+  it("allows unlisted loopback origins only on a loopback worker", () => {
+    expect(
+      isCorsOriginAllowed("http://127.0.0.1:5191", localAllowed, localRequest),
+    ).toBe(true);
+    expect(
+      isCorsOriginAllowed(
+        "http://127.0.0.1:5191",
+        productionAllowed,
+        deployedRequest,
+      ),
+    ).toBe(false);
   });
 
-  it("rejects deployed origins", () => {
-    expect(isCorsOriginAllowed("https://oligopoly.online", allowed)).toBe(
-      false,
-    );
+  it("rejects deployed origins that are not on the allowlist", () => {
+    expect(
+      isCorsOriginAllowed(
+        "https://oligopoly.online",
+        localAllowed,
+        localRequest,
+      ),
+    ).toBe(false);
   });
 });
